@@ -1,0 +1,8 @@
+root = true
+
+[*.cs]
+indent_style = space
+indent_size = 4
+max_line_length = 110
+dotnet_style_qualification_for_field = false:suggestion
+csharp_style_namespace_declarations = file_scoped:warning

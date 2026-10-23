@@ -1,0 +1,33 @@
+<Project>
+  <!-- Settings shared by every project in the repository (src, samples, tests). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!-- EF1001: deliberate use of internal ("pubternal") EF/Npgsql APIs, see chapter 23 -->
+    <NoWarn>$(NoWarn);EF1001</NoWarn>
+    <!-- EF9100: experimental API for precompiled queries (SqlExpression.Quote, chapter 37) -->
+    <NoWarn>$(NoWarn);EF9100</NoWarn>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <!-- NuGet metadata for all packable projects (IsPackable=true in the src projects) -->
+  <PropertyGroup>
+    <Authors>guenni81</Authors>
+    <Copyright>Copyright (c) 2026 guenni81</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/guenni81/EF-Core-Plugin-Handbook</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/guenni81/EF-Core-Plugin-Handbook.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>entity-framework-core;efcore;postgresql;sqlserver;multi-tenancy;row-level-security</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <VersionPrefix>10.0.0</VersionPrefix>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <!-- SourceLink is built into the .NET 8+ SDK; these two settings enable it -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+  </PropertyGroup>
+</Project>

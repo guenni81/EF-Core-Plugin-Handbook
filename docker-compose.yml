@@ -1,0 +1,25 @@
+# PostgreSQL for the samples. Start with "docker compose up -d", stop with
+# "docker compose down" (add -v to also delete the data).
+#
+# The superuser shop_owner owns the tables and runs migrations. The samples connect at run
+# time with the restricted role shop_app, which they create themselves: no owner, no
+# superuser, no BYPASSRLS, so that row level security applies.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: shop_owner
+      POSTGRES_PASSWORD: shop_owner
+      POSTGRES_DB: shop
+    ports:
+      - "5432:5432"
+    volumes:
+      - shop-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shop_owner -d shop"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  shop-data:

@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    PostgreSQL-specific package: type mapping, query translation, row level security,
+    migrations, design-time support and the connection interceptor.
+  -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsAotCompatible>true</IsAotCompatible>
+    <Description>Multi-tenancy for EF Core with PostgreSQL (row level security).</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Acme.EntityFrameworkCore.Tenancy\Acme.EntityFrameworkCore.Tenancy.csproj" />
+  </ItemGroup>
+  <!-- Public API analyzer: reports every change to the public API (chapter 36) -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <AdditionalFiles Include="PublicAPI.Shipped.txt" />
+    <AdditionalFiles Include="PublicAPI.Unshipped.txt" />
+  </ItemGroup>
+  <!-- Package README; InternalsVisibleTo lets the unit tests reach internal helpers -->
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <InternalsVisibleTo Include="Acme.EntityFrameworkCore.Tenancy.Tests" />
+  </ItemGroup>
+</Project>

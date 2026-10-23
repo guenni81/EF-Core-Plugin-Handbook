@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Provider-independent core package: types that entity assemblies reference as well
+    (TenantId, ITenantOwned, attributes), EF.Functions API, diagnostics and SaveChanges logic.
+    No dependency on a database provider.
+  -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsAotCompatible>true</IsAotCompatible>
+    <Description>Multi-tenancy for EF Core: core abstractions (provider-independent).</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+  </ItemGroup>
+  <!-- Public API analyzer: reports every change to the public API (chapter 36) -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <AdditionalFiles Include="PublicAPI.Shipped.txt" />
+    <AdditionalFiles Include="PublicAPI.Unshipped.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <InternalsVisibleTo Include="Acme.EntityFrameworkCore.Tenancy.Tests" />
+    <InternalsVisibleTo Include="Acme.EntityFrameworkCore.Tenancy.Benchmarks" />
+  </ItemGroup>
+</Project>

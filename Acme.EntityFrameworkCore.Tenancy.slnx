@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Acme.EntityFrameworkCore.Tenancy/Acme.EntityFrameworkCore.Tenancy.csproj" />
+    <Project Path="src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Acme.EntityFrameworkCore.Tenancy.PostgreSQL.csproj" />
+    <Project Path="src/Acme.EntityFrameworkCore.Tenancy.SqlServer/Acme.EntityFrameworkCore.Tenancy.SqlServer.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/ShopSample/ShopSample.csproj" />
+    <Project Path="samples/ShopApi/ShopApi.csproj" />
+  </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Acme.EntityFrameworkCore.Tenancy.Tests/Acme.EntityFrameworkCore.Tenancy.Tests.csproj" />
+    <Project Path="tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests.csproj" />
+    <Project Path="tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests.csproj" />
+  </Folder>
+</Solution>

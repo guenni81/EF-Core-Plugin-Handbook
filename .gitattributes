@@ -1,0 +1,13 @@
+# Normalize line endings in the repository; check out with the platform default
+* text=auto
+
+*.cs      text diff=csharp
+*.py      text diff=python
+*.md      text
+*.yml     text
+*.slnx    text
+
+# Binary files
+*.pdf     binary
+*.ttf     binary
+*.png     binary

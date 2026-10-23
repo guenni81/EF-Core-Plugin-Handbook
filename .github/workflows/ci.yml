@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build
+        run: dotnet build -c Release
+
+      - name: Unit tests (no database)
+        run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Tests -c Release --no-build
+
+      # Docker is available on the Ubuntu runners: Testcontainers starts PostgreSQL
+      - name: Integration tests (PostgreSQL)
+        run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests -c Release --no-build
+
+      - name: SQL Server tests (unit + SQL Server via Testcontainers)
+        run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests -c Release --no-build
+
+  # Builds both editions of the handbook. Fails if a code excerpt exceeds the
+  # maximum line length or a part script is broken.
+  handbook:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r docs/handbook/requirements.txt
+      - name: Build PDFs (German and English)
+        run: |
+          python docs/handbook/build.py --lang de
+          python docs/handbook/build.py --lang en
+      - uses: actions/upload-artifact@v4
+        with:
+          name: handbook
+          path: docs/handbook/out/*.pdf
+
+  # Early warning: build and unit tests against the next EF Core preview.
+  # Allowed to fail, but reveals breaking changes in internal APIs months before release.
+  ef-preview:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+            11.0.x
+          dotnet-quality: preview
+      - name: Build against EF preview
+        run: dotnet build -c Release -p:EFCorePreview=true
+      - name: Unit tests against EF preview
+        run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Tests -c Release --no-build -p:EFCorePreview=true

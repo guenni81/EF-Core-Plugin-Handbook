@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Micro benchmarks for the plugin's hot paths (chapter 34). Not run in CI; start manually
+    from this folder with "dotnet run -c Release" (see README).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Acme.EntityFrameworkCore.Tenancy.PostgreSQL\Acme.EntityFrameworkCore.Tenancy.PostgreSQL.csproj" />
+  </ItemGroup>
+</Project>
