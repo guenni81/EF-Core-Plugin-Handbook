@@ -25,11 +25,11 @@ describes is backed by more than 100 tests.
 
 | Edition | PDF | Sources |
 |---|---|---|
-| English | [EF-Core-Plugin-Handbook.pdf](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/docs/handbook/out/EF-Core-Plugin-Handbook.pdf) | [`docs/handbook/parts_en`](https://github.com/guenni81/EF-Core-Plugin-Handbook/tree/main/docs/handbook/parts_en) |
-| Deutsch | [EF-Core-Plugin-Handbuch.pdf](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/docs/handbook/out/EF-Core-Plugin-Handbuch.pdf) | [`docs/handbook/parts`](https://github.com/guenni81/EF-Core-Plugin-Handbook/tree/main/docs/handbook/parts) |
+| English | [EF-Core-Plugin-Handbook.pdf](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/docs/handbook/out/EF-Core-Plugin-Handbook.pdf) | [`docs/handbook/en`](https://github.com/guenni81/EF-Core-Plugin-Handbook/tree/main/docs/handbook/en) |
+| Deutsch | [EF-Core-Plugin-Handbuch.pdf](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/docs/handbook/out/EF-Core-Plugin-Handbuch.pdf) | [`docs/handbook/de`](https://github.com/guenni81/EF-Core-Plugin-Handbook/tree/main/docs/handbook/de) |
 
-42 chapters in 9 parts plus 4 appendices, about 110 pages, for developers who already use
-EF Core and want to extend it. The PDFs are generated from Python scripts so that text and
+42 chapters in 9 parts plus 4 appendices, about 120 pages, for developers who already use
+EF Core and want to extend it. The PDFs are typeset with LaTeX (LuaLaTeX) so that text and
 code excerpts are versioned together with the code. See [`docs/handbook/README.md`](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/docs/handbook/README.md)
 for how to build them.
 
@@ -160,13 +160,6 @@ Micro benchmarks for the SaveChanges logic (BenchmarkDotNet, no database require
 dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks
 ```
 
-Building against the next EF Core preview (early warning for breaking changes in internal
-APIs):
-
-```bash
-dotnet build -p:EFCorePreview=true
-```
-
 ## The samples
 
 The samples show how an application uses the plugin. They need a PostgreSQL server; the
@@ -215,13 +208,13 @@ the very top of `Up()`.
 * Isolation follows the connection: a connection that is already open when handed to EF,
   or that stays open while the tenant changes, keeps its previous session value. Let EF
   open connections and use one context per tenant; where that is not possible, call
-  `db.Database.ApplyTenantSession()` (chapter 15).
+  `db.Database.ApplyTenantSession()` (chapter "Interceptors").
 * `AddAcmeTenancy` registers a scoped tenant provider by default. With `AddDbContextPool`,
   `AddPooledDbContextFactory` or a singleton `AddDbContextFactory`, use a provider that
-  determines the tenant on every access, or register the factory as scoped (chapters 6
-  and 35).
+  determines the tenant on every access, or register the factory as scoped (chapters
+  "Public API and integration into the application" and "Using the plugin in ASP.NET Core").
 * Access across tenants (reports, maintenance) belongs in a separate database role, never
-  in a switch the application role could flip (chapter 33).
+  in a switch the application role could flip (chapter "Row Level Security in production").
 
 ## Compatibility
 

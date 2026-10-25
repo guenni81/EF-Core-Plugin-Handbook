@@ -6,7 +6,7 @@ namespace Acme.EntityFrameworkCore.Tenancy.IntegrationTests;
 /// <summary>
 /// Where the session interceptor does not run: it fires when EF opens a connection. A
 /// connection that is already open, or stays open while the tenant changes, keeps whatever
-/// session value it has (chapter 15).
+/// session value it has (chapter "Interceptors").
 /// </summary>
 public class ConnectionLifetimeTests : IClassFixture<PostgresFixture>
 {

@@ -5,7 +5,8 @@ namespace Acme.EntityFrameworkCore.Tenancy.IntegrationTests;
 
 /// <summary>
 /// Legitimate access across tenants (reporting, maintenance) via a separate database role,
-/// not via a switch the application role could flip itself (chapter 33).
+/// not via a switch the application role could flip itself (chapter "Row Level Security in
+/// production").
 /// </summary>
 public class CrossTenantAccessTests : IClassFixture<PostgresFixture>
 {

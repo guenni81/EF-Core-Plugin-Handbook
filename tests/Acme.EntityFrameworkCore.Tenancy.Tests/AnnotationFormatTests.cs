@@ -6,7 +6,8 @@ namespace Acme.EntityFrameworkCore.Tenancy.Tests;
 /// <summary>
 /// The serialized form of an annotation is stored in every user's model snapshot. If it
 /// changes between plugin versions, the differ sees a different string and every user gets a
-/// phantom migration after the upgrade. These tests pin the format (chapter 24).
+/// phantom migration after the upgrade. These tests pin the format (chapter "Versioning and
+/// compatibility").
 /// </summary>
 public class AnnotationFormatTests
 {

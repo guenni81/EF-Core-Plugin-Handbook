@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.DependencyInjection;
 using ShopSample;
 
-// Steps (see README and chapter 32 of the handbook):
+// Steps (see README and chapter "Advanced migrations" of the handbook):
 //   1. dotnet ef migrations add Initial        (as the owner role, see DesignTimeFactory)
 //   2. Add at the VERY TOP of Up(), before the generated operations:
 //          migrationBuilder.CreateApplicationRole("shop_support");

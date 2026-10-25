@@ -1,0 +1,413 @@
+\handbooktitle{EF Core plugin development · reference and practice}{The EF Core Plugin Handbook}
+  {From the options extension to the NuGet package: everything you need for professional and
+  even very complex extensions of Entity Framework Core. Explained throughout with a
+  complete multi-tenancy plugin for PostgreSQL and SQL Server.}
+\begin{handbookmeta}
+  Edition & \handbookversion \\
+  Versions & EF Core 10, Npgsql.EntityFrameworkCore.PostgreSQL 10, .NET 10 \\
+  Sample & Complete solution at \textbf{github.com/guenni81/EF-Core-Plugin-Handbook}: core
+  package, two provider packages, two sample apps, unit and integration tests \\
+  Verified & The sample code is built against EF Core 10 and Npgsql 10; unit and integration
+  tests run against real PostgreSQL and SQL Server. \\
+  Structure & 9 parts, 42 chapters, 4 appendices \\
+  License & MIT License, © 2026 guenni81. Free to use, copy, modify and share, including
+  commercially; see the last page. \\
+\end{handbookmeta}
+
+\section*{About this book}
+
+Many EF Core extensions start out as a handful of extension methods and then grow without a
+plan. If you understand how EF Core is built internally, however, you can write extensions
+that feel like part of EF Core itself: they are configured through the options, run inside
+the internal service provider, translate custom functions to SQL, generate migrations, write
+readable snapshots, and combine cleanly with other plugins.
+
+This book explains each of these building blocks in two layers. First comes the
+\textbf{principle}: how does the mechanism work in EF Core, which variants exist, and what
+do you need to watch out for? Then comes the \textbf{implementation} in the sample plugin,
+with the code that is also in the repository. The chapters build on each other, but can also
+be read individually as a reference. The code in the repository and the snippets in this
+edition use English comments and messages. Each snippet's label names the file.
+
+\begin{datatable}{H{0.50}H{1.50}}
+  \textbf{Box} & \textbf{Meaning} \\
+  \tablehead
+  \textcolor[HTML]{D99A00}{\textbf{Important}} & Pitfalls that lead to incorrect behavior or
+  security holes. \\
+  \tablerule
+  \textcolor[HTML]{2E8B57}{\textbf{Tip}} & Proven practice that saves work or improves
+  quality. \\
+  \tablerule
+  \textcolor[HTML]{1D4E89}{\textbf{Note}} & Background, context and references to other
+  chapters. \\
+\end{datatable}
+
+\begin{note}[Public and internal APIs]
+  Some APIs that plugins need live in namespaces ending in \code{.\allowbreak{}Internal}. EF
+  Core calls them “pubternal”: publicly visible, but without compatibility guarantees. The
+  book marks these places, and chapter~\ref{ch:versioning-and-compatibility} explains how to
+  deal with them.
+\end{note}
+
+\tableofcontents
+
+% ============================================================
+\setpartpreamble{\partintro
+  {What a plugin is, how EF Core is built internally, and which scenario accompanies us
+  through the book.}
+  {
+    \item Chapter~\ref{ch:what-is-an-ef-core}: What is an EF Core plugin?
+    \item Chapter~\ref{ch:ef-core-s-architecture-from}: EF Core's architecture from a
+    plugin's point of view
+    \item Chapter~\ref{ch:the-sample-scenario}: The sample scenario
+  }}
+\part{Foundations}\label{part:I}
+
+% ------------------------------------------------------------
+\chapter{What is an EF Core plugin?}\label{ch:what-is-an-ef-core}
+
+The term “plugin” is used for very different things. For this book, it helps to distinguish
+four levels that differ in how deeply they reach into EF Core:
+
+\begin{datatable}{H{0.65}H{1.41}H{0.94}}
+  \textbf{Level} & \textbf{Description} & \textbf{Examples} \\
+  \tablehead
+  1 · Helpers & Extension methods on \code{Db\allowbreak{}Context} or \code{IQueryable} that
+  only call public API. & Paging helpers, \code{Where\allowbreak{}If}, seeding methods \\
+  \tablerule
+  2 · Model helpers & Fluent API extensions and annotations, without services of their own
+  inside EF Core. & Custom \code{Has\allowbreak{}Xyz(\allowbreak{})} methods, ModelBuilder
+  helpers \\
+  \tablerule
+  3 · Real plugins & Own services in the internal service provider: conventions, query
+  translation, type mappings, migrations, design time. & NetTopologySuite plugin, NodaTime
+  plugin, EFCore.NamingConventions \\
+  \tablerule
+  4 · Providers & A complete database integration including connection, update pipeline and
+  SQL generation. & Npgsql, Pomelo (MySQL), SQLite, Cosmos \\
+\end{datatable}
+
+This book covers \textbf{level 3} completely. Levels 1 and 2 need no book of their own: they
+only use EF's public API, and chapter~\ref{ch:annotations-and-fluent-api} covers what is
+specific to Fluent API extensions. The tools of level 4 (such as replacing the SQL
+generator) are explained where plugins need them.
+
+\section{Who this book is for}
+
+For developers who already use EF Core confidently: \code{Db\allowbreak{}Context},
+migrations, LINQ queries and dependency injection are assumed. No knowledge of EF's
+internals is required; the book introduces them where they are needed. Experience with
+PostgreSQL helps with the sample, but every SQL construct is explained when it first
+appears. Chapter~\ref{ch:ef-core-s-architecture-from} ends with a complete mini plugin that
+shows all building blocks on a single page before the large sample begins.
+
+\section{What a level 3 plugin can do}
+
+A complete plugin can extend EF Core at practically every point: it can make new CLR types
+available as column types, translate custom functions in LINQ to SQL, adapt the model
+automatically through conventions, accept metadata through the Fluent API and attributes,
+validate the model, intervene when saving and when opening connections, log its own events,
+add custom SQL to migrations and extend the \code{dotnet ef} tooling. The sample in this
+book uses every one of these possibilities.
+
+\begin{tip}[Role models in the ecosystem]
+  Before writing your own, look at existing plugins. \textbf{EFCore.NamingConventions} is a
+  small, clean convention plugin. The \textbf{NetTopologySuite} plugin in the EF Core
+  repository shows type mappings and translations. Npgsql's \textbf{NodaTime} plugin shows a
+  provider-specific plugin activated through the provider's options builder.
+\end{tip}
+
+% ------------------------------------------------------------
+\chapter{EF Core's architecture from a plugin's point of view}\label{ch:ef-core-s-architecture-from}
+
+\section{Two containers: the internal service provider}
+
+Every \code{Db\allowbreak{}Context} resolves its infrastructure from an \textbf{internal}
+\code{IService\allowbreak{}Provider}. It is separate from the application's DI container and
+contains several hundred services: type mapping, model building, the query pipeline, change
+tracking, the update pipeline, migrations. A plugin hooks in by registering additional
+services in this container or replacing existing ones.
+
+\begin{flowdiagram}
+  \flowstep{DbContextOptions}{Provider extension (UseNpgsql) and plugin extensions
+  (UseAcmeTenancy)}
+  \flowstep{ServiceProviderCache}{Finds a matching internal provider by hash, or builds one}
+  \flowstep{ApplyServices()}{Each extension registers its services in the new provider}
+  \flowstep{Internal service provider}{Cached and shared by all matching contexts}
+  \flowstep{Model (cached)}{Built once per provider: conventions, type mappings, validation}
+  \flowstep{Query, SaveChanges, Migrations}{Run with the services of this provider}
+\end{flowdiagram}
+
+Two caches are decisive here. The \textbf{service provider} is cached based on the options:
+contexts with the same configuration share one provider. The \textbf{model} is cached per
+provider (and context type). Both make EF Core fast, but they have direct consequences for
+plugins, which chapter~\ref{ch:the-options-extension} covers in detail.
+
+\section{Lifetimes}
+
+Every EF service has a fixed lifetime. \textbf{Singleton} here means: once per internal
+service provider, not per application. \textbf{Scoped} means: once per context instance. A
+singleton must not hold a scoped service, and a service that needs different data per
+context must not be a singleton. Appendix~\ref{app:A} lists the lifetimes of all extension
+points.
+
+\section{The dependencies pattern}
+
+EF services do not receive their dependencies individually, but as a parameter object, such
+as \code{Migrations\allowbreak{}Sql\allowbreak{}Generator\allowbreak{}Dependencies} or
+\code{Provider\allowbreak{}Convention\allowbreak{}Set\allowbreak{}Builder\allowbreak{}Dependencies}.
+When you derive from an EF service, you accept this object in the constructor and pass it
+on. EF Core adds new dependencies to the object without breaking constructors. For plugins
+this is a blessing: derived services stay compatible across minor versions.
+
+\begin{sourcecode}[Migrations/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}header)]{csharp}
+public class TenancyMigrationsSqlGenerator : NpgsqlMigrationsSqlGenerator
+{
+    public TenancyMigrationsSqlGenerator(
+        MigrationsSqlGeneratorDependencies dependencies,     // parameter object from EF
+        INpgsqlSingletonOptions npgsqlSingletonOptions)      // additionally from the provider
+        : base(dependencies, npgsqlSingletonOptions)
+    {
+    }
+\end{sourcecode}
+
+\begin{note}[Code style in the sample]
+  All classes in the sample use classic constructors with \code{private readonly} fields and
+  \code{Argument\allowbreak{}Null\allowbreak{}Exception.\allowbreak{}Throw\allowbreak{}If\allowbreak{}Null},
+  no primary constructors. Their parameters are mutable throughout the class body, offer no
+  natural place for validation and hide which state is stored. Classic constructors also
+  match the style of EF Core and Npgsql, whose classes a plugin derives from. The only
+  exception is positional records such as \code{Rls\allowbreak{}Policy}, where the syntax
+  generates real \code{init} properties.
+\end{note}
+
+\section{Extend or replace?}
+
+There are two fundamentally different ways to extend EF Core. \textbf{Plugin interfaces}
+such as \code{IMethod\allowbreak{}Call\allowbreak{}Translator\allowbreak{}Plugin} or
+\code{IConvention\allowbreak{}Set\allowbreak{}Plugin} are designed for exactly this. They
+can be registered multiple times, EF queries all registrations, and several plugins coexist.
+\textbf{Replacing} means swapping a single service such as
+\code{IMigrations\allowbreak{}Sql\allowbreak{}Generator} for a derived class. That is
+sometimes unavoidable, but only one replacement can win per context.
+
+\begin{important}[Plugin interfaces before replacement]
+  Always check first whether a plugin interface exists. Replacing a single service collides
+  with every other plugin that replaces the same service and forces you to derive from the
+  provider's implementation. That ties the plugin to one provider and its internal API.
+  Chapter~\ref{ch:registering-services} shows how to stay composable anyway.
+\end{important}
+
+\section{Warm-up: a complete plugin in five pieces}
+
+Before the large sample, here is the smallest plugin that is still complete. It makes
+PostgreSQL's \code{reverse(\allowbreak{})} available in LINQ as
+\code{EF.\allowbreak{}Functions.\allowbreak{}Reverse(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}.
+Every later chapter elaborates one of its five pieces:
+
+\begin{sourcecode}[tests/\allowbreak{}Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Tests/\allowbreak{}Minimal\allowbreak{}Plugin\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}1/\allowbreak{}2,\allowbreak{} shortened)]{csharp}
+// 1. The function users call in LINQ; it is never executed
+public static class ReverseDbFunctionsExtensions
+{
+    public static string Reverse(this DbFunctions _, string value)
+        => throw new InvalidOperationException("Reverse can only be used in LINQ queries.");
+}
+
+// 2. The translator turns the method call into a SQL function
+//    (chapter "Translating methods and members")
+public class ReverseTranslator : IMethodCallTranslator
+{
+    // Constructor stores the ISqlExpressionFactory in _sql
+
+    public SqlExpression? Translate(
+        SqlExpression? instance, MethodInfo method, IReadOnlyList<SqlExpression> arguments,
+        IDiagnosticsLogger<DbLoggerCategory.Query> logger)
+        => method == ReverseMethod
+            ? _sql.Function("reverse", [arguments[1]], nullable: true,
+                argumentsPropagateNullability: [true], typeof(string),
+                arguments[1].TypeMapping)
+            : null;
+}
+
+// 3. The plugin hands the translator to EF (chapter "Translating methods and members")
+public class ReverseTranslatorPlugin : IMethodCallTranslatorPlugin
+{
+    public ReverseTranslatorPlugin(ISqlExpressionFactory sql)
+    {
+        Translators = [new ReverseTranslator(sql)];
+    }
+
+    public IEnumerable<IMethodCallTranslator> Translators { get; }
+}
+\end{sourcecode}
+
+\begin{sourcecode}[tests/\allowbreak{}Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Tests/\allowbreak{}Minimal\allowbreak{}Plugin\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}2/\allowbreak{}2,\allowbreak{} shortened)]{csharp}
+// 4. The options extension registers the plugin in EF's internal provider
+//    (chapters "The options extension" and "Registering services")
+public class ReverseOptionsExtension : IDbContextOptionsExtension
+{
+    private DbContextOptionsExtensionInfo? _info;
+
+    public DbContextOptionsExtensionInfo Info => _info ??= new ExtensionInfo(this);
+
+    public void ApplyServices(IServiceCollection services)
+        => new EntityFrameworkRelationalServicesBuilder(services)
+            .TryAdd<IMethodCallTranslatorPlugin, ReverseTranslatorPlugin>();
+
+    public void Validate(IDbContextOptions options)
+    {
+    }
+
+    // ExtensionInfo: not a provider, no settings -> hash 0, always the same provider
+}
+
+// 5. The Use method activates the plugin
+//    (chapter "Public API and integration into the application")
+public static DbContextOptionsBuilder UseReverse(this DbContextOptionsBuilder builder)
+{
+    ((IDbContextOptionsBuilderInfrastructure)builder).AddOrUpdateExtension(
+        builder.Options.FindExtension<ReverseOptionsExtension>()
+        ?? new ReverseOptionsExtension());
+    return builder;
+}
+\end{sourcecode}
+
+\begin{sourcecode}[Usage]{csharp}
+options.UseNpgsql(connectionString).UseReverse();
+
+db.Customers.Where(c => EF.Functions.Reverse(c.Name) == "abc");
+// SQL: WHERE reverse(c."Name") = 'abc'
+\end{sourcecode}
+
+That is all a working plugin needs. EF finds the translator because the extension registers
+it in the internal service provider, and every context configured with
+\code{Use\allowbreak{}Reverse(\allowbreak{})} shares that provider. Because the argument
+references a column, the function needs no evaluatable expression filter
+(chapter~\ref{ch:preventing-client-side-evaluation} explains when it does). The test
+\code{Minimal\allowbreak{}Plugin\allowbreak{}Tests} checks the translation and that the same
+query fails without the plugin. The tenancy plugin consists of exactly these pieces, only
+many more of them.
+
+% ------------------------------------------------------------
+\chapter{The sample scenario}\label{ch:the-sample-scenario}
+
+The sample plugin \textbf{Acme.EntityFrameworkCore.Tenancy} makes EF Core multi-tenant with
+PostgreSQL. The database itself enforces tenant separation through \textbf{Row Level
+Security} (RLS): every table gets a policy that only shows rows of the tenant whose ID is
+set in the current database session. Even a faulty query or raw SQL cannot read another
+tenant's data.
+
+From the user's point of view it looks like this:
+
+\begin{sourcecode}[User's view]{csharp}
+public class Order : ITenantOwned               // marker from the core package
+{
+    public int Id { get; set; }
+    public TenantId TenantId { get; set; }      // strongly typed, automatically uuid
+    public decimal Total { get; set; }
+}
+
+services.AddAcmeTenancy<HttpTenantProvider>();
+services.AddDbContext<ShopContext>((sp, o) => o
+    .UseNpgsql(connectionString)
+    .UseAcmeTenancy(sp, tenancy => tenancy.ApplyQueryFilter()));
+
+// Querying and saving without any tenant logic in application code
+db.Orders.Add(new Order { Total = 42 });         // the plugin sets TenantId
+var mine = await db.Orders.ToListAsync();        // RLS filters in the database
+\end{sourcecode}
+
+To make this work, the plugin uses every extension point covered in this book:
+
+\begin{datatable}{H{1.20}H{1.50}H{0.30}}
+  \textbf{Requirement} & \textbf{Implementation} & \textbf{Ch.} \\
+  \tablehead
+  Configuration via \code{Use\allowbreak{}Acme\allowbreak{}Tenancy(\allowbreak{})} & Options
+  extension, settings record, options builder & \ref{ch:the-options-extension}--\ref{ch:public-api-and-integration-into} \\
+  \tablerule
+  \code{Tenant\allowbreak{}Id} as a column type without configuration & Type mapping plugin,
+  value converter, JSON reader/writer & \ref{ch:type-mappings-and-value-converters} \\
+  \tablerule
+  \code{EF.\allowbreak{}Functions.\allowbreak{}Current\allowbreak{}Tenant(\allowbreak{})} in
+  LINQ & Method translator, evaluatable expression filter & \ref{ch:translating-methods-and-members}--\ref{ch:preventing-client-side-evaluation} \\
+  \tablerule
+  \code{tenant\allowbreak{}Id.\allowbreak{}Is\allowbreak{}Empty} in LINQ & Member translator
+  & \ref{ch:translating-methods-and-members} \\
+  \tablerule
+  RLS for all \code{ITenant\allowbreak{}Owned} entities & Convention with index and optional
+  query filter & \ref{ch:conventions} \\
+  \tablerule
+  Fluent API, attribute \code{[No\allowbreak{}Tenant\allowbreak{}Isolation]} & Annotations,
+  attribute convention, ConfigurationSource & \ref{ch:annotations-and-fluent-api}--\ref{ch:conventions} \\
+  \tablerule
+  Detect misconfiguration early & Validation convention, custom warnings & \ref{ch:model-validation}, \ref{ch:diagnostics-and-logging} \\
+  \tablerule
+  Set TenantId automatically & SaveChanges interceptor & \ref{ch:interceptors} \\
+  \tablerule
+  Tenant in the DB session & Connection interceptor & \ref{ch:interceptors} \\
+  \tablerule
+  \code{ENABLE ROW LEVEL SECURITY}, \code{CREATE POLICY} & Annotation provider, migrations
+  SQL generator & \ref{ch:how-migrations-work}--\ref{ch:declarative-sql-from-annotations} \\
+  \tablerule
+  Roles and grants in migrations & Custom migration operations & \ref{ch:custom-migration-operations} \\
+  \tablerule
+  Readable snapshots & Annotation code generator, design-time services & \ref{ch:design-time-services} \\
+  \tablerule
+  Compiled models and AOT & \code{Default} instances, source generators & \ref{ch:compiled-models-trimming-and-nativeaot} \\
+  \tablerule
+  \code{EF.\allowbreak{}Functions.\allowbreak{}Is\allowbreak{}Not\allowbreak{}Distinct\allowbreak{}From},
+  \code{EF.\allowbreak{}Functions.\allowbreak{}Every} & Custom SQL node, aggregate
+  translator & \ref{ch:custom-sql-expression-nodes}--\ref{ch:aggregate-translators} \\
+  \tablerule
+  Tenant property with any name &
+  \code{Is\allowbreak{}Tenant\allowbreak{}Property(\allowbreak{})}, runtime annotation & \ref{ch:property-level-fluent-api-and}
+  \\
+  \tablerule
+  Scaffold RLS from an existing database & Custom database model factory & \ref{ch:scaffolding-in-practice} \\
+  \tablerule
+  SQL Server & Second provider package on the same core & \ref{ch:what-belongs-in-the-core}--\ref{ch:a-second-provider-sql-server} \\
+\end{datatable}
+
+\section{Package architecture}
+
+The plugin consists of three NuGet packages. The \textbf{core package} contains everything
+that is independent of the database and that assemblies with entity classes may reference
+without pulling in a provider. The \textbf{PostgreSQL package} is the complete
+implementation this book uses to explain everything. The \textbf{SQL Server package} uses
+the same core and shows in chapter~\ref{ch:a-second-provider-sql-server} what a second
+provider has to implement itself.
+
+\begin{sourcecode}[Structure of the three packages]{text}
+Acme.EntityFrameworkCore.Tenancy               Core (EF Core relational, no provider)
+├─ TenantId, TenantIdConverter, TenantIdJsonReaderWriter, TenancyException
+├─ ITenantOwned, ITenantProvider, NoTenantIsolationAttribute
+├─ EF.Functions.CurrentTenant(), TenancyDbFunctionsAttribute
+├─ Metadata/         runtime annotation, IsTenantProperty(), candidate lookup
+├─ Conventions/      value generation for TenantId keys
+├─ Query/            evaluatable expression filter (for all packages)
+├─ Interceptors/     SaveChanges interceptor, abstract session interceptor
+├─ Diagnostics/      event IDs, logging definitions, logger extensions
+└─ DependencyInjection/  AddAcmeTenancy<T>()
+
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL    complete implementation
+├─ Infrastructure/   options extension, builder, singleton options
+├─ Storage/          TenantIdTypeMapping, type mapping plugin
+├─ Query/            translators, custom SQL node, aggregate, SQL generator
+├─ Metadata/         RLS annotations, RlsPolicy, annotation provider
+├─ Builders/         Fluent API (HasRowLevelSecurity, HasPolicy, ...)
+├─ Conventions/      isolation, attribute, validation, convention set plugin
+├─ Migrations/       SQL generator, custom operations
+├─ Design/           code generators, design-time services
+├─ Scaffolding/      read RLS and policies from the database
+└─ Runtime/          TenantConnectionInterceptor
+
+Acme.EntityFrameworkCore.Tenancy.SqlServer     second provider
+                                               (chapter "A second provider: SQL Server")
+└─ Infrastructure/, Storage/, Query/, Metadata/, Conventions/, Migrations/, Runtime/
+\end{sourcecode}
+
+\begin{tip}
+  The folder structure follows EF Core's own (Infrastructure, Storage, Query, Metadata,
+  Migrations, Design). Anyone who knows EF Core finds their way immediately, and when
+  looking things up in the EF source you know where the counterpart lives.
+\end{tip}

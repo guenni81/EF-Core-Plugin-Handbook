@@ -3,7 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using ShopApi;
 
 // Minimal API sample: the tenant comes from the signed-in user's claim, and PostgreSQL row
-// level security does the isolation. See chapter 35 of the handbook.
+// level security does the isolation. See chapter "Using the plugin in ASP.NET Core" of the
+// handbook.
 
 var builder = WebApplication.CreateBuilder(args);
 

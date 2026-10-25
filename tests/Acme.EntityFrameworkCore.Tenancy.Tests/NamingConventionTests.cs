@@ -7,7 +7,7 @@ namespace Acme.EntityFrameworkCore.Tenancy.Tests;
 /// Composability with a widely used convention plugin: EFCore.NamingConventions renames
 /// tables and columns to snake_case. Because the isolation convention reads the column name
 /// only at ModelFinalizing, the policy uses the final name in either activation order
-/// (chapter 8).
+/// (chapter "Conventions").
 /// </summary>
 public class NamingConventionTests
 {

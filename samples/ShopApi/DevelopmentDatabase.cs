@@ -8,7 +8,8 @@ namespace ShopApi;
 
 /// <summary>
 /// DEVELOPMENT ONLY: prepares the database so that the sample runs without manual steps
-/// (see docker-compose.yml). A real application uses migrations instead (chapter 32).
+/// (see docker-compose.yml). A real application uses migrations instead (chapter "Advanced
+/// migrations").
 /// </summary>
 public static class DevelopmentDatabase
 {

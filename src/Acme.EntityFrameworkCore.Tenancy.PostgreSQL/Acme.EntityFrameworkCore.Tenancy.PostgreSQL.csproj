@@ -15,7 +15,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Acme.EntityFrameworkCore.Tenancy\Acme.EntityFrameworkCore.Tenancy.csproj" />
   </ItemGroup>
-  <!-- Public API analyzer: reports every change to the public API (chapter 36) -->
+  <!-- Public API analyzer: reports every change to the public API
+       (chapter "CI and API stability") -->
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers">
       <PrivateAssets>all</PrivateAssets>

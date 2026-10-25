@@ -79,7 +79,7 @@ public class TenancyNpgsqlParameterBasedSqlProcessor : NpgsqlParameterBasedSqlPr
 /// <summary>Replaces the Npgsql factory (single service, scoped).</summary>
 /// <remarks>
 /// A single service has exactly one implementation, so only one plugin can replace it.
-/// See chapter 37 of the handbook for the trade-offs of custom nodes.
+/// See chapter "Custom SQL expression nodes" of the handbook for the trade-offs of custom nodes.
 /// </remarks>
 public class TenancyNpgsqlParameterBasedSqlProcessorFactory : IRelationalParameterBasedSqlProcessorFactory
 {

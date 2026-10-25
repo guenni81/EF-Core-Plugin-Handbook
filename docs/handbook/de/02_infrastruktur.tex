@@ -1,0 +1,508 @@
+% ============================================================
+\setpartpreamble{\partintro
+  {Wie ein Plugin konfiguriert wird, seine Dienste registriert und sich mit dem DI-Container
+  der Anwendung verbindet.}
+  {
+    \item Kapitel~\ref{ch:the-options-extension}: Die Options-Extension
+    \item Kapitel~\ref{ch:registering-services}: Dienste registrieren
+    \item Kapitel~\ref{ch:public-api-and-integration-into}: Öffentliche API und Integration
+    in die Anwendung
+  }}
+\part{Infrastruktur}\label{part:II}
+
+% ------------------------------------------------------------
+\chapter{Die Options-Extension}\label{ch:the-options-extension}
+
+Der Einstiegspunkt jedes echten Plugins ist eine Klasse, die
+\code{IDb\allowbreak{}Context\allowbreak{}Options\allowbreak{}Extension} implementiert. Sie
+hat drei Aufgaben: Sie trägt die Konfiguration, sie registriert in
+\code{Apply\allowbreak{}Services} die Dienste im internen Provider, und sie beschreibt sich
+über \code{Info} gegenüber dem Cache.
+
+\section{Konfiguration als Record}
+
+Alle modellrelevanten Einstellungen des Beispiels liegen in einem Record. Records liefern
+\code{Equals} und \code{Get\allowbreak{}Hash\allowbreak{}Code} über alle Felder, was gleich
+für den Cache-Schlüssel gebraucht wird. Neue Einstellungen fügt man dem Record hinzu, ohne
+Hash und Vergleich anfassen zu müssen.
+
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Settings.\allowbreak{}cs]{csharp}
+public sealed record TenancySettings
+{
+    public static TenancySettings Default { get; } = new();
+
+    public string SettingName { get; init; } = "app.tenant_id";
+    public string PolicyName { get; init; } = "tenant_isolation";
+    public bool ForceRowLevelSecurity { get; init; } = true;
+    public bool ApplyQueryFilter { get; init; }
+    public bool CreateTenantIndex { get; init; } = true;
+}
+\end{sourcecode}
+
+\section{Immutabilität}
+
+EF vergleicht und cached Options. Eine Extension darf sich nach dem Hinzufügen deshalb nie
+mehr ändern; jede Änderung erzeugt eine Kopie. Das Muster aus EF Core selbst: ein
+geschützter Kopierkonstruktor und eine virtuelle \code{Clone}-Methode, damit abgeleitete
+Extensions ihren eigenen Typ klonen.
+
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+public class TenancyOptionsExtension : IDbContextOptionsExtension
+{
+    private DbContextOptionsExtensionInfo? _info;
+
+    public TenancyOptionsExtension()
+    {
+    }
+
+    protected TenancyOptionsExtension(TenancyOptionsExtension copyFrom)
+    {
+        ArgumentNullException.ThrowIfNull(copyFrom);
+
+        Settings = copyFrom.Settings;
+    }
+
+    public virtual TenancySettings Settings { get; private set; } = TenancySettings.Default;
+
+    public virtual DbContextOptionsExtensionInfo Info => _info ??= new ExtensionInfo(this);
+
+    protected virtual TenancyOptionsExtension Clone() => new(this);
+
+    public virtual TenancyOptionsExtension WithSettings(TenancySettings settings)
+    {
+        var clone = Clone();
+        clone.Settings = settings;
+        return clone;
+    }
+\end{sourcecode}
+
+\section{Die Info-Klasse und der Service-Provider-Cache}
+
+Die Info-Klasse entscheidet, ob EF einen gecachten internen Service Provider wiederverwenden
+darf. Dafür gibt es zwei Methoden, die zusammenpassen müssen:
+\code{Get\allowbreak{}Service\allowbreak{}Provider\allowbreak{}Hash\allowbreak{}Code} als
+schneller Vorfilter und
+\code{Should\allowbreak{}Use\allowbreak{}Same\allowbreak{}Service\allowbreak{}Provider} als
+exakter Vergleich.
+
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Extension\allowbreak{}Info]{csharp}
+private sealed class ExtensionInfo : DbContextOptionsExtensionInfo
+{
+    public ExtensionInfo(TenancyOptionsExtension extension)
+        : base(extension)
+    {
+    }
+
+    private new TenancyOptionsExtension Extension => (TenancyOptionsExtension)base.Extension;
+
+    public override bool IsDatabaseProvider => false;
+
+    public override string LogFragment
+        => $"AcmeTenancy(Setting={Extension.Settings.SettingName}) ";
+
+    public override int GetServiceProviderHashCode() => Extension.Settings.GetHashCode();
+
+    public override bool ShouldUseSameServiceProvider(DbContextOptionsExtensionInfo other)
+        => other is ExtensionInfo o && o.Extension.Settings == Extension.Settings;
+
+    public override void PopulateDebugInfo(IDictionary<string, string> debugInfo)
+    {
+        debugInfo["Acme:Tenancy:Force"] =
+            Extension.Settings.ForceRowLevelSecurity.ToString();
+        // ... weitere Einstellungen
+    }
+}
+\end{sourcecode}
+
+Bei diesen beiden Methoden gibt es zwei klassische Fehler mit gegensätzlichen Folgen:
+
+\begin{datatable}{H{0.65}H{1.35}}
+  \textbf{Fehler} & \textbf{Folge} \\
+  \tablehead
+  Modellrelevante Option fehlt im Hash & Zwei Contexts mit unterschiedlicher Konfiguration
+  teilen sich Provider und Modell. Der zweite bekommt das gecachte, \textbf{falsche} Modell.
+  Fällt im Test oft nicht auf, weil dort nur eine Konfiguration läuft. \\
+  \tablerule
+  Pro Context variierender Wert im Hash (Mandant, Connection-String, Instanz) & Für jeden
+  Context entsteht ein neuer interner Provider samt Modell. Speicher und Startzeit
+  explodieren; EF warnt nach 20 Providern mit
+  \code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}.
+  \\
+\end{datatable}
+
+\begin{important}[Die Faustregel für den Hash]
+  In den Hash gehört genau das, was \textbf{beeinflusst, welche Dienste registriert werden
+  oder wie das Modell aussieht}. Alles andere gehört nicht hinein. Der Mandant selbst ändert
+  sich pro Request und darf deshalb nie in den Options landen; er kommt zur Laufzeit über
+  einen Interceptor (Kapitel~\ref{ch:interceptors}).
+\end{important}
+
+\code{Log\allowbreak{}Fragment} erscheint in EFs Startmeldung („initialized using provider …
+with options: …“) und hilft bei der Fehlersuche.
+\code{Populate\allowbreak{}Debug\allowbreak{}Info} liefert Werte für EFs Diagnose, wenn zu
+viele Service Provider entstehen. \code{Is\allowbreak{}Database\allowbreak{}Provider} ist
+nur für echte Provider \code{true}.
+
+\section{Validierung}
+
+\code{Validate} wird beim Erstellen des Service Providers aufgerufen. Hier prüft das Plugin
+Voraussetzungen, die sich aus der Kombination von Extensions ergeben, und meldet sie mit
+einer verständlichen Fehlermeldung statt eines späteren Folgefehlers:
+
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Validate]{csharp}
+public virtual void Validate(IDbContextOptions options)
+{
+    if (options.FindExtension<NpgsqlOptionsExtension>() is null)
+        throw new InvalidOperationException(
+            "UseAcmeTenancy() erfordert UseNpgsql(). Für andere Datenbanken wird ein "
+            + "eigenes Provider-Paket benötigt.");
+}
+\end{sourcecode}
+
+% ------------------------------------------------------------
+\chapter{Dienste registrieren}\label{ch:registering-services}
+
+\code{Apply\allowbreak{}Services} füllt den internen Service Provider. EF stellt dafür einen
+Builder bereit, der die Lebensdauer und Kardinalität jedes EF-Dienstes kennt:
+\code{Entity\allowbreak{}Framework\allowbreak{}Services\allowbreak{}Builder} für Kerndienste
+und
+\code{Entity\allowbreak{}Framework\allowbreak{}Relational\allowbreak{}Services\allowbreak{}Builder}
+zusätzlich für relationale Dienste. Er registriert jeden Dienst mit der richtigen
+Lebensdauer und nutzt für mehrfach registrierbare Dienste automatisch
+\code{Try\allowbreak{}Add\allowbreak{}Enumerable}.
+
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Apply\allowbreak{}Services]{csharp}
+public virtual void ApplyServices(IServiceCollection services)
+{
+    // 1) Plugin-Interfaces: mehrfach registrierbar, kombinierbar mit anderen Plugins
+    new EntityFrameworkRelationalServicesBuilder(services)
+        .TryAdd<IRelationalTypeMappingSourcePlugin, TenancyTypeMappingSourcePlugin>()
+        .TryAdd<IMethodCallTranslatorPlugin, TenancyMethodCallTranslatorPlugin>()
+        .TryAdd<IMemberTranslatorPlugin, TenancyMemberTranslatorPlugin>()
+        .TryAdd<IEvaluatableExpressionFilterPlugin,
+                TenancyEvaluatableExpressionFilterPlugin>()
+        .TryAdd<IConventionSetPlugin, TenancyConventionSetPlugin>()
+        .TryAdd<ISingletonOptions, ITenancySingletonOptions>(
+            p => p.GetRequiredService<ITenancySingletonOptions>())
+        // 2) Eigene Dienste, die EF nicht kennt
+        .TryAddProviderSpecificServices(m => m
+            .TryAddSingleton<ITenancySingletonOptions, TenancySingletonOptions>()
+            .TryAddSingleton<TenancyLoggingDefinitions, TenancyLoggingDefinitions>());
+
+    // 3) Einzeldienste des Providers ersetzen
+    services.Replace(ServiceDescriptor
+        .Scoped<IMigrationsSqlGenerator, TenancyMigrationsSqlGenerator>());
+    services.Replace(ServiceDescriptor
+        .Singleton<IRelationalAnnotationProvider, TenancyAnnotationProvider>());
+}
+\end{sourcecode}
+
+\begin{datatable}{H{0.83}H{0.77}H{1.40}}
+  \textbf{Methode} & \textbf{Wann} & \textbf{Warum} \\
+  \tablehead
+  \code{Try\allowbreak{}Add<\allowbreak{}TService,\allowbreak{} TImpl>(\allowbreak{})} &
+  EF-Dienste und Plugin-Interfaces & Lebensdauer und Mehrfachregistrierung kommen aus EFs
+  Tabelle. Falsche Lebensdauern führen sonst zu Exceptions oder subtil falschem Verhalten.
+  \\
+  \tablerule
+  \code{Try\allowbreak{}Add\allowbreak{}Provider\allowbreak{}Specific\allowbreak{}Services}
+  & Eigene Dienste, die EF nicht kennt & Der Builder lehnt unbekannte Typen ab; hier legt
+  man die Lebensdauer selbst fest. \\
+  \tablerule
+  \code{services.\allowbreak{}Replace(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}
+  & Einzeldienst des Providers ersetzen & Der Provider registriert per
+  \code{Try\allowbreak{}Add}. \code{Replace} gewinnt unabhängig davon, ob das Plugin vor
+  oder nach dem Provider läuft. \\
+\end{datatable}
+
+\begin{note}[Warum Replace in beiden Reihenfolgen funktioniert]
+  EF ruft \code{Apply\allowbreak{}Services} der Extensions in der Reihenfolge auf, in der
+  sie hinzugefügt wurden. Läuft das Plugin zuerst, fügt \code{Replace} den Dienst hinzu und
+  das spätere \code{Try\allowbreak{}Add} des Providers greift nicht mehr. Läuft es danach,
+  ersetzt \code{Replace} den Provider-Dienst. Beide Reihenfolgen führen zum selben Ergebnis.
+\end{note}
+
+\section{Singleton-Options}
+
+Singleton-Dienste wie Type-Mapping-Plugins können
+\code{IDb\allowbreak{}Context\allowbreak{}Options} nicht pro Context auflösen. Für sie gibt
+es \code{ISingleton\allowbreak{}Options}: ein Singleton, das EF einmal beim Erstellen des
+Providers mit den Options initialisiert und bei jedem weiteren Context validiert.
+
+\begin{sourcecode}[Infrastructure/\allowbreak{}ITenancy\allowbreak{}Singleton\allowbreak{}Options.\allowbreak{}cs]{csharp}
+public class TenancySingletonOptions : ITenancySingletonOptions
+{
+    public TenancySettings Settings { get; private set; } = TenancySettings.Default;
+
+    // Einmal pro internem Service Provider
+    public virtual void Initialize(IDbContextOptions options)
+        => Settings = options.FindExtension<TenancyOptionsExtension>()?.Settings
+                      ?? TenancySettings.Default;
+
+    // Bei jedem Context: Optionen dürfen nicht vom Stand des Providers abweichen
+    public virtual void Validate(IDbContextOptions options)
+    {
+        var settings = options.FindExtension<TenancyOptionsExtension>()?.Settings
+                       ?? TenancySettings.Default;
+        if (settings != Settings)
+            throw new InvalidOperationException("Tenancy-Optionen nachträglich geändert ...");
+    }
+}
+\end{sourcecode}
+
+Die doppelte Registrierung in \code{Apply\allowbreak{}Services} ist nötig: einmal unter dem
+eigenen Interface, damit Dienste es injizieren können, und einmal als
+\code{ISingleton\allowbreak{}Options}, damit EF es findet und initialisiert. Die
+Factory-Variante sorgt dafür, dass beide Registrierungen \emph{dieselbe} Instanz liefern.
+
+\section{Kombinierbarkeit trotz Ersetzen}
+
+Ersetzt ein Plugin einen Einzeldienst, kann ein zweites Plugin, das dasselbe tut, nicht
+gleichzeitig aktiv sein. Professionelle Plugins entschärfen das, indem sie die eigentliche
+Logik zusätzlich öffentlich und wiederverwendbar anbieten. Im Beispiel ist
+\code{Create\allowbreak{}Policy\allowbreak{}Sql} öffentlich und alle Generator-Methoden sind
+virtuell. Ein Nutzer, der zwei Plugins kombinieren muss, schreibt einen eigenen Generator,
+der von einem erbt und die Logik des anderen aufruft. Diese Möglichkeit gehört in die
+Dokumentation.
+
+Noch besser vermeidet ein Plugin den Konflikt ganz, indem es den Dienst \textbf{dekoriert}
+statt ersetzt: Es nimmt die Implementierung, die zu diesem Zeitpunkt registriert ist (die
+des Providers oder eines anderen Plugins), umhüllt sie und delegiert an sie. Ein Beispiel
+ist ein (fiktives) Audit-Plugin, das an jede neue Tabelle einen Trigger hängt. In seinem
+\code{Apply\allowbreak{}Services} sucht es die vorhandene Registrierung und ersetzt nur den
+Deskriptor, nicht die Logik:
+
+\begin{sourcecode}[tests/\allowbreak{}Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Tests/\allowbreak{}Composition\allowbreak{}Tests.\allowbreak{}cs › Audit\allowbreak{}Options\allowbreak{}Extension]{csharp}
+public void ApplyServices(IServiceCollection services)
+{
+    // Bisher registriert: der Generator des Providers oder eines anderen Plugins
+    var inner = services.LastOrDefault(d => d.ServiceType == typeof(IMigrationsSqlGenerator))
+        ?? throw new InvalidOperationException("Call UseContosoAudit() after UseNpgsql().");
+
+    services.Replace(ServiceDescriptor.Describe(
+        typeof(IMigrationsSqlGenerator),
+        sp => new AuditMigrationsSqlGenerator(
+            (IMigrationsSqlGenerator)CreateInstance(sp, inner),
+            sp.GetRequiredService<MigrationsSqlGeneratorDependencies>()),
+        inner.Lifetime));     // Lebensdauer des Originals
+}
+
+// Erzeugt die Implementierung so, wie es der ursprüngliche Deskriptor getan hätte
+private static object CreateInstance(IServiceProvider sp, ServiceDescriptor descriptor)
+    => descriptor.ImplementationInstance
+       ?? descriptor.ImplementationFactory?.Invoke(sp)
+       ?? ActivatorUtilities.CreateInstance(sp, descriptor.ImplementationType!);
+\end{sourcecode}
+
+Der Trick funktioniert, weil EF \code{Apply\allowbreak{}Services} in der Reihenfolge
+aufruft, in der die Extensions hinzugefügt wurden; wenn das Audit-Plugin läuft, hat der
+Provider seinen Generator bereits registriert. \code{Create\allowbreak{}Instance} bildet die
+ursprüngliche Registrierung exakt nach: eine Instanz, eine Factory oder einen Typ, dessen
+Abhängigkeiten (etwa Npgsqls Singleton-Options) \code{Activator\allowbreak{}Utilities} aus
+dem Container auflöst. Der Decorator selbst nutzt nur die öffentliche Schnittstelle:
+
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Composition\allowbreak{}Tests.\allowbreak{}cs › Audit\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator (\allowbreak{}gekürzt)]{csharp}
+public class AuditMigrationsSqlGenerator : IMigrationsSqlGenerator
+{
+    // Konstruktor: (IMigrationsSqlGenerator inner, MigrationsSqlGeneratorDependencies deps)
+
+    public IReadOnlyList<MigrationCommand> Generate(
+        IReadOnlyList<MigrationOperation> operations,
+        IModel? model = null,
+        MigrationsSqlGenerationOptions options = MigrationsSqlGenerationOptions.Default)
+    {
+        var commands = _inner.Generate(operations, model, options).ToList();   // unverändert
+        var builder = new MigrationCommandListBuilder(_dependencies);
+        var sql = _dependencies.SqlGenerationHelper;
+
+        // Am Ende angehängt: dann existieren alle Tabellen der Migration
+        foreach (var table in operations.OfType<CreateTableOperation>())
+        {
+            builder.Append("CREATE TRIGGER audit_changes ")
+                .Append("AFTER INSERT OR UPDATE OR DELETE ON ")
+                .Append(sql.DelimitIdentifier(table.Name, table.Schema))
+                .Append(" FOR EACH ROW EXECUTE FUNCTION audit.log_change()")
+                .AppendLine(sql.StatementTerminator)
+                .EndCommand();
+        }
+
+        commands.AddRange(builder.GetCommandList());
+        return commands;
+    }
+}
+\end{sourcecode}
+
+In der Anwendung lassen sich beide Plugins ohne eine Zeile Verbindungscode kombinieren:
+
+\begin{sourcecode}[Program.\allowbreak{}cs]{csharp}
+services.AddDbContext<ShopContext>((sp, options) => options
+    .UseNpgsql(connectionString)
+    .UseAcmeTenancy(sp)       // ersetzt IMigrationsSqlGenerator
+    .UseContosoAudit());      // umhüllt, was registriert ist: hier Acmes
+\end{sourcecode}
+
+\begin{important}[Dekorieren, wo möglich; ersetzen, wo nötig]
+  Decorators lassen sich in beliebiger Reihenfolge kombinieren, weil jeder umhüllt, was er
+  vorfindet. Ein Plugin, das \code{Replace} verwendet, verwirft dagegen alles, was vor ihm
+  registriert wurde, auch Decorators. Ein ersetzendes Plugin muss deshalb zuerst aktiviert
+  werden, und ein Decorator muss prüfen, ob es etwas zu dekorieren gibt, und sonst mit einer
+  klaren Meldung abbrechen (Provider fehlt oder wurde später hinzugefügt).
+
+  Dekorieren setzt voraus, dass die öffentliche Schnittstelle genügt. Das Tenancy-Plugin
+  braucht geschützte Einstiegspunkte innerhalb von \code{CREATE TABLE} und erbt deshalb vom
+  Npgsql-Generator. Für solche Fälle bleibt der oben beschriebene Ausweg: öffentliche Logik
+  wie \code{Create\allowbreak{}Policy\allowbreak{}Sql}, virtuelle Methoden und
+  \code{Replace\allowbreak{}Service} in der Anwendung.
+\end{important}
+
+\begin{tip}
+  Der Test \code{Composition\allowbreak{}Tests} im Beispiel enthält das vollständige
+  Audit-Plugin. Er prüft, dass der Decorator Acmes Generator umhüllt, dass die Migration das
+  SQL beider Plugins enthält und dass das Aktivieren vor dem Provider fehlschlägt.
+\end{tip}
+
+% ------------------------------------------------------------
+\chapter{Öffentliche API und Integration in die Anwendung}\label{ch:public-api-and-integration-into}
+
+\section{Die Use-Methode}
+
+Nutzer aktivieren das Plugin über eine Extension-Method auf
+\code{Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder}. Sie holt die
+vorhandene Extension oder legt eine neue an und registriert sie über
+\code{IDb\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder\allowbreak{}Infrastructure}:
+
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+public static DbContextOptionsBuilder UseAcmeTenancy(
+    this DbContextOptionsBuilder optionsBuilder,
+    Action<TenancyOptionsBuilder>? configure = null)
+{
+    ArgumentNullException.ThrowIfNull(optionsBuilder);
+
+    var extension = optionsBuilder.Options.FindExtension<TenancyOptionsExtension>()
+                    ?? new TenancyOptionsExtension();
+
+    ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(extension);
+    configure?.Invoke(new TenancyOptionsBuilder(optionsBuilder));
+    return optionsBuilder;
+}
+
+// Generische Überladung: Method Chaining bleibt typisiert
+public static DbContextOptionsBuilder<TContext> UseAcmeTenancy<TContext>(
+    this DbContextOptionsBuilder<TContext> optionsBuilder,
+    Action<TenancyOptionsBuilder>? configure = null) where TContext : DbContext
+    => (DbContextOptionsBuilder<TContext>)UseAcmeTenancy(
+        (DbContextOptionsBuilder)optionsBuilder, configure);
+\end{sourcecode}
+
+Die Datei liegt im Namespace
+\code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core}. So ist die
+Methode ohne zusätzliches \code{using} auffindbar, genau wie \code{Use\allowbreak{}Npgsql}.
+Das ist die verbreitete Konvention im EF-Ökosystem.
+
+\section{Der Options-Builder}
+
+Einstellungen werden über einen eigenen Builder gesetzt. Er validiert Eingaben sofort und
+schreibt jede Änderung als neue Extension zurück:
+
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Builder.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+public class TenancyOptionsBuilder
+{
+    public TenancyOptionsBuilder(DbContextOptionsBuilder optionsBuilder)
+    {
+        ArgumentNullException.ThrowIfNull(optionsBuilder);
+
+        OptionsBuilder = optionsBuilder;
+    }
+
+    protected virtual DbContextOptionsBuilder OptionsBuilder { get; }
+
+    public virtual TenancyOptionsBuilder UseSettingName(string settingName)
+        => With(s => s with
+        {
+            SettingName = TenancyIdentifiers.ValidateSettingName(settingName),
+        });
+
+    public virtual TenancyOptionsBuilder ApplyQueryFilter(bool apply = true)
+        => With(s => s with { ApplyQueryFilter = apply });
+
+    protected virtual TenancyOptionsBuilder With(
+        Func<TenancySettings, TenancySettings> change)
+    {
+        var extension = OptionsBuilder.Options.FindExtension<TenancyOptionsExtension>()
+                        ?? new TenancyOptionsExtension();
+
+        ((IDbContextOptionsBuilderInfrastructure)OptionsBuilder)
+            .AddOrUpdateExtension(extension.WithSettings(change(extension.Settings)));
+        return this;
+    }
+}
+\end{sourcecode}
+
+\begin{note}[Alternative: Aktivierung über den Provider-Builder]
+  Provider-spezifische Plugins werden manchmal auch über den Options-Builder des Providers
+  aktiviert, etwa \code{Use\allowbreak{}Npgsql(\allowbreak{}cs,\allowbreak{} o =>
+  o.\allowbreak{}Use\allowbreak{}Noda\allowbreak{}Time(\allowbreak{}))}. Dafür schreibt man
+  eine Extension-Method auf
+  \code{Npgsql\allowbreak{}Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder}
+  und kommt über
+  \code{IRelational\allowbreak{}Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder\allowbreak{}Infrastructure.\allowbreak{}Options\allowbreak{}Builder}
+  an den eigentlichen Builder. Das Beispiel nutzt den einfacheren Weg über
+  \code{Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder}, weil das Plugin
+  mehr ist als eine Provider-Option.
+\end{note}
+
+\section{Zwei Container verbinden}
+
+Manche Teile eines Plugins brauchen Dienste der \emph{Anwendung}: Der Connection-Interceptor
+braucht den aktuellen Mandanten, den nur die Anwendung kennt. Der interne EF-Provider kann
+App-Dienste aber nicht auflösen. Die saubere Lösung: Solche Komponenten leben im
+App-Container und werden per \code{Add\allowbreak{}Interceptors} an EF übergeben.
+
+\begin{sourcecode}[Dependency\allowbreak{}Injection/\allowbreak{}… (\allowbreak{}Kern),\allowbreak{} Infrastructure/\allowbreak{}… (\allowbreak{}Postgre\allowbreak{}SQL),\allowbreak{} Auszüge]{csharp}
+// Kernpaket: nur den Mandanten-Provider im App-Container registrieren
+public static IServiceCollection AddAcmeTenancy<TTenantProvider>(
+    this IServiceCollection services,
+    ServiceLifetime lifetime = ServiceLifetime.Scoped)
+    where TTenantProvider : class, ITenantProvider
+{
+    services.TryAdd(ServiceDescriptor.Describe(
+        typeof(ITenantProvider), typeof(TTenantProvider), lifetime));
+    return services;
+}
+
+// Provider-Paket: Use-Überladung erzeugt die Interceptors aus diesem Provider
+public static DbContextOptionsBuilder UseAcmeTenancy(
+    this DbContextOptionsBuilder optionsBuilder,
+    IServiceProvider applicationServices,
+    Action<TenancyOptionsBuilder>? configure = null)
+{
+    var tenants = applicationServices.GetRequiredService<ITenantProvider>();
+
+    return optionsBuilder
+        .UseAcmeTenancy(configure)
+        .AddInterceptors(
+            new TenantConnectionInterceptor(tenants),
+            new TenantSaveChangesInterceptor(tenants));
+}
+\end{sourcecode}
+
+Bei \code{Add\allowbreak{}Db\allowbreak{}Context(\allowbreak{}(\allowbreak{}sp,\allowbreak{}
+o) => .\allowbreak{}.\allowbreak{}.\allowbreak{})} ist \code{sp} der Scope der aktuellen
+Anfrage, weil EF die Options standardmäßig pro Scope baut. Der Mandanten-Provider und damit
+die Interceptors sehen den richtigen Mandanten. Die Registrierung liegt im Kernpaket, weil
+sie für jeden Provider gleich ist (Kapitel~\ref{ch:what-belongs-in-the-core}). Für die
+Brücke in die andere Richtung kann ein Interceptor über
+\code{event\allowbreak{}Data.\allowbreak{}Context.\allowbreak{}Get\allowbreak{}Service<\allowbreak{}T>(\allowbreak{})}
+Dienste aus dem \emph{internen} Provider lesen; der Connection-Interceptor holt sich so den
+Setting-Namen aus den Singleton-Options (Kapitel~\ref{ch:interceptors}).
+
+\begin{important}[DbContext-Pooling]
+  Bei \code{Add\allowbreak{}Db\allowbreak{}Context\allowbreak{}Pool} werden Contexts
+  wiederverwendet und bekommen ihre Options nur einmal. Scoped-Interceptors aus dem ersten
+  Scope würden für alle späteren Anfragen weiterverwendet, mit dem Mandanten der ersten
+  Anfrage. Für Pooling muss der Interceptor ein Singleton sein, der den Mandanten bei jedem
+  Aufruf neu ermittelt, etwa über \code{IHttp\allowbreak{}Context\allowbreak{}Accessor}.
+  Kapitel~\ref{ch:using-the-plugin-in-asp} zeigt diese Variante. Dasselbe gilt für
+  \code{Add\allowbreak{}Db\allowbreak{}Context\allowbreak{}Factory}, dessen Factory
+  standardmäßig ein Singleton ist.
+\end{important}

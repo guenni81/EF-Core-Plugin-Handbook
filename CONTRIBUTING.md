@@ -22,12 +22,14 @@ and for the handbook.
 
 ## Handbook
 
-The handbook exists in English (`docs/handbook/parts_en`) and German
-(`docs/handbook/parts`). Please keep both editions in sync: a change to the content
+The handbook is written in LaTeX and exists in English (`docs/handbook/en`) and German
+(`docs/handbook/de`). Please keep both editions in sync: a change to the content
 belongs in both languages. If you are not comfortable writing one of them, say so in the
 pull request and someone else will translate it.
 
 Code excerpts in the handbook should match the code in the repository. When you change a
-class, also update its excerpt (the file path is in each `label`). See
+class, also update its excerpt (the file path is in the optional argument of each
+`sourcecode` block). Comments that point to the handbook name the chapter by its title,
+not its number, e.g. `(chapter "Value generation")`. See
 [`docs/handbook/README.md`](docs/handbook/README.md) for build instructions and editing
 rules.

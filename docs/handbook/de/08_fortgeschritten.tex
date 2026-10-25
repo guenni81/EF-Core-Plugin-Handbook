@@ -1,0 +1,761 @@
+% ============================================================
+\setpartpreamble{\partintro
+  {Grenzen der Laufzeit-Haken, weitere Erweiterungspunkte, Betrieb in Produktion und der Weg
+  vom Plugin in die Anwendung.}
+  {
+    \item Kapitel~\ref{ch:bulk-operations-and-the-limits}: Massenoperationen und die Grenzen
+    von Interceptors
+    \item Kapitel~\ref{ch:value-generation}: Value Generation
+    \item Kapitel~\ref{ch:the-update-pipeline}: Die Update-Pipeline
+    \item Kapitel~\ref{ch:complex-types-and-json}: Complex Types und JSON
+    \item Kapitel~\ref{ch:models-per-runtime-context}: Modelle pro Laufzeitkontext
+    \item Kapitel~\ref{ch:advanced-migrations}: Migrations für Fortgeschrittene
+    \item Kapitel~\ref{ch:row-level-security-in-production}: Row Level Security in
+    Produktion
+    \item Kapitel~\ref{ch:plugin-performance}: Performance von Plugins
+    \item Kapitel~\ref{ch:using-the-plugin-in-asp}: Einsatz in ASP.NET Core
+    \item Kapitel~\ref{ch:ci-and-api-stability}: CI und API-Stabilität
+  }}
+\part{Fortgeschrittene Themen}\label{part:VIII}
+
+% ------------------------------------------------------------
+\chapter{Massenoperationen und die Grenzen von Interceptors}\label{ch:bulk-operations-and-the-limits}
+
+Ein SaveChanges-Interceptor sieht nur, was über \code{Save\allowbreak{}Changes} läuft.
+\code{Execute\allowbreak{}Update} und \code{Execute\allowbreak{}Delete} schreiben direkt in
+die Datenbank, ohne Change Tracker und ohne SaveChanges. Dasselbe gilt für rohes SQL. Ein
+Plugin, das seine Garantien nur über SaveChanges durchsetzt, hat hier eine Lücke:
+
+\begin{datatable}{H{1.28}H{0.88}H{0.88}H{0.96}}
+  \textbf{Weg} & \textbf{SaveChanges-Interceptor} & \textbf{Connection-Interceptor} & \textbf{RLS} \\
+  \tablehead
+  \code{Save\allowbreak{}Changes} & ja & ja & ja \\
+  \tablerule
+  \code{Execute\allowbreak{}Update}, \code{Execute\allowbreak{}Delete} & \textbf{nein} & ja
+  & ja \\
+  \tablerule
+  \code{From\allowbreak{}Sql}, \code{Sql\allowbreak{}Query}, \code{Execute\allowbreak{}Sql}
+  & \textbf{nein} & ja & ja \\
+  \tablerule
+  ADO.NET oder psql als App-Rolle & \textbf{nein} & \textbf{nein} & ja (ohne Mandant: keine
+  Zeilen) \\
+\end{datatable}
+
+Im Beispiel fängt RLS jeden dieser Wege ab, weil die Datenbank die Regeln selbst durchsetzt.
+Ein Integrationstest beweist das, indem er den Interceptor gezielt umgeht:
+
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Advanced\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+[Fact]
+public async Task ExecuteUpdate_bypasses_interceptor_but_not_rls()
+{
+    // ... Bestellung für "tenant" anlegen ...
+    await using var attacker = ContextFor(tenant);
+
+    // Kein SaveChanges -> der SaveChanges-Interceptor läuft NICHT.
+    // WITH CHECK der Policy verhindert das Umhängen trotzdem.
+    var ex = await Assert.ThrowsAsync<PostgresException>(() =>
+        attacker.Orders.ExecuteUpdateAsync(
+            s => s.SetProperty(o => o.TenantId, TenantId.New())));
+
+    Assert.Equal(PostgresErrorCodes.InsufficientPrivilege, ex.SqlState);
+}
+\end{sourcecode}
+
+\begin{important}[Was ein Plugin dokumentieren muss]
+  Plugins ohne Datenbank-Absicherung (Soft Delete, Audit-Felder, Mandantenfilter nur per
+  Query-Filter) müssen dokumentieren, dass Massenoperationen und rohes SQL ihre Regeln
+  umgehen. Wer das verhindern will, kann einen
+  \code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor} einsetzen:
+  \code{Execute\allowbreak{}Update} und \code{Execute\allowbreak{}Delete} laufen durch die
+  Query-Pipeline, der Interceptor sieht ihren Ausdrucksbaum und kann etwa ein
+  \code{Set\allowbreak{}Property} auf geschützte Spalten ablehnen. Rohes SQL bleibt trotzdem
+  offen.
+\end{important}
+
+% ------------------------------------------------------------
+\chapter{Value Generation}\label{ch:value-generation}
+
+EF erzeugt Schlüsselwerte entweder in der Datenbank (Identity, Sequenzen) oder clientseitig
+über einen \code{Value\allowbreak{}Generator}. Für \code{Guid}-Schlüssel macht EF das von
+selbst, für eigene Typen wie \code{Tenant\allowbreak{}Id} nicht. Ein Plugin schließt diese
+Lücke mit einem Generator, einer Factory und einer Convention:
+
+\begin{sourcecode}[Value\allowbreak{}Generation/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Value\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}Kernpaket)]{csharp}
+public class TenantIdValueGenerator : ValueGenerator<TenantId>
+{
+    // Endgültige Werte, keine temporären Platzhalter bis zum Speichern
+    public override bool GeneratesTemporaryValues => false;
+
+    public override TenantId Next(EntityEntry entry) => TenantId.New();   // UUIDv7
+}
+\end{sourcecode}
+
+\begin{sourcecode}[Value\allowbreak{}Generation/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Value\allowbreak{}Generator\allowbreak{}Factory.\allowbreak{}cs (\allowbreak{}Kernpaket)]{csharp}
+public class TenantIdValueGeneratorFactory : ValueGeneratorFactory
+{
+    // Zustandsloser Generator: EF darf ihn cachen und zwischen Contexts teilen
+    public override ValueGenerator Create(IProperty property, ITypeBase typeBase)
+        => new TenantIdValueGenerator();
+}
+\end{sourcecode}
+
+\begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Key\allowbreak{}Value\allowbreak{}Generation\allowbreak{}Convention.\allowbreak{}cs (\allowbreak{}Kernpaket)]{csharp}
+public virtual void ProcessModelFinalizing(
+    IConventionModelBuilder modelBuilder,
+    IConventionContext<IConventionModelBuilder> context)
+{
+    foreach (var entityType in modelBuilder.Metadata.GetEntityTypes())
+    {
+        if (entityType.BaseType is not null
+            || entityType.FindPrimaryKey() is not { Properties: [var property] }
+            || property.ClrType != typeof(TenantId))
+            continue;
+
+        // Convention-Quelle: ein explizites ValueGeneratedNever() gewinnt (-> null)
+        if (property.Builder.ValueGenerated(ValueGenerated.OnAdd) is null)
+            continue;
+
+        property.Builder.HasValueGeneratorFactory(typeof(TenantIdValueGeneratorFactory));
+    }
+}
+\end{sourcecode}
+
+\begin{important}[Factory-Typ statt Generator]
+  Einen Value Generator kann man auf mehreren Wegen konfigurieren:
+  \code{Has\allowbreak{}Value\allowbreak{}Generator} mit einem Typ oder einer
+  Factory-Funktion, oder
+  \code{Has\allowbreak{}Value\allowbreak{}Generator\allowbreak{}Factory} mit einem
+  Factory-Typ. Der Generator für Compiled Models in EF Core 10 akzeptiert nur die letzte
+  Variante und bricht sonst mit „The property ... has a value generator configured. Use
+  'HasValueGeneratorFactory' to configure the value generator factory type.“ ab. Plugins
+  sollten deshalb
+  \code{Has\allowbreak{}Value\allowbreak{}Generator\allowbreak{}Factory(\allowbreak{}Type)}
+  verwenden und der Factory einen öffentlichen parameterlosen Konstruktor geben.
+\end{important}
+
+Die Convention liegt im Kernpaket, weil sie nichts mit PostgreSQL zu tun hat; das
+Provider-Paket hängt sie über sein Convention-Set-Plugin ein. Der Compiled-Model-Test prüft,
+dass die Factory im erzeugten Code auftaucht.
+
+% ------------------------------------------------------------
+\chapter{Die Update-Pipeline}\label{ch:the-update-pipeline}
+
+Kapitel~\ref{ch:the-query-pipeline} beschreibt den Weg von LINQ zu SQL. Für das Schreiben
+gibt es eine eigene Pipeline, die Plugins für Bulk-Operationen, datenbankseitige
+Soft-Deletes oder zurückgelieferte Werte erweitern:
+
+\begin{flowdiagram}
+  \flowstep{ChangeTracker}{Ermittelt hinzugefügte, geänderte und gelöschte Entitäten}
+  \flowstep{IModificationCommandFactory}{Ein ModificationCommand pro Zeile und Tabelle}
+  \flowstep{ICommandBatchPreparer}{Sortiert nach Abhängigkeiten (Fremdschlüssel) und bildet
+  Batches}
+  \flowstep{IModificationCommandBatchFactory}{Erzeugt die Batches (Größe,
+  Provider-Besonderheiten)}
+  \flowstep{IUpdateSqlGenerator}{Schreibt INSERT, UPDATE, DELETE, ggf. mit RETURNING}
+  \flowstep{Ausführung}{Ergebnisse (Identity, Concurrency-Token) zurück in die Entitäten}
+\end{flowdiagram}
+
+\begin{datatable}{H{1.64}H{0.68}H{0.68}}
+  \textbf{Dienst} & \textbf{Lebensdauer} & \textbf{Art} \\
+  \tablehead
+  \code{IModification\allowbreak{}Command\allowbreak{}Factory} & Singleton & einzeln \\
+  \tablerule
+  \code{ICommand\allowbreak{}Batch\allowbreak{}Preparer} & Scoped & einzeln \\
+  \tablerule
+  \code{IModification\allowbreak{}Command\allowbreak{}Batch\allowbreak{}Factory} & Scoped &
+  einzeln \\
+  \tablerule
+  \code{IUpdate\allowbreak{}Sql\allowbreak{}Generator} & Singleton & einzeln \\
+\end{datatable}
+
+Alle Dienste sind Einzeldienste des Providers, mit den Konsequenzen aus
+Kapitel~\ref{ch:registering-services}. Bevor man sie ersetzt, lohnt die Prüfung der
+Alternativen: Ein SaveChanges-Interceptor kann Zustände umschreiben (aus Löschen wird Ändern
+beim Soft Delete), ein Command-Interceptor kann SQL ergänzen, und für Massenänderungen gibt
+es \code{Execute\allowbreak{}Update}. Ein eigener
+\code{IUpdate\allowbreak{}Sql\allowbreak{}Generator} ist erst dann gerechtfertigt, wenn das
+SQL selbst eine andere Form braucht, etwa \code{INSERT
+.\allowbreak{}.\allowbreak{}.\allowbreak{} ON CONFLICT} für Upserts.
+
+% ------------------------------------------------------------
+\chapter{Complex Types und JSON}\label{ch:complex-types-and-json}
+
+\section{Complex Types}
+
+Complex Types (seit EF Core 8) sind Werttypen ohne eigene Identität, deren Properties in der
+Tabelle des Besitzers landen. Für Plugins heißt das: Conventions, die über
+\code{entity\allowbreak{}Type.\allowbreak{}Get\allowbreak{}Properties(\allowbreak{})}
+laufen, sehen deren Properties \textbf{nicht}. Sie hängen an
+\code{IComplex\allowbreak{}Property} und müssen eigens durchlaufen werden:
+
+\begin{sourcecode}[Muster für Conventions (\allowbreak{}Skizze)]{csharp}
+foreach (var complexProperty in entityType.GetComplexProperties())
+{
+    foreach (var property in complexProperty.ComplexType.GetProperties())
+    {
+        // Spaltennamen sind präfixiert (z. B. "Address_City"); immer über
+        // property.GetColumnName(table) ermitteln, nie selbst zusammensetzen
+    }
+}
+\end{sourcecode}
+
+Fluent-API-Methoden für Properties sollten zusätzlich auf
+\code{Complex\allowbreak{}Type\allowbreak{}Property\allowbreak{}Builder} angeboten werden,
+wenn sie auch dort sinnvoll sind. Das Beispiel-Plugin braucht das nicht: Isolation und
+Wertgenerierung betreffen nur Entitäten.
+
+\section{JSON-Spalten}
+
+Owned Types und (seit EF Core 10) Complex Types lassen sich mit
+\code{To\allowbreak{}Json(\allowbreak{})} als eine JSON-Spalte speichern. Werte darin liest
+und schreibt EF nicht über Konverter, sondern über den
+\code{Json\allowbreak{}Value\allowbreak{}Reader\allowbreak{}Writer} des Type Mappings
+(Kapitel~\ref{ch:type-mappings-and-value-converters}). Fehlt er, scheitert der Modellbau.
+Unit- und Integrationstest des Beispiels prüfen beide Seiten:
+
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Json\allowbreak{}Tests.\allowbreak{}cs]{csharp}
+using var ctx = Contexts.Create(model: m =>
+    m.Entity<Shipment>().OwnsOne(s => s.Details, d => d.ToJson()));
+
+var property = ctx.DesignModel()
+    .FindEntityType(typeof(ShipmentDetails))!
+    .FindProperty(nameof(ShipmentDetails.ApprovedBy))!;
+
+Assert.Same(TenantIdJsonReaderWriter.Instance,
+    property.GetTypeMapping().JsonValueReaderWriter);
+\end{sourcecode}
+
+\begin{note}
+  PostgreSQL-Arrays (\code{List<\allowbreak{}Tenant\allowbreak{}Id>} als \code{uuid[]}) sind
+  kein JSON: Npgsql bildet primitive Collections nativ als Arrays ab. Ob ein Provider
+  Collections mit konvertierten Elementtypen unterstützt, ist providerspezifisch und gehört
+  in einen eigenen Test, bevor man es dokumentiert.
+\end{note}
+
+% ------------------------------------------------------------
+\chapter{Modelle pro Laufzeitkontext}\label{ch:models-per-runtime-context}
+
+EF baut das Modell einmal pro Context-Typ und cached es
+(Kapitel~\ref{ch:ef-core-s-architecture-from}). Soll das Modell von Laufzeitdaten abhängen,
+etwa einem Schema pro Mandant, muss der Cache-Schlüssel diese Daten enthalten. Dafür gibt es
+\code{IModel\allowbreak{}Cache\allowbreak{}Key\allowbreak{}Factory}:
+
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Schema\allowbreak{}Per\allowbreak{}Tenant\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+public sealed class SchemaModelCacheKeyFactory : IModelCacheKeyFactory
+{
+    public object Create(DbContext context, bool designTime)
+        => context is ISchemaScoped scoped
+            ? (context.GetType(), scoped.Schema, designTime)
+            : (object)(context.GetType(), designTime);
+}
+
+public sealed class SchemaContext : DbContext, ISchemaScoped
+{
+    // Konstruktor: (DbContextOptions<SchemaContext> options, string schema)
+    public string Schema { get; }
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+        => modelBuilder.HasDefaultSchema(Schema);
+}
+
+// Registrierung
+options.UseNpgsql(connectionString)
+       .ReplaceService<IModelCacheKeyFactory, SchemaModelCacheKeyFactory>();
+\end{sourcecode}
+
+Der Test \code{Schema\allowbreak{}Per\allowbreak{}Tenant\allowbreak{}Tests} prüft beide
+Seiten des Cache-Schlüssels: Zwei Schemas ergeben zwei Modelle mit jeweils eigenem
+Standardschema, und dasselbe Schema verwendet das gecachte Modell wieder, statt es neu zu
+bauen.
+
+Das ist die Grundlage für „Schema pro Mandant“, eine Alternative zu RLS. Die drei üblichen
+Ansätze im Vergleich:
+
+\begin{datatable}{H{0.83}H{1.02}H{1.15}}
+  \textbf{Ansatz} & \textbf{Stärken} & \textbf{Schwächen} \\
+  \tablehead
+  Gemeinsame Tabellen + RLS (Beispiel) & Ein Modell, ein Schema, einfache Migrationen;
+  Trennung erzwingt die Datenbank & Alle Mandanten teilen Tabellen und Indizes;
+  Fehlkonfiguration der Rollen hebelt die Trennung aus \\
+  \tablerule
+  Schema pro Mandant & Starke Trennung, getrennte Backups pro Schema möglich & Ein Modell
+  pro Mandant im Cache (Speicher!), Migrationen für jedes Schema \\
+  \tablerule
+  Datenbank pro Mandant & Maximale Trennung, unabhängige Skalierung & Ein Modell genügt,
+  aber Verbindungen, Migrationen und Betrieb pro Datenbank \\
+\end{datatable}
+
+\begin{important}[Modell-Cache und Speicher]
+  Jeder Schlüsselwert erzeugt ein eigenes Modell im Speicher. Bei Hunderten Mandanten mit
+  großen Modellen wird das teuer. Außerdem dürfen Werte, die das Modell verändern, nie aus
+  ungeprüften Eingaben stammen.
+\end{important}
+
+% ------------------------------------------------------------
+\chapter{Migrations für Fortgeschrittene}\label{ch:advanced-migrations}
+
+\section{Reihenfolge von Operationen}
+
+Generierte und handgeschriebene Operationen laufen in der Reihenfolge, in der sie in
+\code{Up(\allowbreak{})} stehen. Das ist eine echte Fehlerquelle. Die Policy
+\code{support\_\allowbreak{}read} des Beispiels gilt \code{TO shop\_\allowbreak{}support}.
+EF erzeugt sie direkt nach \code{CREATE TABLE}. Wird die Rolle erst am Ende von
+\code{Up(\allowbreak{})} angelegt, scheitert die Migration.
+
+\begin{sourcecode}[Migrations/\allowbreak{}20261021\_\allowbreak{}Initial.\allowbreak{}cs]{csharp}
+protected override void Up(MigrationBuilder migrationBuilder)
+{
+    // 1. Was Policies referenzieren: VOR den generierten Operationen
+    migrationBuilder.CreateApplicationRole("shop_support");
+
+    // 2. Von EF generiert: Tabellen, RLS, Policies (TO shop_support)
+    migrationBuilder.CreateTable(name: "Customers", /* ... */);
+
+    // 3. Was Tabellen voraussetzt: NACH den generierten Operationen
+    migrationBuilder.CreateApplicationRole("shop_app", canLogin: true);
+    migrationBuilder.GrantTablePrivileges("shop_app");     // wirkt auf bestehende Tabellen
+}
+\end{sourcecode}
+
+\section{Idempotente Skripte}
+
+\code{dotnet ef migrations script -{}-idempotent} erzeugt ein Skript, das gegen jeden
+Datenbankstand laufen kann. Npgsql verpackt dazu jede Operation in einen Block \code{DO
+\$EF\$ .\allowbreak{}.\allowbreak{}.\allowbreak{} \$EF\$}, der die Historientabelle prüft.
+Eigene Operationen, die selbst einen \code{DO \$\$}-Block erzeugen, stecken dann darin. Das
+funktioniert, weil die Dollar-Quotes verschiedene Tags haben. Solche Annahmen gehören in
+einen Test:
+
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Advanced\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+var script = db.GetService<IMigrator>()
+    .GenerateScript(options: MigrationsSqlGenerationOptions.Idempotent);
+
+await db.Database.ExecuteSqlRawAsync(script);   // verschachteltes DO gültig?
+await db.Database.ExecuteSqlRawAsync(script);   // zweiter Lauf wird übersprungen
+\end{sourcecode}
+
+\section{Operationen außerhalb von Transaktionen}
+
+Manche Befehle dürfen nicht in einer Transaktion laufen, in PostgreSQL etwa \code{CREATE
+INDEX CONCURRENTLY}. Eigene Operationen mit solchem SQL beenden ihren Befehl mit
+\code{End\allowbreak{}Statement(\allowbreak{}builder,\allowbreak{}
+suppress\allowbreak{}Transaction: true)}. EF führt ihn dann außerhalb der
+Migrationstransaktion aus. Der Preis: Schlägt die Migration danach fehl, wird dieser Befehl
+nicht zurückgerollt; er sollte deshalb idempotent sein.
+
+\section{Migration Bundles}
+
+\code{dotnet ef migrations bundle} erzeugt eine ausführbare Datei, die Migrationen ohne SDK
+anwendet. Sie enthält das Startprojekt samt Plugin-Assemblies; eigene Operationen und der
+SQL-Generator des Plugins wirken also auch dort. Wichtig ist, dass die Design-Time-Factory
+oder der Host dieselben Plugin-Optionen verwendet wie die Anwendung, sonst entsteht SQL für
+ein anderes Modell.
+
+% ------------------------------------------------------------
+\chapter{Row Level Security in Produktion}\label{ch:row-level-security-in-production}
+
+RLS ist nur so stark wie seine Betriebsbedingungen. Diese Fallen machen die Policies
+stillschweigend wirkungslos oder unbrauchbar:
+
+\begin{datatable}{H{0.93}H{0.93}H{1.14}}
+  \textbf{Falle} & \textbf{Folge} & \textbf{Abhilfe} \\
+  \tablehead
+  App läuft als Tabelleneigentümer & Policies werden ignoriert & \code{FORCE ROW LEVEL
+  SECURITY} (Default im Plugin) und getrennte Rollen \\
+  \tablerule
+  Superuser oder \code{BYPASSRLS} & RLS wird immer umgangen, auch mit FORCE & App-Rolle mit
+  \code{NOSUPERUSER NOBYPASSRLS} (eigene Operation,
+  Kap.~\ref{ch:custom-migration-operations}) \\
+  \tablerule
+  Setting nicht gesetzt & Ohne \code{nullif}: Fehler; mit: leere Ergebnisse & Interceptor
+  setzt den Wert bei jedem Öffnen \\
+  \tablerule
+  Kein Index auf der Mandantenspalte & Jede Abfrage scannt die ganze Tabelle &
+  Index-Convention (Kapitel~\ref{ch:conventions}) \\
+  \tablerule
+  Transaction-Pooling (PgBouncer) & Session-Settings landen bei anderen Clients oder gehen
+  verloren & Setting transaktionslokal setzen (siehe unten) \\
+  \tablerule
+  Verbindung außerhalb von EF geöffnet & Die Session behält einen alten Mandanten oder
+  keinen & EF die Verbindungen öffnen lassen oder
+  \code{Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})}
+  (Kapitel~\ref{ch:interceptors}) \\
+  \tablerule
+  „Bypass“-Schalter für die App-Rolle & Wer SQL als App-Rolle ausführen kann, kann ihn
+  umlegen & Eigene Rollen für mandantenübergreifenden Zugriff (siehe unten) \\
+\end{datatable}
+
+\section{Transaction-Pooling}
+
+PgBouncer im Modus „transaction“ teilt eine Serververbindung zwischen Clients pro
+Transaktion. Ein mit
+\code{set\_\allowbreak{}config(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{},\allowbreak{}
+false)} gesetzter Session-Wert kann dann bei einem anderen Client ankommen, eine
+Sicherheitslücke. Die sichere Variante: das Setting mit
+\code{set\_\allowbreak{}config(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{},\allowbreak{}
+true)} \emph{transaktionslokal} setzen und jede Datenbankarbeit in einer expliziten
+Transaktion ausführen. Technisch wechselt der Interceptor dafür von
+\code{IDb\allowbreak{}Connection\allowbreak{}Interceptor} zu
+\code{IDb\allowbreak{}Transaction\allowbreak{}Interceptor}
+(\code{Transaction\allowbreak{}Started}). Weil dann Abfragen ohne Transaktion gar keinen
+Mandanten haben, muss die Anwendung das konsequent einhalten. Das Beispiel bleibt beim
+einfacheren Session-Modell und dokumentiert, dass es Session- oder Npgsql-Pooling
+voraussetzt.
+
+\section{Performance von Policies}
+
+PostgreSQL fügt Policies wie zusätzliche \code{WHERE}-Bedingungen in jede Abfrage ein.
+\code{current\_\allowbreak{}setting} ist \code{STABLE} und wird pro Abfrage einmal
+ausgewertet; zusammen mit dem Index ist der Aufwand gering. Teure Policies entstehen durch
+Unterabfragen (etwa Rechte aus einer anderen Tabelle) oder Funktionen, die nicht
+\code{LEAKPROOF} sind und Optimierungen verhindern. Prüfen lässt sich das mit \code{EXPLAIN
+(\allowbreak{}ANALYZE)} als App-Rolle, nicht als Owner, weil der Owner die Policies sonst
+gar nicht sieht.
+
+\section{Legitimer mandantenübergreifender Zugriff}
+
+Früher oder später braucht jemand Daten über Mandanten hinweg: Berichte für den Betreiber,
+Wartungsjobs, Support. Die verlockende Abkürzung ist ein Schalter in der Anwendung, etwa ein
+zusätzliches Session-Setting \code{app.\allowbreak{}bypass}, das die Policy berücksichtigt.
+Das ist keine Sicherheitsgrenze: Was die Anwendungsrolle setzen kann, kann auch ein
+eingeschleustes SQL-Statement setzen. Die Trennung muss stattdessen über Datenbankrollen
+entstehen:
+
+\begin{datatable}{H{0.75}H{1.25}H{1.00}}
+  \textbf{Bedarf} & \textbf{Lösung} & \textbf{Warum es sicher ist} \\
+  \tablehead
+  Berichte, Analysen & Eigene Nur-Lese-Rolle mit \code{BYPASSRLS}, nur \code{SELECT},
+  eigenem Connection-String und einer Context-Konfiguration ohne Mandant & Die App-Rolle
+  kann nicht zu dieser Rolle werden; ihre Zugangsdaten liegen woanders \\
+  \tablerule
+  Support liest ausgewählte Daten & Zusätzliche permissive Policy für eine Support-Rolle:
+  \code{Has\allowbreak{}Policy(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})} mit
+  \code{For(\allowbreak{}Select)} und
+  \code{To(\allowbreak{}\textquotedbl{}shop\_\allowbreak{}support\textquotedbl{})} &
+  Beschränkt auf SELECT und auf Mitglieder der Rolle \\
+  \tablerule
+  Wartung pro Mandant & Hintergrundjob, der die Mandanten durchläuft und jeden einzeln setzt
+  (Kapitel~\ref{ch:using-the-plugin-in-asp}) & Läuft durch die normalen Policies \\
+\end{datatable}
+
+\begin{sourcecode}[Reporting-Rolle (\allowbreak{}tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Cross\allowbreak{}Tenant\allowbreak{}Access\allowbreak{}Tests.\allowbreak{}cs)]{sql}
+-- Angelegt von einem Administrator: BYPASSRLS erfordert einen Superuser
+CREATE ROLE shop_reporting LOGIN PASSWORD '...' NOSUPERUSER BYPASSRLS;
+GRANT USAGE ON SCHEMA public TO shop_reporting;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO shop_reporting;
+\end{sourcecode}
+
+Die Anwendungsrolle dagegen kann die Policies nicht abschalten. \code{SET
+row\_\allowbreak{}security = off} deaktiviert RLS für eine Rolle ohne \code{BYPASSRLS}
+nicht; PostgreSQL lehnt stattdessen jede Abfrage ab, die die Policies betreffen würden.
+\code{Cross\allowbreak{}Tenant\allowbreak{}Access\allowbreak{}Tests} prüft alle drei Punkte:
+Die Reporting-Rolle sieht alle Mandanten, sie kann nicht schreiben, und die App-Rolle kann
+sich nicht selbst helfen.
+
+\begin{important}[Mandantenübergreifenden Zugriff protokollieren]
+  Jede Verbindung der Reporting-Rolle ist ein Zugriff auf alle Mandanten. Sie gehört
+  protokolliert (\code{log\_\allowbreak{}connections}, pgaudit), und die Rolle sollte so
+  wenigen Personen und Diensten wie möglich zugewiesen werden.
+  \code{Create\allowbreak{}Application\allowbreak{}Role} des Plugins legt Rollen bewusst
+  immer mit \code{NOBYPASSRLS} an: Bypass-Rollen gehören nicht in die Migrationen der
+  Anwendung.
+\end{important}
+
+% ------------------------------------------------------------
+\chapter{Performance von Plugins}\label{ch:plugin-performance}
+
+Plugin-Code läuft in drei Häufigkeiten. Wer weiß, welcher Code wie oft läuft, weiß, wo sich
+Optimierung lohnt:
+
+\begin{datatable}{H{0.75}H{1.25}H{1.00}}
+  \textbf{Häufigkeit} & \textbf{Code} & \textbf{Folgerung} \\
+  \tablehead
+  Einmal pro Provider & Conventions, Type-Mapping-Plugins, Singleton-Options & Lesbarkeit
+  vor Mikro-Optimierung \\
+  \tablerule
+  Einmal pro Abfrageform & Translators, Evaluatable-Filter, Query-Interceptors & Moderat;
+  Ergebnis wird gecacht \\
+  \tablerule
+  Bei jeder Ausführung & Interceptors für Commands, Verbindungen, SaveChanges,
+  Materialisierung & Heißer Pfad: keine Reflection, keine unnötigen Allokationen \\
+\end{datatable}
+
+Daraus ergeben sich einige Regeln, die das Beispiel befolgt: \code{Method\allowbreak{}Info}-
+und \code{Property\allowbreak{}Info}-Lookups liegen in statischen Feldern. Der
+SaveChanges-Interceptor legt seine Liste erst an, wenn er tatsächlich eine mandantenfähige
+Änderung findet. Der Connection-Interceptor kostet einen Roundtrip pro Öffnen, was
+dokumentiert ist. Solche Annahmen sollte man messen, nicht raten. Das Repository enthält ein
+BenchmarkDotNet-Projekt für die SaveChanges-Logik; es läuft ohne Datenbank:
+
+\begin{sourcecode}[benchmarks/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Save\allowbreak{}Changes\allowbreak{}Interceptor\allowbreak{}Benchmark.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+[MemoryDiagnoser]
+public class SaveChangesInterceptorBenchmark
+{
+    [Params(1, 100)]
+    public int Entities { get; set; }
+
+    // GlobalSetup: Context mit UseAcmeTenancy() (ohne Verbindung) und dem Interceptor
+
+    [Benchmark(Baseline = true)]
+    public int TrackOnly()                  // was EF vor dem Speichern ohnehin tut
+    {
+        AddOrders();
+        var count = _db.ChangeTracker.Entries().Count();
+        _db.ChangeTracker.Clear();
+        return count;
+    }
+
+    [Benchmark]
+    public int TrackAndApplyTenant()        // dasselbe plus die SaveChanges-Logik des Plugins
+    {
+        AddOrders();
+        _interceptor.ApplyTenant(_db);
+        var count = _db.ChangeTracker.Entries().Count();
+        _db.ChangeTracker.Clear();
+        return count;
+    }
+}
+\end{sourcecode}
+
+\begin{sourcecode}[Benchmark ausführen]{text}
+dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks
+\end{sourcecode}
+
+\begin{datatable}{H{1.67}H{0.83}H{0.83}H{0.83}H{0.83}}
+  \textbf{Methode} & \textbf{Entitäten} & \textbf{Mittelwert} & \textbf{Verhältnis} & \textbf{Allokiert} \\
+  \tablehead
+  \code{Track\allowbreak{}Only} & 1 & 1,5 µs & 1,00 & 1,8 KB \\
+  \tablerule
+  \code{Track\allowbreak{}And\allowbreak{}Apply\allowbreak{}Tenant} & 1 & 2,3 µs & 1,54 &
+  2,7 KB \\
+  \tablerule
+  \code{Track\allowbreak{}Only} & 100 & 123 µs & 1,00 & 134 KB \\
+  \tablerule
+  \code{Track\allowbreak{}And\allowbreak{}Apply\allowbreak{}Tenant} & 100 & 170 µs & 1,38 &
+  202 KB \\
+\end{datatable}
+
+Beispielergebnisse (Short Job, .NET 10, Rechner des Autors; die absoluten Werte schwanken,
+aussagekräftiger sind die Verhältnisse). Das Plugin fügt pro gespeicherter Entität etwa eine
+halbe Mikrosekunde hinzu, rund 40 bis 50 Prozent mehr als das Change Tracking allein. Das
+klingt nach viel, doch ein einziger Roundtrip zur Datenbank kostet Hunderte Mikrosekunden;
+der zusätzliche Roundtrip des Connection-Interceptors pro Öffnen
+(Kapitel~\ref{ch:interceptors}) wiegt daher weit schwerer als die SaveChanges-Logik. Genau
+diese Art Erkenntnis liefert ein Benchmark: Er zeigt, wo sich Optimieren lohnt und wo nicht.
+
+\begin{tip}
+  Für den Start großer Modelle ist das Compiled Model
+  (Kapitel~\ref{ch:compiled-models-trimming-and-nativeaot}) der wirksamste Hebel.
+  Conventions eines Plugins laufen dann gar nicht mehr zur Laufzeit; deshalb lohnt es sich,
+  die Compiled-Model-Fähigkeit zu testen statt nur zu behaupten.
+\end{tip}
+
+% ------------------------------------------------------------
+\chapter{Einsatz in ASP.NET Core}\label{ch:using-the-plugin-in-asp}
+
+Das Beispiel \code{samples/\allowbreak{}Shop\allowbreak{}Api} zeigt den Weg vom Plugin in
+eine Web-API. Der Mandant kommt aus dem Claim \code{tenant\_\allowbreak{}id} des
+angemeldeten Benutzers:
+
+\begin{sourcecode}[samples/\allowbreak{}Shop\allowbreak{}Api/\allowbreak{}Http\allowbreak{}Tenant\allowbreak{}Provider.\allowbreak{}cs]{csharp}
+public sealed class HttpTenantProvider : ITenantProvider
+{
+    public const string ClaimType = "tenant_id";
+
+    private readonly IHttpContextAccessor _httpContextAccessor;
+
+    public HttpTenantProvider(IHttpContextAccessor httpContextAccessor)
+    {
+        ArgumentNullException.ThrowIfNull(httpContextAccessor);
+
+        _httpContextAccessor = httpContextAccessor;
+    }
+
+    // Bei jedem Zugriff neu ermittelt: funktioniert auch als Singleton (Pooling)
+    public TenantId? CurrentTenantId
+    {
+        get
+        {
+            var value = _httpContextAccessor.HttpContext?.User.FindFirst(ClaimType)?.Value;
+            return Guid.TryParse(value, out var id) ? new TenantId(id) : null;
+        }
+    }
+}
+\end{sourcecode}
+
+\begin{sourcecode}[samples/\allowbreak{}Shop\allowbreak{}Api/\allowbreak{}Program.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddAcmeTenancy<HttpTenantProvider>();
+builder.Services.AddDbContext<ShopApiContext>((sp, options) => options
+    .UseNpgsql(builder.Configuration.GetConnectionString("Shop"))
+    .UseAcmeTenancy(sp));
+
+// Kein Mandantenfilter im Code: RLS in der Datenbank sorgt für die Trennung
+app.MapGet("/orders", async (ShopApiContext db) =>
+    await db.Orders.OrderBy(o => o.Id).ToListAsync());
+\end{sourcecode}
+
+\begin{important}[Woher der Mandant kommt]
+  Der Mandant muss aus einer vertrauenswürdigen Quelle kommen: einem Claim aus einem
+  signierten Token. Ein Header oder Query-Parameter, den der Client frei setzt, hebelt die
+  gesamte Isolation aus. Das Beispiel enthält eine Header-Simulation nur für die
+  Entwicklungsumgebung und kennzeichnet sie ausdrücklich.
+\end{important}
+
+Für \code{Add\allowbreak{}Db\allowbreak{}Context\allowbreak{}Pool} registriert man den
+Provider als Singleton. Das ist möglich, weil
+\code{Http\allowbreak{}Tenant\allowbreak{}Provider} den Mandanten bei jedem Zugriff neu
+ermittelt; die Interceptors fragen ihn bei jeder Verbindung und jedem Speichern:
+
+\begin{sourcecode}[Variante mit Pooling]{csharp}
+builder.Services.AddAcmeTenancy<HttpTenantProvider>(ServiceLifetime.Singleton);
+builder.Services.AddDbContextPool<ShopApiContext>((sp, options) => options
+    .UseNpgsql(connectionString)
+    .UseAcmeTenancy(sp));   // sp: Root-Provider; Interceptors entstehen einmal
+\end{sourcecode}
+
+\section{DbContext-Factories}
+
+\code{Add\allowbreak{}Db\allowbreak{}Context\allowbreak{}Factory} ist die übliche Wahl in
+Blazor Server und für parallele Arbeit. Anders als
+\code{Add\allowbreak{}Db\allowbreak{}Context} registriert es Factory und Options
+standardmäßig als \textbf{Singletons}. Der Options-Callback bekommt dann den Root-Provider,
+nicht den Scope der aktuellen Anfrage. Für einen Scoped-Tenant-Provider, der Zustand pro
+Scope hält, hat das Folgen:
+
+\begin{datatable}{H{0.87}H{1.13}}
+  \textbf{Registrierung} & \textbf{Verhalten} \\
+  \tablehead
+  Singleton-Factory, Scope-Validierung an (ASP.NET Core in Development) & Exception: „Cannot
+  resolve scoped service 'ITenantProvider' from root provider.“ \\
+  \tablerule
+  Singleton-Factory, Scope-Validierung aus (Standard in Produktion) & Kein Fehler. Die
+  Interceptors bekommen eine Instanz aus dem Root-Container, die keine Anfrage je befüllt:
+  kein Mandant, Speichern wirft, Abfragen sehen nichts \\
+  \tablerule
+  Factory als \code{Scoped} registriert & Jeder Scope bekommt eine eigene Factory mit
+  eigenem Tenant-Provider: korrekt \\
+\end{datatable}
+
+\begin{sourcecode}[Factory mit dem Mandanten der Anfrage]{csharp}
+builder.Services.AddDbContextFactory<ShopApiContext>(
+    (sp, options) => options.UseNpgsql(connectionString).UseAcmeTenancy(sp),
+    ServiceLifetime.Scoped);         // Factory und Options pro Scope
+\end{sourcecode}
+
+Ein Provider, der den Mandanten bei jedem Zugriff neu ermittelt, etwa
+\code{Http\allowbreak{}Tenant\allowbreak{}Provider}, funktioniert in jeder Variante; das
+Problem betrifft Provider mit Zustand pro Scope.
+\code{Add\allowbreak{}Pooled\allowbreak{}Db\allowbreak{}Context\allowbreak{}Factory} verhält
+sich immer wie Pooling: Die Options existieren einmal, der Tenant-Provider muss also ein
+solches Singleton sein. \code{Db\allowbreak{}Context\allowbreak{}Factory\allowbreak{}Tests}
+zeigt alle drei Varianten.
+
+\section{Außerhalb von HTTP-Anfragen}
+
+Hintergrunddienste, Message-Handler und geplante Jobs haben keine Anfrage und keinen Claim.
+Der Mandant kommt dann aus dem Job selbst, etwa aus der Nachricht oder aus einer Liste zu
+verarbeitender Mandanten. Der \code{Ambient\allowbreak{}Tenant\allowbreak{}Provider} des
+Beispiels speichert ihn in einem \code{Async\allowbreak{}Local}, das mit dem asynchronen
+Kontrollfluss mitwandert:
+
+\begin{sourcecode}[samples/\allowbreak{}Shop\allowbreak{}Sample/\allowbreak{}Ambient\allowbreak{}Tenant\allowbreak{}Provider.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+public sealed class AmbientTenantProvider : ITenantProvider
+{
+    private static readonly AsyncLocal<TenantId?> Current = new();
+
+    public TenantId? CurrentTenantId => Current.Value;
+
+    public static IDisposable Use(TenantId tenant)
+    {
+        var previous = Current.Value;
+        Current.Value = tenant;
+        return new Restore(previous);     // setzt beim Dispose den vorigen Mandanten zurück
+    }
+
+    // private sealed class Restore : IDisposable { ... Current.Value = _previous; }
+}
+\end{sourcecode}
+
+\begin{sourcecode}[Job-Muster (\allowbreak{}tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Background\allowbreak{}Tenant\allowbreak{}Tests.\allowbreak{}cs)]{csharp}
+// Erst der Mandant, dann Scope und Context: die Interceptors entstehen im Scope
+using (AmbientTenantProvider.Use(tenant))
+{
+    await using var scope = scopeFactory.CreateAsyncScope();
+    var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+    // ... Arbeit für diesen Mandanten ...
+}
+\end{sourcecode}
+
+Weil der Provider das \code{Async\allowbreak{}Local} bei jedem Zugriff liest, kann er als
+Singleton registriert werden. Parallele Jobs behalten ihren eigenen Mandanten, und nach dem
+\code{using}-Block bleibt kein Mandant zurück;
+\code{Background\allowbreak{}Tenant\allowbreak{}Tests} prüft beides mit 20 parallelen Jobs.
+Eine Anwendung mit Web-Anfragen \emph{und} Jobs kombiniert beide Quellen in einem Provider:
+zuerst der Claim, sonst der Ambient-Mandant.
+
+\begin{important}[Nie auf „alle Mandanten“ zurückfallen]
+  Ohne Mandant muss ein Job scheitern oder nichts sehen, niemals alles. Das Plugin verhält
+  sich so: Der Session-Wert bleibt leer, die Policies treffen keine Zeile, und Speichern
+  wirft. Jobs, die wirklich alle Mandanten brauchen, nutzen die Reporting-Rolle aus
+  Kapitel~\ref{ch:row-level-security-in-production}.
+\end{important}
+
+% ------------------------------------------------------------
+\chapter{CI und API-Stabilität}\label{ch:ci-and-api-stability}
+
+\section{Der Workflow}
+
+Der GitHub-Actions-Workflow im Repository setzt die Empfehlungen aus
+Kapitel~\ref{ch:test-strategy} und \ref{ch:versioning-and-compatibility} um. Ein Job baut
+und testet ohne und mit Datenbank, ein zweiter baut das Handbuch:
+
+\begin{sourcecode}[.\allowbreak{}github/\allowbreak{}workflows/\allowbreak{}ci.\allowbreak{}yml (\allowbreak{}gekürzt)]{text}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { global-json-file: global.json }
+      - run: dotnet build -c Release
+      - run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Tests -c Release --no-build
+      - run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests
+          -c Release --no-build
+      - run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests
+          -c Release --no-build
+
+  handbook:                            # beide PDFs mit LuaLaTeX, im Ordner docs/handbook
+    runs-on: ubuntu-latest
+    container: texlive/texlive@sha256:540d…   # TeX Live 2026, per Digest fixiert
+    steps:
+      # ... checkout ...
+      - run: python3 check_code.py     # scheitert an zu langen Codezeilen
+      - run: latexmk EF-Core-Plugin-Handbuch.tex
+\end{sourcecode}
+
+Das Beispiel baut bewusst nur gegen stabile Versionen (.NET 10, EF Core 10). Ein
+zusätzlicher Build gegen die nächste EF-Vorabversion, wie ihn
+Kapitel~\ref{ch:versioning-and-compatibility} empfiehlt, zeigt Brüche in internen APIs
+früher. Er braucht aber auch das passende Vorab-SDK von .NET, weil jede EF-Core-Hauptversion
+nur für die gleichnamige .NET-Version erscheint (EF Core 11 nur für \code{net11.\allowbreak{}0}).
+Wer ihn einrichtet, betreibt ihn am besten als eigenen Job mit
+\code{continue-on-\allowbreak{}error}, damit er die reguläre CI nicht blockiert.
+
+\section{Öffentliche API absichern}
+
+Ein Plugin hat zwei öffentliche APIs: die für Anwender (Fluent API, Options, Typen) und die
+für Erweiterer (virtuelle Methoden, Dependencies, öffentliche Dienste). Beide brechen leicht
+unbemerkt. Der
+\code{Microsoft.\allowbreak{}Code\allowbreak{}Analysis.\allowbreak{}Public\allowbreak{}Api\allowbreak{}Analyzers}
+führt die öffentliche API in zwei Textdateien
+(\code{Public\allowbreak{}API.\allowbreak{}Shipped.\allowbreak{}txt},
+\code{Public\allowbreak{}API.\allowbreak{}Unshipped.\allowbreak{}txt}) und meldet jede
+Abweichung. Jede API-Änderung wird so im Pull Request als Diff sichtbar.
+
+\begin{note}[Einrichtung]
+  Beim ersten Build meldet der Analyzer jede öffentliche API als RS0016, weil die Dateien
+  leer sind. Per Code-Fix „Add all items … to the public API“ werden sie gefüllt. Beim
+  Release wandert der Inhalt von Unshipped nach Shipped; ab dann ist das Entfernen einer
+  ausgelieferten API ein sichtbarer Breaking Change.
+\end{note}

@@ -41,7 +41,10 @@ public sealed class SchemaContext : DbContext, ISchemaScoped
         => modelBuilder.HasDefaultSchema(Schema);
 }
 
-/// <summary>The alternative to RLS from chapter 31, checked: one model per schema.</summary>
+/// <summary>
+/// The alternative to RLS from chapter "Models per runtime context", checked: one model per
+/// schema.
+/// </summary>
 public class SchemaPerTenantTests
 {
     // One options instance, shared like in an application: caching of the internal provider on

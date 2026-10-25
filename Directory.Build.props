@@ -6,9 +6,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-    <!-- EF1001: deliberate use of internal ("pubternal") EF/Npgsql APIs, see chapter 23 -->
+    <!-- EF1001: deliberate use of internal ("pubternal") EF/Npgsql APIs,
+         see chapter "Versioning and compatibility" -->
     <NoWarn>$(NoWarn);EF1001</NoWarn>
-    <!-- EF9100: experimental API for precompiled queries (SqlExpression.Quote, chapter 37) -->
+    <!-- EF9100: experimental API for precompiled queries (SqlExpression.Quote,
+         chapter "Custom SQL expression nodes") -->
     <NoWarn>$(NoWarn);EF9100</NoWarn>
     <Deterministic>true</Deterministic>
   </PropertyGroup>

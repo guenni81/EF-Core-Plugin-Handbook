@@ -1,0 +1,788 @@
+% ============================================================
+\setpartpreamble{\partintro
+  {Custom SQL expressions, aggregates, run-time metadata, scaffolding and a second provider:
+  the tools for very complex plugins.}
+  {
+    \item Chapter~\ref{ch:custom-sql-expression-nodes}: Custom SQL expression nodes
+    \item Chapter~\ref{ch:aggregate-translators}: Aggregate translators
+    \item Chapter~\ref{ch:property-level-fluent-api-and}: Property-level Fluent API and
+    runtime annotations
+    \item Chapter~\ref{ch:scaffolding-in-practice}: Scaffolding in practice
+    \item Chapter~\ref{ch:what-belongs-in-the-core}: What belongs in the core
+    \item Chapter~\ref{ch:a-second-provider-sql-server}: A second provider: SQL Server
+  }}
+\part{Deep extensions}\label{part:IX}
+
+% ------------------------------------------------------------
+\chapter{Custom SQL expression nodes}\label{ch:custom-sql-expression-nodes}
+
+Chapter~\ref{ch:translating-methods-and-members} builds SQL from existing building blocks:
+functions, constants, casts. That is enough for most plugins. A \textbf{custom expression
+node} (a subclass of \code{Sql\allowbreak{}Expression}) becomes necessary when at least one
+of the following applies:
+
+\begin{datatable}{H{0.80}H{1.20}}
+  \textbf{Reason} & \textbf{Example} \\
+  \tablehead
+  The syntax is not a function call & Operators such as \code{@@}, \code{<\allowbreak{}->},
+  \code{IS DISTINCT FROM}, keywords such as \code{AT TIME ZONE} \\
+  \tablerule
+  The nullability semantics differ & \code{IS DISTINCT FROM} is never NULL, even when an
+  operand is NULL \\
+  \tablerule
+  Other parts should recognize the node & Optimizations that only apply to this expression
+  \\
+\end{datatable}
+
+The sample implements the null-safe comparison
+\code{EF.\allowbreak{}Functions.\allowbreak{}Is\allowbreak{}Not\allowbreak{}Distinct\allowbreak{}From(\allowbreak{}a,\allowbreak{}
+b)} and \code{Is\allowbreak{}Distinct\allowbreak{}From(\allowbreak{}a,\allowbreak{} b)}.
+Npgsql does not offer it as a function; it meets all three reasons.
+
+\section{Anatomy of a node}
+
+\begin{datatable}{H{0.78}H{1.26}H{0.96}}
+  \textbf{Member} & \textbf{Purpose} & \textbf{Consequence if missing} \\
+  \tablehead
+  \code{Visit\allowbreak{}Children} / \code{Update} & Visitors can replace children;
+  unchanged children yield the same instance & EF throws at the first visitor \\
+  \tablerule
+  \code{Equals} / \code{Get\allowbreak{}Hash\allowbreak{}Code} & Structural comparison for
+  the query cache and optimizations & Cache misses, wrong deduplication \\
+  \tablerule
+  \code{Print} & Readable representation in DebugView and error messages & Unclear errors \\
+  \tablerule
+  \code{Quote} & C\# code for precompiled queries and NativeAOT & No AOT support \\
+  \tablerule
+  SQL generator & Writes the node as SQL & \textbf{Silently} missing SQL \\
+  \tablerule
+  Nullability processor & Knows the NULL semantics & Exception during translation \\
+\end{datatable}
+
+\begin{sourcecode}[Query/\allowbreak{}Expressions/\allowbreak{}Distinct\allowbreak{}From\allowbreak{}Expression.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
+public class DistinctFromExpression : SqlExpression
+{
+    private static ConstructorInfo? _quotingConstructor;
+
+    public DistinctFromExpression(SqlExpression left, SqlExpression right, bool negated,
+        RelationalTypeMapping? typeMapping)
+        : base(typeof(bool), typeMapping)
+    {
+        // ... ThrowIfNull ...
+        Left = left;
+        Right = right;
+        IsNegated = negated;
+    }
+
+    public virtual SqlExpression Left { get; }
+    public virtual SqlExpression Right { get; }
+    public virtual bool IsNegated { get; }
+
+    protected override Expression VisitChildren(ExpressionVisitor visitor)
+        => Update((SqlExpression)visitor.Visit(Left), (SqlExpression)visitor.Visit(Right));
+
+    public virtual DistinctFromExpression Update(SqlExpression left, SqlExpression right)
+        => left == Left && right == Right
+            ? this
+            : new DistinctFromExpression(left, right, IsNegated, TypeMapping);
+
+    public override Expression Quote()
+        => New(
+            _quotingConstructor ??= typeof(DistinctFromExpression).GetConstructor(
+                [typeof(SqlExpression), typeof(SqlExpression), typeof(bool),
+                 typeof(RelationalTypeMapping)])!,
+            Left.Quote(), Right.Quote(), Constant(IsNegated),
+            RelationalExpressionQuotingUtilities.QuoteTypeMapping(TypeMapping));
+
+    protected override void Print(ExpressionPrinter expressionPrinter)
+    {
+        expressionPrinter.Visit(Left);
+        expressionPrinter.Append(IsNegated ? " IS DISTINCT FROM " : " IS NOT DISTINCT FROM ");
+        expressionPrinter.Visit(Right);
+    }
+
+    public override bool Equals(object? obj)
+        => obj is DistinctFromExpression other
+           && (ReferenceEquals(this, other)
+               || base.Equals(other) && Left.Equals(other.Left)
+                  && Right.Equals(other.Right) && IsNegated == other.IsNegated);
+
+    public override int GetHashCode()
+        => HashCode.Combine(base.GetHashCode(), Left, Right, IsNegated);
+}
+\end{sourcecode}
+
+The translator creates the node and aligns the type mappings of both sides: if one side has
+a mapping (a column, say), the other gets the same one. That way a constant becomes the
+matching literal:
+
+\begin{sourcecode}[Query/\allowbreak{}Distinct\allowbreak{}From\allowbreak{}Translator.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+var definition = method.GetGenericMethodDefinition();
+if (definition != IsNotDistinctFromMethod && definition != IsDistinctFromMethod)
+    return null;
+
+var left = arguments[1];                        // arguments[0] is DbFunctions
+var right = arguments[2];
+var typeMapping = ExpressionExtensions.InferTypeMapping(left, right)
+                  ?? _typeMappingSource.FindMapping(left.Type);
+
+return new DistinctFromExpression(
+    _sql.ApplyTypeMapping(left, typeMapping)!,
+    _sql.ApplyTypeMapping(right, typeMapping)!,
+    negated: definition == IsDistinctFromMethod,
+    _typeMappingSource.FindMapping(typeof(bool)));
+\end{sourcecode}
+
+\section{Extending the SQL generator}
+
+The \code{Query\allowbreak{}Sql\allowbreak{}Generator} writes SQL using a visitor. It hands
+unknown nodes to
+\code{Expression\allowbreak{}Visitor.\allowbreak{}Visit\allowbreak{}Extension}, which only
+visits the children. Without an override there is no error, but \textbf{SQL without the
+operator}. The plugin derives from the Npgsql generator:
+
+\begin{sourcecode}[Query/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Npgsql\allowbreak{}Query\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
+public class TenancyNpgsqlQuerySqlGenerator : NpgsqlQuerySqlGenerator
+{
+    public TenancyNpgsqlQuerySqlGenerator(QuerySqlGeneratorDependencies dependencies,
+        IRelationalTypeMappingSource typeMappingSource,
+        bool reverseNullOrderingEnabled, Version postgresVersion)
+        : base(dependencies, typeMappingSource, reverseNullOrderingEnabled, postgresVersion)
+    {
+    }
+
+    protected override Expression VisitExtension(Expression extensionExpression)
+        => extensionExpression switch
+        {
+            DistinctFromExpression e => VisitDistinctFrom(e),
+            _ => base.VisitExtension(extensionExpression),
+        };
+
+    protected virtual Expression VisitDistinctFrom(DistinctFromExpression expression)
+    {
+        VisitOperand(expression.Left);
+        Sql.Append(expression.IsNegated ? " IS DISTINCT FROM " : " IS NOT DISTINCT FROM ");
+        VisitOperand(expression.Right);
+        return expression;
+    }
+}
+\end{sourcecode}
+
+The generator is created through
+\code{IQuery\allowbreak{}Sql\allowbreak{}Generator\allowbreak{}Factory}, a singleton single
+service. The plugin replaces it with its own factory taking the same dependencies as
+Npgsql's (\code{Query\allowbreak{}Sql\allowbreak{}Generator\allowbreak{}Dependencies}, type
+mapping source, \code{INpgsql\allowbreak{}Singleton\allowbreak{}Options}).
+
+\section{Extending the nullability processor}
+
+After translation, EF optimizes NULL comparisons. To do so it must know for every node
+whether it can become NULL. Unknown nodes end up in
+\code{Visit\allowbreak{}Custom\allowbreak{}Sql\allowbreak{}Expression}, whose base
+implementation throws an exception. The processor hangs off a chain of three classes, all of
+which must be replaced:
+
+\begin{sourcecode}[Query/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Npgsql\allowbreak{}Sql\allowbreak{}Nullability\allowbreak{}Processor.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
+public class TenancyNpgsqlSqlNullabilityProcessor : NpgsqlSqlNullabilityProcessor
+{
+    // Constructor: (…ProcessorDependencies, …ProcessorParameters) : base(...)
+
+    protected override SqlExpression VisitCustomSqlExpression(
+        SqlExpression sqlExpression, bool allowOptimizedExpansion, out bool nullable)
+    {
+        if (sqlExpression is DistinctFromExpression distinctFrom)
+        {
+            // Visit children (they can be optimized), their nullability does not matter
+            var left = Visit(distinctFrom.Left, out _)!;
+            var right = Visit(distinctFrom.Right, out _)!;
+
+            nullable = false;                   // IS [NOT] DISTINCT FROM is never NULL
+            return distinctFrom.Update(left, right);
+        }
+
+        return base.VisitCustomSqlExpression(
+            sqlExpression, allowOptimizedExpansion, out nullable);
+    }
+}
+
+public class TenancyNpgsqlParameterBasedSqlProcessor : NpgsqlParameterBasedSqlProcessor
+{
+    protected override Expression ProcessSqlNullability(
+        Expression selectExpression, ParametersCacheDecorator parametersDecorator)
+        => new TenancyNpgsqlSqlNullabilityProcessor(Dependencies, Parameters)
+            .Process(selectExpression, parametersDecorator);
+}
+
+// + TenancyNpgsqlParameterBasedSqlProcessorFactory
+//   : IRelationalParameterBasedSqlProcessorFactory
+\end{sourcecode}
+
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Apply\allowbreak{}Services (\allowbreak{}addition)]{csharp}
+// 4) Deep extension: custom SQL expression node
+services.Replace(ServiceDescriptor
+    .Singleton<IQuerySqlGeneratorFactory, TenancyNpgsqlQuerySqlGeneratorFactory>());
+services.Replace(ServiceDescriptor
+    .Scoped<IRelationalParameterBasedSqlProcessorFactory,
+        TenancyNpgsqlParameterBasedSqlProcessorFactory>());
+\end{sourcecode}
+
+\begin{important}[The price of custom nodes]
+  Custom nodes require replacing two single services and deriving from internal Npgsql
+  classes. Two plugins that both introduce custom nodes can only be combined if one derives
+  from the other. Hence: function composition first; custom nodes only when one of the three
+  reasons applies. And the replacement belongs prominently in the documentation.
+\end{important}
+
+\begin{note}[Experimental API]
+  \code{Quote} and
+  \code{Relational\allowbreak{}Expression\allowbreak{}Quoting\allowbreak{}Utilities} belong
+  to the experimental API for precompiled queries. The compiler reports their use as EF9100;
+  the sample suppresses it project-wide and documents this in
+  \code{Directory.\allowbreak{}Build.\allowbreak{}props}.
+\end{note}
+
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Deep\allowbreak{}Query\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+[Fact]
+public void IsDistinctFrom_in_projection_passes_nullability_processor()
+{
+    // Without a custom nullability processor, EF would throw here
+    using var ctx = Contexts.Create();
+
+    var sql = ctx.Customers
+        .Select(c => EF.Functions.IsDistinctFrom(c.Name, (string?)null))
+        .ToQueryString();
+
+    Assert.Contains("IS DISTINCT FROM", sql);
+}
+\end{sourcecode}
+
+% ------------------------------------------------------------
+\chapter{Aggregate translators}\label{ch:aggregate-translators}
+
+Aggregates such as \code{Sum} or \code{string\_\allowbreak{}agg} combine several rows,
+typically after \code{Group\allowbreak{}By}. An
+\code{IAggregate\allowbreak{}Method\allowbreak{}Call\allowbreak{}Translator} receives,
+instead of a single argument, an \code{Enumerable\allowbreak{}Expression} that describes
+\emph{what} is being aggregated:
+
+\begin{datatable}{H{0.70}H{1.09}H{1.21}}
+  \textbf{Property} & \textbf{Meaning} & \textbf{Origin in LINQ} \\
+  \tablehead
+  \code{Selector} & The aggregated expression & \code{g.\allowbreak{}Select(\allowbreak{}o
+  => o.\allowbreak{}Total > 0)} \\
+  \tablerule
+  \code{Is\allowbreak{}Distinct} & Distinct values only &
+  \code{g.\allowbreak{}Select(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}).\allowbreak{}Distinct(\allowbreak{})}
+  \\
+  \tablerule
+  \code{Predicate} & Filter before the aggregate & \code{g.\allowbreak{}Where(\allowbreak{}o
+  => o.\allowbreak{}Id > 10)} \\
+  \tablerule
+  \code{Orderings} & Order (for order-dependent aggregates) &
+  \code{g.\allowbreak{}Order\allowbreak{}By(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}
+  \\
+\end{datatable}
+
+The sample adds \code{EF.\allowbreak{}Functions.\allowbreak{}Every(\allowbreak{}values)} for
+PostgreSQL's \code{bool\_\allowbreak{}and}:
+
+\begin{sourcecode}[Query/\allowbreak{}Every\allowbreak{}Aggregate\allowbreak{}Translator.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+public virtual SqlExpression? Translate(MethodInfo method, EnumerableExpression source,
+    IReadOnlyList<SqlExpression> arguments,
+    IDiagnosticsLogger<DbLoggerCategory.Query> logger)
+{
+    if (method != EveryMethod || source.Selector is not SqlExpression selector)
+        return null;
+
+    // Npgsql's factory implements DISTINCT, FILTER (WHERE ...) and ORDER BY in aggregates
+    if (_sql is not NpgsqlSqlExpressionFactory npgsql)
+        return null;
+
+    var boolean = _typeMappingSource.FindMapping(typeof(bool))!;
+
+    // bool_and returns NULL for an empty set, Enumerable.All returns true
+    return _sql.Coalesce(
+        npgsql.AggregateFunction("bool_and", [selector], source,
+            nullable: true, argumentsPropagateNullability: [false],
+            typeof(bool), boolean),
+        _sql.Constant(true, boolean),
+        boolean);
+}
+\end{sourcecode}
+
+\begin{sourcecode}[Generated SQL for g.\allowbreak{}Where(\allowbreak{}o => o.\allowbreak{}Id > 10).\allowbreak{}Select(\allowbreak{}o => o.\allowbreak{}Total > 0)]{sql}
+SELECT COALESCE(bool_and(o."Total" > 0.0) FILTER (WHERE o."Id" > 10), TRUE)
+FROM "Orders" AS o
+GROUP BY o."TenantId"
+\end{sourcecode}
+
+\begin{important}[Semantics before syntax]
+  An aggregate translator must match the semantics of the .NET side, not just the database
+  syntax. Typical pitfalls: empty sets (NULL instead of 0, true or an empty string), NULL
+  values in the input, and predicates. Npgsql itself aligns \code{string.\allowbreak{}Join}
+  with \code{string\_\allowbreak{}agg} using \code{COALESCE}; the sample follows this
+  pattern.
+\end{important}
+
+Databases without a \code{FILTER} clause (such as SQL Server) emulate predicates with
+\code{CASE WHEN predicate THEN value END}. A provider-neutral aggregate translator must know
+both; that is why this one lives in the PostgreSQL package.
+
+% ------------------------------------------------------------
+\chapter{Property-level Fluent API and runtime annotations}\label{ch:property-level-fluent-api-and}
+
+\section{Property builder}
+
+So far the plugin assumes that the tenant property is called \code{Tenant\allowbreak{}Id}
+and that \code{ITenant\allowbreak{}Owned} is implemented. With a Fluent API method on
+\code{Property\allowbreak{}Builder} it works without either, for example with existing
+models using a property \code{Mandant\allowbreak{}Id} or an explicit interface
+implementation:
+
+\begin{sourcecode}[Usage]{csharp}
+modelBuilder.Entity<Contract>().Property(c => c.Mandant).IsTenantProperty();
+\end{sourcecode}
+
+\begin{sourcecode}[Metadata/\allowbreak{}Tenancy\allowbreak{}Property\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}core package)]{csharp}
+public static PropertyBuilder IsTenantProperty(
+    this PropertyBuilder builder, bool isTenant = true)
+{
+    ArgumentNullException.ThrowIfNull(builder);
+
+    if (isTenant)
+        builder.Metadata.SetAnnotation(TenancyAnnotationNames.IsTenantProperty, true);
+    else
+        builder.Metadata.RemoveAnnotation(TenancyAnnotationNames.IsTenantProperty);
+
+    return builder;
+}
+
+public static PropertyBuilder<TProperty> IsTenantProperty<TProperty>(
+    this PropertyBuilder<TProperty> builder, bool isTenant = true)
+    => (PropertyBuilder<TProperty>)IsTenantProperty((PropertyBuilder)builder, isTenant);
+
+public static IConventionPropertyBuilder? IsTenantProperty(
+    this IConventionPropertyBuilder builder,
+    bool isTenant = true,
+    bool fromDataAnnotation = false)
+    => builder.HasAnnotation(TenancyAnnotationNames.IsTenantProperty,
+           isTenant ? true : null, fromDataAnnotation) is null
+        ? null
+        : builder;
+\end{sourcecode}
+
+The method lives in the core package because it only sets metadata. The conventions of both
+provider packages find the tenant property through the same core function:
+
+\begin{sourcecode}[Metadata/\allowbreak{}Tenancy\allowbreak{}Entity\allowbreak{}Type\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}core package,\allowbreak{} shortened)]{csharp}
+public static IReadOnlyProperty? FindTenantPropertyCandidate(
+    this IReadOnlyEntityType entityType)
+{
+    var marked = entityType.GetProperties()
+        .Where(p => p[TenancyAnnotationNames.IsTenantProperty] is true)
+        .ToList();
+
+    if (marked.Count > 1)
+        throw new InvalidOperationException("... several tenant properties ...");
+    if (marked.Count == 1)
+        return marked[0];
+
+    return typeof(ITenantOwned).IsAssignableFrom(entityType.ClrType)
+        ? entityType.FindProperty(nameof(ITenantOwned.TenantId))
+        : null;
+}
+\end{sourcecode}
+
+\begin{datatable}{H{0.92}H{1.10}H{0.98}}
+  \textbf{Builder} & \textbf{Typical plugin methods} & \textbf{Note} \\
+  \tablehead
+  \code{Property\allowbreak{}Builder} / \code{<\allowbreak{}T>} & Column options, roles of
+  properties & Here: \code{Is\allowbreak{}Tenant\allowbreak{}Property} \\
+  \tablerule
+  \code{Index\allowbreak{}Builder} / \code{<\allowbreak{}T>} & Index methods, operator
+  classes, filters & Annotation on \code{Metadata} (IMutableIndex) \\
+  \tablerule
+  \code{Key\allowbreak{}Builder} & Key options (clustering) & As above \\
+  \tablerule
+  \code{Complex\allowbreak{}Type\allowbreak{}Property\allowbreak{}Builder} & Properties in
+  complex types & Only offer where the option makes sense there
+  (chapter~\ref{ch:complex-types-and-json}) \\
+  \tablerule
+  \code{Model\allowbreak{}Builder} & Model-wide options & Annotation on the model \\
+\end{datatable}
+
+\section{Runtime annotations}
+
+The SaveChanges interceptor needs to know at run time which entities are isolated and what
+their tenant property is called. The convention writes this into an annotation on the entity
+type; the interceptor reads it from the \emph{runtime model}:
+
+\begin{sourcecode}[Convention and core package (\allowbreak{}excerpt)]{csharp}
+// Convention (design-time model)
+entityType.Builder.HasAnnotation(TenancyAnnotationNames.TenantProperty, property.Name);
+
+// Interceptor (runtime model)
+public static string? GetTenantPropertyName(this IReadOnlyEntityType entityType)
+    => entityType.GetRootType()[TenancyAnnotationNames.TenantProperty] as string;
+\end{sourcecode}
+
+Two questions decide whether this works. Does the annotation reach the runtime model? Yes:
+\code{Runtime\allowbreak{}Model\allowbreak{}Convention} only removes EF's own design-time
+annotations and keeps all others. Does it reach the compiled model? Yes: EF writes simple
+values automatically (chapter~\ref{ch:compiled-models-trimming-and-nativeaot}). The custom
+\code{ICSharp\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator}
+therefore has the opposite job: it removes the RLS annotations that only migrations need:
+
+\begin{sourcecode}[Design/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}CSharp\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
+public class TenancyCSharpRuntimeAnnotationCodeGenerator
+    : NpgsqlCSharpRuntimeAnnotationCodeGenerator
+{
+    // Constructor: (CSharpRuntimeAnnotationCodeGeneratorDependencies,
+    //               RelationalCSharpRuntimeAnnotationCodeGeneratorDependencies) : base(...)
+
+    public override void Generate(IEntityType entityType,
+        CSharpRuntimeAnnotationCodeGeneratorParameters parameters)
+    {
+        if (!parameters.IsRuntime)
+        {
+            foreach (var key in parameters.Annotations.Keys
+                         .Where(k => k.StartsWith(RlsAnnotationNames.Prefix,
+                                                  StringComparison.Ordinal))
+                         .ToList())
+            {
+                parameters.Annotations.Remove(key);
+            }
+        }
+
+        base.Generate(entityType, parameters);
+    }
+}
+\end{sourcecode}
+
+When the compiled model is generated for NativeAOT
+(\code{For\allowbreak{}Native\allowbreak{}Aot}), EF also writes the relational model. The
+annotation provider has copied the RLS annotations onto the tables, so they appear a second
+time there. The generator therefore applies the same filter in an override of
+\code{Generate(\allowbreak{}ITable,\allowbreak{}
+.\allowbreak{}.\allowbreak{}.\allowbreak{})}.
+
+\begin{datatable}{H{1.36}H{0.88}H{0.88}H{0.88}}
+  \textbf{Annotation} & \textbf{Design time} & \textbf{Run time} & \textbf{Compiled model} \\
+  \tablehead
+  \code{Acme:Rls:*} (policies) & yes (migrations) & yes, unused & filtered \\
+  \tablerule
+  \code{Acme:Tenancy:Tenant\allowbreak{}Property} & yes & yes (interceptor) & yes \\
+  \tablerule
+  \code{Acme:Tenancy:Is\allowbreak{}Tenant\allowbreak{}Property} & yes (convention) & yes,
+  unused & yes (small) \\
+\end{datatable}
+
+\begin{tip}
+  For every annotation it should be clear who reads it and when. Annotations read only at
+  design time do not belong in the compiled model; those read at run time must be in it and
+  need a test against the generated model. The sample's compiled model test checks both.
+\end{tip}
+
+% ------------------------------------------------------------
+\chapter{Scaffolding in practice}\label{ch:scaffolding-in-practice}
+
+When scaffolding (\code{dotnet ef dbcontext scaffold}), EF reads the schema and generates
+entities and a context. A plugin managing its own schema objects should recognize them in
+the process. The route has three stations, two of which the plugin already knows:
+
+\begin{flowdiagram}
+  \flowstep{IDatabaseModelFactory}{Reads the schema into a DatabaseModel; the plugin
+  attaches RLS data as annotations to the tables}
+  \flowstep{Scaffolding model factory}{EF transfers table annotations to the entity types}
+  \flowstep{IAnnotationCodeGenerator}{Writes them as HasRowLevelSecurity/HasPolicy
+  (chapter~\ref{ch:design-time-services})}
+\end{flowdiagram}
+
+\begin{sourcecode}[Scaffolding/\allowbreak{}Tenancy\allowbreak{}Database\allowbreak{}Model\allowbreak{}Factory.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
+public class TenancyDatabaseModelFactory : NpgsqlDatabaseModelFactory
+{
+    public TenancyDatabaseModelFactory(
+        IDiagnosticsLogger<DbLoggerCategory.Scaffolding> logger)
+        : base(logger)
+    {
+    }
+
+    public override DatabaseModel Create(
+        DbConnection dbConnection, DatabaseModelFactoryOptions options)
+    {
+        var model = base.Create(dbConnection, options);
+        // ... open the connection if needed ...
+        ReadRowLevelSecurity(dbConnection, model);    // pg_class.relrowsecurity / ...force...
+        ReadPolicies(dbConnection, model);            // pg_policies
+        return model;
+    }
+
+    protected virtual void ReadPolicies(DbConnection connection, DatabaseModel model)
+    {
+        // SELECT schemaname, tablename, policyname, permissive, roles::text[], cmd,
+        //        qual, with_check FROM pg_catalog.pg_policies
+        // ...
+        var policy = new RlsPolicy(
+            Name: reader.GetString(2),
+            Command: Enum.Parse<PolicyCommand>(reader.GetString(5), ignoreCase: true),
+            Permissive: reader.GetString(3) == "PERMISSIVE",
+            Roles: roles is ["public"] ? null : roles,    // "public" = default without TO
+            Using: reader.IsDBNull(6) ? null : reader.GetString(6),
+            WithCheck: reader.IsDBNull(7) ? null : reader.GetString(7));
+
+        table[RlsAnnotationNames.PolicyPrefix + policy.Name] = policy.Serialize();
+    }
+}
+\end{sourcecode}
+
+The factory is registered like the code generator in the design-time services, with
+\code{Remove\allowbreak{}All} and \code{Add\allowbreak{}Singleton}. The data format is the
+same as with the Fluent API; snapshot, migrations and code generator therefore work without
+further changes.
+
+\begin{note}[Normalized expressions]
+  PostgreSQL stores policy expressions in normalized form, for example
+  \code{(\allowbreak{}(\allowbreak{}\textquotedbl{}Tenant\allowbreak{}Id\textquotedbl{} =
+  (\allowbreak{}NULLIF(\allowbreak{}current\_\allowbreak{}setting(\allowbreak{}'app.\allowbreak{}tenant\_\allowbreak{}id'::text,\allowbreak{}
+  true),\allowbreak{} ''::text))::uuid))}. Scaffolded policies contain exactly this text.
+  That is correct, but looks different from the form generated by the convention. Teams
+  switching to migrations after scaffolding should unify the policies once, otherwise the
+  first migration produces a DROP/CREATE with identical content.
+\end{note}
+
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Advanced\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+[Fact]
+public void Scaffolding_reads_rls_and_policies()
+{
+    using var ctx = ContextFor(null);
+    var factory = new TenancyDatabaseModelFactory(
+        ctx.GetService<IDiagnosticsLogger<DbLoggerCategory.Scaffolding>>());
+
+    var model = factory.Create(
+        _fixture.OwnerConnectionString, new DatabaseModelFactoryOptions());
+    var orders = model.Tables.Single(t => t.Name == "Orders");
+
+    Assert.Equal(true, orders[RlsAnnotationNames.Enabled]);
+    Assert.Equal(true, orders[RlsAnnotationNames.Forced]);
+}
+\end{sourcecode}
+
+% ------------------------------------------------------------
+\chapter{What belongs in the core}\label{ch:what-belongs-in-the-core}
+
+A second provider is the acid test for the package architecture. It shows which parts are
+truly provider-independent. The rule of thumb: \textbf{whatever knows no SQL syntax and no
+provider type belongs in the core.} For the sample this yields:
+
+\begin{datatable}{H{1.21}H{0.45}H{1.34}}
+  \textbf{Building block} & \textbf{Location} & \textbf{Reason} \\
+  \tablehead
+  \code{Tenant\allowbreak{}Id}, converter, JSON reader/writer & Core & Pure .NET types \\
+  \tablerule
+  \code{ITenant\allowbreak{}Owned}, \code{ITenant\allowbreak{}Provider}, attributes & Core &
+  For entity assemblies without a provider dependency \\
+  \tablerule
+  \code{Is\allowbreak{}Tenant\allowbreak{}Property(\allowbreak{})}, candidate lookup & Core
+  & Metadata only \\
+  \tablerule
+  Runtime annotation, \code{Get\allowbreak{}Tenant\allowbreak{}Property\allowbreak{}Name} &
+  Core & Read by the provider-neutral interceptor \\
+  \tablerule
+  SaveChanges interceptor & Core & Works only with the change tracker \\
+  \tablerule
+  \code{Tenant\allowbreak{}Session\allowbreak{}Interceptor} (abstract) & Core & Same flow,
+  only the SQL command differs \\
+  \tablerule
+  Evaluatable filter with attribute & Core & Recognizes function classes of all packages \\
+  \tablerule
+  Value generation, logging, \code{Add\allowbreak{}Acme\allowbreak{}Tenancy} & Core & No SQL
+  involved \\
+  \tablerule
+  \code{Database.\allowbreak{}Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})} &
+  Core & Uses the provider's interceptor \\
+  \tablerule
+  Type mapping, translators, migrations, RLS conventions & Provider & Store types, SQL
+  syntax, schema objects \\
+  \tablerule
+  Custom SQL nodes, aggregates & Provider & Depend on syntax and provider factory \\
+\end{datatable}
+
+\begin{important}[Name collisions between provider packages]
+  Two provider packages that both define an extension method
+  \code{Use\allowbreak{}Acme\allowbreak{}Tenancy} on
+  \code{Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder} cannot be referenced
+  at the same time: the call would be ambiguous. The PostgreSQL package uses EF's builder,
+  the SQL Server package the provider's builder
+  (\code{Use\allowbreak{}Sql\allowbreak{}Server(\allowbreak{}cs,\allowbreak{} x =>
+  x.\allowbreak{}Use\allowbreak{}Acme\allowbreak{}Tenancy(\allowbreak{}))}). If you plan
+  several provider packages, use the provider builder consistently from the start, as the
+  NetTopologySuite plugin does.
+\end{important}
+
+% ------------------------------------------------------------
+\chapter{A second provider: SQL Server}\label{ch:a-second-provider-sql-server}
+
+The package
+\code{Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Sql\allowbreak{}Server}
+implements the same idea with SQL Server's means. The differences show what a plugin really
+has to solve anew per database:
+
+\begin{datatable}{H{0.81}H{1.00}H{1.19}}
+  \textbf{Aspect} & \textbf{PostgreSQL} & \textbf{SQL Server} \\
+  \tablehead
+  Tenant in the session & \code{set\_\allowbreak{}config(\allowbreak{}name,\allowbreak{}
+  value,\allowbreak{} false)} &
+  \code{sp\_\allowbreak{}set\_\allowbreak{}session\_\allowbreak{}context} \\
+  \tablerule
+  \code{Current\allowbreak{}Tenant(\allowbreak{})} in SQL &
+  \code{nullif(\allowbreak{}current\_\allowbreak{}setting(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}),\allowbreak{}
+  '')::uuid} & \code{CAST(\allowbreak{}SESSION\_\allowbreak{}CONTEXT(\allowbreak{}N'…') AS
+  uniqueidentifier)} \\
+  \tablerule
+  Column type & \code{uuid} & \code{uniqueidentifier} \\
+  \tablerule
+  RLS mechanism & \code{CREATE POLICY} per table & Predicate function + \code{CREATE
+  SECURITY POLICY} \\
+  \tablerule
+  Read / write & \code{USING} / \code{WITH CHECK} & \code{FILTER} / \code{BLOCK
+  .\allowbreak{}.\allowbreak{}.\allowbreak{} AFTER INSERT/\allowbreak{}UPDATE} \\
+  \tablerule
+  Table owner & Only bound with \code{FORCE} & No FORCE; predicates are part of the query \\
+  \tablerule
+  \code{DROP TABLE} & Policies disappear with it & Policy must go first (SCHEMABINDING) \\
+  \tablerule
+  DDL in batches & Transactional, freely combinable & \code{CREATE
+  FUNCTION/\allowbreak{}SCHEMA} alone in a batch:
+  \code{EXEC(\allowbreak{}N'.\allowbreak{}.\allowbreak{}.\allowbreak{}')} \\
+\end{datatable}
+
+\section{Activation through the provider builder}
+
+\begin{sourcecode}[Usage and Infrastructure/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
+services.AddAcmeTenancy<HttpTenantProvider>();                    // core package
+services.AddDbContext<ShopContext>((sp, o) => o
+    .UseSqlServer(connectionString, sql => sql.UseAcmeTenancy(sp)));
+
+public static SqlServerDbContextOptionsBuilder UseAcmeTenancy(
+    this SqlServerDbContextOptionsBuilder sqlServerOptionsBuilder,
+    string sessionKey = "TenantId",
+    string policySchema = "acme")
+{
+    // From the provider builder to the actual DbContextOptionsBuilder
+    var optionsBuilder =
+        ((IRelationalDbContextOptionsBuilderInfrastructure)sqlServerOptionsBuilder)
+        .OptionsBuilder;
+
+    var extension = optionsBuilder.Options.FindExtension<SqlServerTenancyOptionsExtension>()
+                    ?? new SqlServerTenancyOptionsExtension();
+    // ... validate and set settings ...
+    ((IDbContextOptionsBuilderInfrastructure)optionsBuilder)
+        .AddOrUpdateExtension(extension.WithSettings(settings));
+
+    return sqlServerOptionsBuilder;
+}
+\end{sourcecode}
+
+\section{Migrations: security policy instead of policy expression}
+
+For SQL Server, the convention only records the tenant column; the SQL is produced in the
+generator. The predicate function is the same for all tables and is created idempotently:
+
+\begin{sourcecode}[Migrations/\allowbreak{}Internal/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tenancy\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+protected virtual void CreatePolicy(string table, string? schema, string column,
+    MigrationCommandListBuilder builder)
+{
+    var function = Delimit(PredicateFunctionName, Settings.PolicySchema);
+    var target = Delimit(table, schema);
+    var predicate = $"{function}({Delimit(column)})";
+
+    // CREATE SCHEMA/FUNCTION must be alone in a batch -> EXEC(N'...')
+    Statement(builder, $"IF SCHEMA_ID({Literal(Settings.PolicySchema)}) IS NULL "
+        + $"EXEC({Literal($"CREATE SCHEMA {Delimit(Settings.PolicySchema)}")})");
+
+    var functionSql =
+        $"CREATE FUNCTION {function}(@TenantId uniqueidentifier) "
+        + "RETURNS TABLE WITH SCHEMABINDING AS RETURN SELECT 1 AS [Allowed] "
+        + $"WHERE @TenantId = CAST(SESSION_CONTEXT({Literal(Settings.SessionKey)}) "
+        + "AS uniqueidentifier)";
+    Statement(builder, $"IF OBJECT_ID({Literal(function)}, N'IF') IS NULL "
+        + $"EXEC({Literal(functionSql)})");
+
+    Statement(builder,
+        $"CREATE SECURITY POLICY {PolicyName(table)} "
+        + $"ADD FILTER PREDICATE {predicate} ON {target}, "
+        + $"ADD BLOCK PREDICATE {predicate} ON {target} AFTER INSERT, "
+        + $"ADD BLOCK PREDICATE {predicate} ON {target} AFTER UPDATE "
+        + "WITH (STATE = ON)");
+}
+
+protected override void Generate(DropTableOperation operation, IModel? model,
+    MigrationCommandListBuilder builder, bool terminate = true)
+{
+    DropPolicy(operation.Name, builder);       // SCHEMABINDING: the policy first
+    base.Generate(operation, model, builder, terminate);
+}
+\end{sourcecode}
+
+\code{SCHEMABINDING} only accepts two-part names. A table without an explicit schema is
+therefore qualified by the callers with the model's default schema or, failing that, with
+\code{dbo}; otherwise SQL Server rejects the security policy.
+
+\begin{important}[Nested SQL]
+  The \code{EXEC(\allowbreak{}N'.\allowbreak{}.\allowbreak{}.\allowbreak{}')} contains SQL
+  in a string literal that in turn contains literals. The nesting is produced exclusively
+  through the string mapping's \code{Generate\allowbreak{}Sql\allowbreak{}Literal}, which
+  doubles quotes correctly; identifiers go through \code{Delimit\allowbreak{}Identifier}.
+  Session key and schema are additionally validated during configuration.
+\end{important}
+
+\section{Run time: same flow, different command}
+
+\begin{sourcecode}[Runtime/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs]{csharp}
+public class SqlServerTenantSessionInterceptor : TenantSessionInterceptor
+{
+    public SqlServerTenantSessionInterceptor(ITenantProvider tenants)
+        : base(tenants)
+    {
+    }
+
+    protected override DbCommand CreateSessionCommand(
+        DbConnection connection, DbContext? context, TenantId? tenant)
+    {
+        var key = context?.GetService<ISqlServerTenancySingletonOptions>()
+                      .Settings.SessionKey
+                  ?? SqlServerTenancySettings.Default.SessionKey;
+
+        var command = connection.CreateCommand();
+        command.CommandText = "EXEC sp_set_session_context @key = @key, @value = @value";
+        AddParameter(command, "@key", key);
+        AddParameter(command, "@value", tenant?.Value);    // NULL: no rows visible
+        return command;
+    }
+}
+\end{sourcecode}
+
+\section{Deliberately not ported}
+
+The SQL Server package is a complete but leaner provider. Fluent API policies, the optional
+query filter, custom SQL nodes, aggregates, the snapshot code generator and scaffolding are
+missing there. That is a product decision, not a technical obstacle: each of these chapters
+can be transferred to SQL Server with the same patterns. The list belongs in the package's
+documentation so users know what to expect.
+
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Sql\allowbreak{}Server.\allowbreak{}Tests/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+[Fact]
+public async Task Block_predicate_rejects_rows_of_other_tenant()
+{
+    await using var db = ContextFor(TenantId.New());
+
+    var ex = await Assert.ThrowsAsync<SqlException>(() => db.Database.ExecuteSqlAsync(
+        $"INSERT INTO [Orders] ([TenantId], [Total]) VALUES ({Guid.NewGuid()}, 1)"));
+
+    Assert.Equal(33504, ex.Number);      // violation of a BLOCK PREDICATE
+}
+\end{sourcecode}
+
+As with PostgreSQL, the tests run on two levels: without a database for model, query and
+migration SQL, and with Testcontainers against a real SQL Server. There, the application
+connects with its own login instead of \code{sa} to reproduce the production situation.

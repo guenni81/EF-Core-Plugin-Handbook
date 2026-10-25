@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
-    Second provider package (chapter 42): shows what the core provides provider-independently
-    and what every provider has to implement itself. SQL Server implements RLS through security
-    policies with predicate functions and SESSION_CONTEXT.
+    Second provider package (chapter "A second provider: SQL Server"): shows what the core
+    provides provider-independently and what every provider has to implement itself. SQL Server
+    implements RLS through security policies with predicate functions and SESSION_CONTEXT.
   -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>

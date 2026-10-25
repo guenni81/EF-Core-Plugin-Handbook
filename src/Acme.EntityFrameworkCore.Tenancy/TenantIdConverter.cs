@@ -7,7 +7,8 @@ public sealed class TenantIdConverter : ValueConverter<TenantId, Guid>
 {
     /// <summary>
     /// Shared instance. Type mappings always use this instance so that the compiled model
-    /// generator recognizes the converter as "unchanged" (chapter 21).
+    /// generator recognizes the converter as "unchanged" (chapter "Compiled models, trimming
+    /// and NativeAOT").
     /// </summary>
     public static TenantIdConverter Instance { get; } = new();
 

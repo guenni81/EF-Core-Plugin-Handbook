@@ -30,7 +30,7 @@ public sealed class ScopedTenantProvider : ITenantProvider
 /// <summary>
 /// AddDbContextFactory registers the factory and the options as singletons by default. The
 /// options callback then receives the root provider, and a scoped tenant provider resolved
-/// there is not the one of the current scope (chapter 35).
+/// there is not the one of the current scope (chapter "Using the plugin in ASP.NET Core").
 /// </summary>
 public class DbContextFactoryTests
 {

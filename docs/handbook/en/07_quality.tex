@@ -1,0 +1,472 @@
+% ============================================================
+\setpartpreamble{\partintro
+  {Testing, versioning, packaging, and the checklist from A to Z.}
+  {
+    \item Chapter~\ref{ch:test-strategy}: Test strategy
+    \item Chapter~\ref{ch:versioning-and-compatibility}: Versioning and compatibility
+    \item Chapter~\ref{ch:packaging-and-documentation}: Packaging and documentation
+    \item Chapter~\ref{ch:the-checklist-from-a-to}: The checklist from A to Z
+  }}
+\part{Quality and delivery}\label{part:VII}
+
+% ------------------------------------------------------------
+\chapter{Test strategy}\label{ch:test-strategy}
+
+Plugins can be tested to a surprising extent without a database. Model building, type
+mappings, SQL translation, migration SQL and snapshots only need a connection string, no
+connection. The sample's test strategy has four levels:
+
+\begin{datatable}{H{0.78}H{1.70}H{0.52}}
+  \textbf{Level} & \textbf{Checks} & \textbf{Database} \\
+  \tablehead
+  Model tests & Annotations, conventions, validation, options, caching & no \\
+  \tablerule
+  SQL tests & Translations via \code{To\allowbreak{}Query\allowbreak{}String}, migration SQL
+  via differ and generator & no \\
+  \tablerule
+  Snapshot tests & Code generator as a string and as a round trip (Roslyn) & no \\
+  \tablerule
+  Integration tests & Real behavior: RLS, roles, interceptors (Testcontainers) & yes
+  (Docker) \\
+\end{datatable}
+
+\section{Test helpers}
+
+Tests build many contexts with different \code{On\allowbreak{}Model\allowbreak{}Creating}.
+Because EF caches the model per internal provider, every test must get its own provider;
+that is what
+\code{Enable\allowbreak{}Service\allowbreak{}Provider\allowbreak{}Caching(\allowbreak{}false)}
+is for:
+
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Test\allowbreak{}Model.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
+public static TestContext Create(
+    Action<TenancyOptionsBuilder>? tenancy = null,
+    Action<ModelBuilder>? model = null,
+    bool cacheServiceProvider = false,
+    Action<DbContextOptionsBuilder>? configure = null)
+{
+    var builder = new DbContextOptionsBuilder<TestContext>()
+        .UseNpgsql("Host=localhost;Database=unused")       // no connection needed
+        .UseAcmeTenancy(tenancy)
+        .EnableServiceProviderCaching(cacheServiceProvider);
+    configure?.Invoke(builder);
+    return new TestContext(builder.Options, model);
+}
+
+public static IReadOnlyList<string> MigrationSql(DbContext? source, DbContext target)
+{
+    var operations = target.GetService<IMigrationsModelDiffer>().GetDifferences(
+        source?.GetService<IDesignTimeModel>().Model.GetRelationalModel(),
+        target.GetService<IDesignTimeModel>().Model.GetRelationalModel());
+
+    return target.GetService<IMigrationsSqlGenerator>()
+        .Generate(operations, target.GetService<IDesignTimeModel>().Model)
+        .Select(c => c.CommandText.Trim()).ToList();
+}
+\end{sourcecode}
+
+\begin{important}[Use the design-time model]
+  Always use the \textbf{design-time model} for migration tests
+  (\code{IDesign\allowbreak{}Time\allowbreak{}Model}). \code{context.\allowbreak{}Model} is
+  the lean runtime model; annotations that the annotation provider only passes on at design
+  time are missing from it.
+\end{important}
+
+\begin{note}[Why not SQLite or InMemory?]
+  Tests against SQLite or the InMemory provider are tempting because they need no Docker.
+  For a plugin they prove little: InMemory is not relational, so type mappings, translators
+  and migrations never run; SQLite has a different SQL dialect, other type mappings and no
+  Row Level Security. A provider-specific plugin is tested with its own provider: without a
+  database (connection string only) for everything up to the SQL text, and against the real
+  database for behavior.
+\end{note}
+
+\section{What is tested}
+
+\begin{datatable}{H{0.75}H{1.25}}
+  \textbf{Test} & \textbf{Ensures} \\
+  \tablehead
+  Caching with different options & Two contexts with different settings get different models
+  (hash mistake from chapter~\ref{ch:the-options-extension}). \\
+  \tablerule
+  Invalid setting names & Validation including an injection attempt. \\
+  \tablerule
+  Type mapping without configuration & \code{Tenant\allowbreak{}Id} becomes \code{uuid};
+  literal format; a different column type is not claimed. \\
+  \tablerule
+  \code{Current\allowbreak{}Tenant(\allowbreak{})} via
+  \code{To\allowbreak{}Query\allowbreak{}String} & Translation, and that nothing is
+  evaluated client-side (chapter~\ref{ch:preventing-client-side-evaluation}). \\
+  \tablerule
+  Explicit beats convention & An own policy with the same name is kept; the Fluent API
+  overrides the attribute. \\
+  \tablerule
+  Warning as error & The opt-out warning becomes an error via
+  \code{Configure\allowbreak{}Warnings}. \\
+  \tablerule
+  Validation & RLS on a derived type and invalid policies throw while building the model. \\
+  \tablerule
+  No phantom migration & An unchanged model produces not a single operation. \\
+  \tablerule
+  Migration SQL & Initial, change (DROP + CREATE), opt-out, custom operations. \\
+  \tablerule
+  SaveChanges logic & Setting, foreign tenant, reassignment, no tenant. \\
+  \tablerule
+  Snapshot & Fluent API instead of annotations; round trip without differences. \\
+  \tablerule
+  RLS in PostgreSQL & Isolation, no rows without a tenant, WITH CHECK applies. \\
+  \tablerule
+  Edge cases
+  (chapters~\ref{ch:bulk-operations-and-the-limits}--\ref{ch:advanced-migrations}) &
+  ExecuteUpdate and raw SQL against RLS, value generation, JSON columns, compiled model,
+  idempotent script. \\
+  \tablerule
+  Composability & Decorator around the migrations generator
+  (chapter~\ref{ch:registering-services}), EFCore.NamingConventions in both orders
+  (chapter~\ref{ch:conventions}). \\
+  \tablerule
+  Annotation format & Serialized policies stay identical; tolerant reading
+  (chapter~\ref{ch:versioning-and-compatibility}). \\
+  \tablerule
+  Context lifetimes & DbContext factory, background jobs, open connections
+  (chapters~\ref{ch:interceptors}, \ref{ch:using-the-plugin-in-asp}). \\
+  \tablerule
+  Cross-tenant access & Reporting role reads all tenants but cannot write; the app role
+  cannot switch RLS off (chapter~\ref{ch:row-level-security-in-production}). \\
+\end{datatable}
+
+\section{The snapshot round trip}
+
+The most valuable test for design-time code: generate the snapshot, compile it with Roslyn,
+build the model from it and diff it against the original. Any discrepancy between code
+generator and Fluent API would otherwise produce a phantom migration for every user:
+
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Snapshot\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+[Fact]
+public void Snapshot_roundtrip_produces_no_differences()
+{
+    using var ctx = CreateContext();
+    var snapshot = Compile(GenerateSnapshot(ctx));
+
+    // As in EF's migrator: finalize and initialize
+    var model = snapshot.Model;
+    if (model is IMutableModel mutable) model = mutable.FinalizeModel();
+    model = ctx.GetService<IModelRuntimeInitializer>()
+        .Initialize(model, designTime: true, validationLogger: null);
+
+    var differences = ctx.GetService<IMigrationsModelDiffer>().GetDifferences(
+        model.GetRelationalModel(), ctx.DesignModel().GetRelationalModel());
+
+    Assert.Empty(differences);
+}
+\end{sourcecode}
+
+\section{Integration tests with Testcontainers}
+
+The real security behavior can only be verified against PostgreSQL. The fixture starts a
+container, creates the schema with \code{Ensure\allowbreak{}Created} (including RLS,
+chapter~\ref{ch:how-migrations-work}), executes the custom migration operations for real and
+connects the tests with a restricted role:
+
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Postgres\allowbreak{}Fixture.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+await owner.Database.EnsureCreatedAsync();          // RLS, policies, index
+
+var commands = owner.GetService<IMigrationsSqlGenerator>().Generate(
+[
+    new CreateApplicationRoleOperation { Name = AppRole, CanLogin = true },
+    new GrantTablePrivilegesOperation { Role = AppRole },
+]);
+await owner.GetService<IMigrationCommandExecutor>().ExecuteNonQueryAsync(
+    commands, owner.GetService<IRelationalConnection>(),
+    new MigrationExecutionState(), commitTransaction: true);
+\end{sourcecode}
+
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+[Fact]
+public async Task Database_rejects_rows_of_other_tenant()
+{
+    // Bypass the interceptor: direct SQL. The policy's WITH CHECK must apply.
+    var tenants = new MutableTenantProvider { CurrentTenantId = TenantId.New() };
+    await using var db = _fixture.CreateAppContext(tenants);
+
+    var ex = await Assert.ThrowsAsync<PostgresException>(() => db.Database.ExecuteSqlAsync(
+        $"INSERT INTO \"Orders\" (\"TenantId\", \"Total\") VALUES ({Guid.NewGuid()}, 1)"));
+
+    Assert.Equal(PostgresErrorCodes.InsufficientPrivilege, ex.SqlState);
+}
+\end{sourcecode}
+
+\begin{tip}
+  For providers and very deep plugins, EF Core provides the \textbf{specification tests}
+  (\code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Relational.\allowbreak{}Specification.\allowbreak{}Tests}).
+  This is the same test suite EF and the providers themselves are tested against. The
+  NetTopologySuite plugin in the EF repository shows how a plugin uses it.
+\end{tip}
+
+% ------------------------------------------------------------
+\chapter{Versioning and compatibility}\label{ch:versioning-and-compatibility}
+
+\section{Align versions with EF Core}
+
+The plugin's major version follows EF Core's: version 10.x for EF Core 10. Users immediately
+see which combination fits, and the plugin can adopt breaking changes with every EF major
+version. Dependencies are limited to this major version:
+
+\begin{sourcecode}[Directory.\allowbreak{}Packages.\allowbreak{}props (\allowbreak{}excerpt)]{xml}
+<PackageVersion Include="Microsoft.EntityFrameworkCore" Version="[10.0.0,11.0.0)" />
+<PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="[10.0.0,11.0.0)" />
+\end{sourcecode}
+
+\section{Dealing with internal APIs}
+
+Plugins rarely get by without internal APIs: the sample derives from
+\code{Npgsql\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator},
+\code{Npgsql\allowbreak{}Annotation\allowbreak{}Provider} and
+\code{Npgsql\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator} and uses
+\code{Npgsql\allowbreak{}Options\allowbreak{}Extension}. Such types can change even in minor
+versions. EF reports their use with warning \textbf{EF1001}.
+
+\begin{datatable}{H{0.80}H{1.20}}
+  \textbf{Measure} & \textbf{Effect} \\
+  \tablehead
+  Look for a public alternative & Every internal API avoided is one risk less. \\
+  \tablerule
+  Bundle internal access & A few classes encapsulate it; a break affects one place. \\
+  \tablerule
+  Set
+  \code{<\allowbreak{}No\allowbreak{}Warn>EF1001<\allowbreak{}/\allowbreak{}No\allowbreak{}Warn>}
+  deliberately & Project-wide and documented, not scattered per line. \\
+  \tablerule
+  Limit the version range & Prevents users from getting untested combinations. \\
+  \tablerule
+  CI against previews & A build against the next EF preview shows breaks months earlier. \\
+  \tablerule
+  Round trip and SQL tests & Detect behavior changes the compiler does not see. \\
+\end{datatable}
+
+\begin{note}[Multi-targeting]
+  Supporting several EF major versions at once is possible through multi-targeting, but
+  doubles test effort and conditional compilation. For most plugins, one release branch per
+  EF major version is simpler.
+\end{note}
+
+\section{Evolving annotation formats}
+
+Everything a plugin writes into annotations ends up in its users' model snapshots, often
+long before the next upgrade. If a new plugin version serializes the same configuration
+differently (an additional JSON property, a different order, another enum spelling), the
+differ compares two different strings. Every user then gets a migration that drops and
+recreates every policy without any actual change. The serialized format is therefore part of
+the public API, just like the methods.
+
+\begin{datatable}{H{0.79}H{1.21}}
+  \textbf{Rule} & \textbf{How} \\
+  \tablehead
+  Pin the format with a test & A golden-value test compares the serialized form character by
+  character. \\
+  \tablerule
+  Read tolerantly & Missing properties become defaults, unknown ones are ignored (the
+  default behavior of System.Text.Json). \\
+  \tablerule
+  Only add, and do not write defaults & New optional properties with
+  \code{[Json\allowbreak{}Ignore(\allowbreak{}Condition =
+  When\allowbreak{}Writing\allowbreak{}Default)]} keep existing annotations identical. \\
+  \tablerule
+  Real format changes only with a major version & Document them, ideally together with the
+  EF major upgrade, when users expect migrations anyway. \\
+\end{datatable}
+
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Annotation\allowbreak{}Format\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+[Fact]
+public void Serialized_policy_format_is_stable()
+{
+    var policy = new RlsPolicy("support_read", PolicyCommand.Select, Permissive: false,
+        Roles: ["shop_support"], Using: "true", WithCheck: null);
+
+    // Golden value: changing it is a breaking change for existing snapshots
+    Assert.Equal(
+        """{"Name":"support_read","Command":"Select","Permissive":false"""
+        + ""","Roles":["shop_support"],"Using":"true","WithCheck":null}""",
+        policy.Serialize());
+}
+\end{sourcecode}
+
+Two further tests check tolerant reading in both directions. The snapshot round trip from
+chapter~\ref{ch:test-strategy} complements them: the round trip shows that the current code
+generator and Fluent API agree, the golden value shows that the next version still agrees
+with the snapshots users already have.
+
+% ------------------------------------------------------------
+\chapter{Packaging and documentation}\label{ch:packaging-and-documentation}
+
+Shared settings live in \code{Directory.\allowbreak{}Build.\allowbreak{}props}, package
+versions centrally in \code{Directory.\allowbreak{}Packages.\allowbreak{}props} (Central
+Package Management):
+
+\begin{sourcecode}[Directory.\allowbreak{}Build.\allowbreak{}props (\allowbreak{}shortened)]{xml}
+<PropertyGroup>
+  <TargetFramework>net10.0</TargetFramework>
+  <Nullable>enable</Nullable>
+  <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  <NoWarn>$(NoWarn);EF1001</NoWarn>
+  <Deterministic>true</Deterministic>
+</PropertyGroup>
+<PropertyGroup>
+  <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  <PackageReadmeFile>README.md</PackageReadmeFile>
+  <VersionPrefix>10.0.0</VersionPrefix>
+  <IncludeSymbols>true</IncludeSymbols>
+  <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  <PublishRepositoryUrl>true</PublishRepositoryUrl>      <!-- SourceLink -->
+  <EmbedUntrackedSources>true</EmbedUntrackedSources>
+</PropertyGroup>
+\end{sourcecode}
+
+\begin{datatable}{H{0.70}H{1.30}}
+  \textbf{Element} & \textbf{Why} \\
+  \tablehead
+  \code{Generate\allowbreak{}Documentation\allowbreak{}File} & XML docs in the package:
+  users see explanations in the IDE. \\
+  \tablerule
+  \code{Is\allowbreak{}Aot\allowbreak{}Compatible} & Analyzers report AOT and trimming
+  problems at build time. \\
+  \tablerule
+  SourceLink, \code{.\allowbreak{}snupkg} & Users can debug into the plugin's code. Built
+  into the SDK since .NET 8. \\
+  \tablerule
+  README in the package & Shown on nuget.org; minimal example and compatibility. \\
+  \tablerule
+  CHANGELOG & Mark breaking changes clearly, especially on EF major upgrades. \\
+  \tablerule
+  \code{Internals\allowbreak{}Visible\allowbreak{}To} & Tests reach internal logic without
+  public API. \\
+  \tablerule
+  Package names & Core without provider, provider packages with a suffix
+  (\code{.\allowbreak{}Postgre\allowbreak{}SQL},
+  \code{.\allowbreak{}Sql\allowbreak{}Server}). \\
+\end{datatable}
+
+Besides the API docs, the documentation above all needs the things users do not see in the
+code: which single services are replaced (composability), which event IDs exist, which
+limitations apply (pooling) and which security assumptions hold (database roles).
+
+% ------------------------------------------------------------
+\chapter{The checklist from A to Z}\label{ch:the-checklist-from-a-to}
+
+For every new plugin, in the order of development:
+
+\section{Architecture}
+
+\begin{checklist}
+  \item Decide the level: helpers, model helpers, real plugin or provider?
+  \item Separate core and provider packages; types for entity assemblies go into the core.
+  \item For every extension point, look for a plugin interface first, replace only then.
+\end{checklist}
+
+\section{Options}
+
+\begin{checklist}
+  \item Extension immutable with copy constructor and virtual Clone.
+  \item All model-relevant options in the hash, nothing that varies per context.
+  \item Validate for preconditions (provider, combinations).
+  \item Maintain LogFragment and PopulateDebugInfo.
+  \item Use method in the namespace Microsoft.EntityFrameworkCore, generic and non-generic.
+\end{checklist}
+
+\section{Services}
+
+\begin{checklist}
+  \item Registration through the services builder (lifetimes from EF's table).
+  \item Decorate single services where the public interface suffices
+    (chapter~\ref{ch:registering-services}).
+  \item Otherwise Replace, and offer the logic publicly and virtually.
+  \item ISingletonOptions for singleton services, registered twice.
+  \item App dependencies via AddInterceptors, document pooling behavior.
+\end{checklist}
+
+\section{Model}
+
+\begin{checklist}
+  \item Annotations with a prefix, simple values only, no stored defaults.
+  \item Implement the Fluent API non-generically, delegate generically.
+  \item Convention builder overloads for ConfigurationSource.
+  \item Conventions at ModelFinalizing when they depend on the finished model.
+  \item Attributes in the core package, attribute conventions in the provider package.
+  \item Validation as IModelFinalizedConvention: throw on errors, warn on questionable
+    cases.
+\end{checklist}
+
+\section{Type mappings}
+
+\begin{checklist}
+  \item Protected parameter constructor and Clone override.
+  \item Literal generation for model and provider type.
+  \item Public static Default property, shared converter instance.
+  \item JsonValueReaderWriter with Instance and ConstructorExpression.
+\end{checklist}
+
+\section{Queries}
+
+\begin{checklist}
+  \item EF.Functions methods in the core, translation in the provider package.
+  \item Translators: null for foreign methods, correct nullability, set type mappings.
+  \item IEvaluatableExpressionFilterPlugin for methods without data reference.
+  \item Never insert run-time values at translation time (query cache, AOT).
+\end{checklist}
+
+\section{Run time}
+
+\begin{checklist}
+  \item Implement interceptors synchronously and asynchronously.
+  \item Singleton interceptors stateless and thread-safe.
+  \item Own event IDs in an own range, EventDefinitions cached.
+  \item Security-relevant cases as warnings, escalatable via ConfigureWarnings.
+  \item Where hooks cannot run, offer an explicit API (e.g. ApplyTenantSession).
+\end{checklist}
+
+\section{Migrations \& design time}
+
+\begin{checklist}
+  \item Declarative via annotation provider (design time only) and SQL generator.
+  \item Escape identifiers, literals via type mappings, validate self-generated SQL.
+  \item Custom operations idempotent, extensions in the migrations namespace.
+  \item DesignTimeServicesReference with forProvider; code generator removes annotations.
+  \item Check compiled models: Default, Instance, runtime annotations.
+\end{checklist}
+
+\section{Quality}
+
+\begin{checklist}
+  \item Model, SQL, snapshot round trip and integration tests.
+  \item Caching test with different options; test for no phantom migration.
+  \item Version range per EF major, CI against previews, EF1001 deliberately.
+  \item XML docs, SourceLink, symbols, README, CHANGELOG, limitations documented.
+  \item Pin serialized annotation formats with golden-value tests.
+  \item Test together with popular plugins (naming conventions, decorators).
+\end{checklist}
+
+\section{Advanced (part~\ref{part:VIII})}
+
+\begin{checklist}
+  \item Document paths that bypass interceptors (ExecuteUpdate, raw SQL).
+  \item Configure value generators with HasValueGeneratorFactory(Type) (compiled models).
+  \item Check conventions for complex types and JSON columns.
+  \item Document and test the order of custom migration operations.
+  \item Consider idempotent scripts and suppressTransaction.
+  \item Document operational assumptions (roles, pooling, transaction pooling).
+  \item Document context lifetimes: factories, background jobs, open connections.
+  \item Cross-tenant access only through separate roles, never through app switches.
+  \item Measure hot paths (interceptors), do not guess.
+  \item CI with preview build and public API analyzer.
+\end{checklist}
+
+\section{Deep extensions (part~\ref{part:IX})}
+
+\begin{checklist}
+  \item Custom SQL nodes: VisitChildren, Update, Quote, Print, Equals/GetHashCode.
+  \item Handle custom nodes in the SQL generator AND in the nullability processor.
+  \item Aggregates: handle predicates, DISTINCT and empty sets deliberately.
+  \item Choose runtime annotations deliberately, filter design-time annotations.
+  \item Scaffolding: read the plugin's schema objects from the database.
+  \item Provider-neutral building blocks into the core, differences into provider packages.
+\end{checklist}

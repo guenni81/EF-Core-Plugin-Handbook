@@ -9,7 +9,7 @@ namespace Microsoft.EntityFrameworkCore;
 /// <remarks>
 /// The methods only serve as markers in LINQ expression trees and are never executed. The
 /// <see cref="TenancyDbFunctionsAttribute"/> keeps EF from evaluating them on the client
-/// (see chapter 13 of the handbook).
+/// (see chapter "Preventing client-side evaluation" of the handbook).
 /// </remarks>
 [TenancyDbFunctions]
 public static class TenancyPgDbFunctionsExtensions

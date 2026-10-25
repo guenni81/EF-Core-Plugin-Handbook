@@ -1,0 +1,204 @@
+% Layout of the EF Core Plugin Handbook (both editions).
+%
+% Provides fonts, colors, page style, syntax-highlighted code blocks (minted), callout
+% boxes, tables, flow diagrams, checklists and the title block. The chapter files in de/
+% and en/ only use the commands and environments defined here. Compile with LuaLaTeX.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{handbook}[2026/10/25 EF Core Plugin Handbook layout]
+
+% ---------------------------------------------------------------- Page & fonts
+\RequirePackage[a4paper, hmargin=24mm, top=26mm, bottom=24mm, headsep=6mm,
+                footskip=10mm]{geometry}
+\RequirePackage{fontspec}
+\setmainfont{DejaVuSans}[Path=fonts/, Extension=.ttf, Scale=0.92,
+  BoldFont=*-Bold, ItalicFont=*-Oblique, BoldItalicFont=*-BoldOblique]
+\setsansfont{DejaVuSans}[Path=fonts/, Extension=.ttf, Scale=0.92,
+  BoldFont=*-Bold, ItalicFont=*-Oblique, BoldItalicFont=*-BoldOblique]
+\setmonofont{DejaVuSansMono}[Path=fonts/, Extension=.ttf, Scale=0.92,
+  BoldFont=*-Bold, ItalicFont=*-Oblique, BoldItalicFont=*-Bold, HyphenChar=None]
+\linespread{1.18}
+\RequirePackage[protrusion=true, expansion=true]{microtype}
+\RequirePackage[newcommands]{ragged2e}
+\setlength{\RaggedRightRightskip}{0pt plus 5em}
+\setlength{\emergencystretch}{3em}
+\RaggedRight  % matches the original layout; long identifiers make justified text gappy
+
+% ---------------------------------------------------------------- Version
+% Edition of the book itself, independent of the package versions (EF Core 10, 10.0.x).
+% Raise it when a changed edition is published (see README.md, "Edition").
+\newcommand{\handbookversion}{1.0}
+
+% ---------------------------------------------------------------- Colors
+\RequirePackage[table]{xcolor}
+\definecolor{ink}{HTML}{1F2328}
+\definecolor{muted}{HTML}{5B6470}
+\definecolor{accent}{HTML}{1D4E89}
+\definecolor{accentlight}{HTML}{E8F0FA}
+\definecolor{codebg}{HTML}{F6F8FA}
+\definecolor{codeborder}{HTML}{8AA9CF}
+\definecolor{rule}{HTML}{D0D7DE}
+\definecolor{inlinecode}{HTML}{8A1538}
+\definecolor{importantbg}{HTML}{FFF7E6}\definecolor{importantfg}{HTML}{D99A00}
+\definecolor{tipbg}{HTML}{EAF5EE}\definecolor{tipfg}{HTML}{2E8B57}
+\definecolor{notebg}{HTML}{E8F0FA}\definecolor{notefg}{HTML}{1D4E89}
+\AtBeginDocument{\color{ink}}
+
+% ---------------------------------------------------------------- Headings & TOC
+\setcounter{secnumdepth}{\chapternumdepth}   % sections are not numbered
+\setcounter{tocdepth}{\chaptertocdepth}      % TOC: parts and chapters
+\addtokomafont{disposition}{\color{ink}}
+\addtokomafont{chapter}{\color{accent}\LARGE}
+\addtokomafont{section}{\large}
+\addtokomafont{part}{\Huge}
+\addtokomafont{partnumber}{\color{accent}\large}
+\addtokomafont{partentry}{\color{accent}}
+\RedeclareSectionCommand[beforeskip=0pt, afterskip=14pt]{chapter}
+\RedeclareSectionCommand[beforeskip=12pt plus 3pt, afterskip=5pt]{section}
+\renewcommand*{\chapterformat}{\thechapter\enskip}
+\renewcommand*{\raggedchapter}{\raggedright}
+\KOMAoptions{numbers=noenddot}
+\RedeclareSectionCommand[tocnumwidth=2.2em]{chapter}
+\RedeclareSectionCommand[tocnumwidth=3em]{part}
+\addtokomafont{chapterentry}{\mdseries}
+\renewcommand*{\@pnumwidth}{2.8em}  % three-digit page numbers in the TOC
+
+% Part pages: \setpartpreamble{\partintro{subtitle}{\item chapter ...}} before \part
+\newcommand{\partintro}[2]{%
+  \vspace*{10mm}\noindent\begin{minipage}{\textwidth}\RaggedRight
+  {\large\color{muted}#1\par}%
+  \begin{partcontents}#2\end{partcontents}\end{minipage}}
+\newenvironment{partcontents}
+  {\begin{itemize}[label={›}, leftmargin=1.5em, itemsep=1pt, topsep=12pt]}
+  {\end{itemize}}
+
+% ---------------------------------------------------------------- Header & footer
+\RequirePackage[headsepline=0.6pt]{scrlayer-scrpage}
+\RequirePackage{lastpage}
+\setkomafont{pageheadfoot}{\footnotesize\color{muted}}
+\setkomafont{pagenumber}{}
+\addtokomafont{headsepline}{\color{rule}}
+\clearpairofpagestyles
+\ihead{\handbookheadleft\ · \handbookeditionlabel\ \handbookversion}
+\ohead{Acme.EntityFrameworkCore.Tenancy · EF Core 10}
+\cfoot*{\handbookpagelabel}
+\renewcommand*{\partpagestyle}{empty}
+\renewcommand*{\chapterpagestyle}{scrheadings}
+
+% ---------------------------------------------------------------- Lists, tables, links
+\RequirePackage{enumitem}
+\RequirePackage{etoolbox}
+\RequirePackage{xltabular}
+\RequirePackage{array}
+\RequirePackage{tikz}
+\usetikzlibrary{positioning, calc, arrows.meta}
+\RequirePackage[most, minted]{tcolorbox}
+\RequirePackage{hyperref}
+\hypersetup{colorlinks, linkcolor=accent, urlcolor=accent, pdfauthor={guenni81},
+  bookmarksnumbered, pdfdisplaydoctitle}
+
+% ---------------------------------------------------------------- Inline code
+\newcommand{\code}[1]{\leavevmode{\ttfamily\color{inlinecode}#1}}
+
+% ---------------------------------------------------------------- Code blocks
+% \begin{sourcecode}[label]{language} ... \end{sourcecode}; the label names the source file.
+% Code lines may be at most 94 characters (checked by check_code.py).
+\newcommand{\codelabel}[1]{%
+  \par\addvspace{4pt}\noindent{\ttfamily\fontsize{7.2}{10}\selectfont\color{muted}#1}%
+  \par\nobreak\vspace{1pt}}
+\NewTCBListing{sourcecode}{ O{} m }{%
+  listing engine=minted, minted language=#2, listing only, breakable,
+  minted options={fontsize=\fontsize{7.3}{10.3}\selectfont, tabsize=4, breaklines=false,
+                  style=vs},
+  enhanced, colback=codebg, boxrule=0pt, frame hidden, sharp corners,
+  borderline west={2.5pt}{0pt}{codeborder},
+  left=11pt, right=5pt, top=5pt, bottom=5pt, before skip=0pt, after skip=9pt,
+  before upper={\color{ink}},
+  % "before nobreak" is used instead of "before" directly after a heading
+  before={\ifx\relax#1\relax\par\addvspace{6pt}\else\codelabel{#1}\fi},
+  before nobreak={\ifx\relax#1\relax\par\nobreak\else\codelabel{#1}\fi}}
+
+% ---------------------------------------------------------------- Callout boxes
+% \begin{important|tip|note}[optional title] ... \end{...}
+\newcommand{\handbookcallout}[2]{%
+  \NewTColorBox{#1}{ O{\csname handbook#1title\endcsname} }{%
+    enhanced, breakable, colback=#1bg, boxrule=0pt, frame hidden, sharp corners,
+    borderline west={3pt}{0pt}{#1fg}, left=12pt, right=10pt, top=8pt, bottom=8pt,
+    before skip=6pt, after skip=12pt, parbox=false,
+    before upper={\RaggedRight\setlength{\parskip}{4pt}%
+      {\bfseries\color{#1fg}##1}\par\nopagebreak},
+    fontupper=\small}}
+\handbookcallout{important}{}
+\handbookcallout{tip}{}
+\handbookcallout{note}{}
+
+% ---------------------------------------------------------------- Tables
+% \begin{datatable}{H{w1}H{w2}...}
+%   \textbf{head} & ... \\ \tablehead row \\ \tablerule row \\ ... \end{datatable}
+% The widths are relative; they must add up to the number of columns.
+\newcolumntype{H}[1]{>{\hsize=#1\hsize\RaggedRight\arraybackslash}X}
+\newenvironment{datatable}[1]
+  {\par\addvspace{4pt}\small\setlength{\tabcolsep}{6pt}%
+   \renewcommand{\arraystretch}{1.25}\arrayrulecolor{rule}%
+   \xltabular{\linewidth}{#1}\rowcolor{accentlight}}
+  {\endxltabular\par\addvspace{6pt}}
+\newcommand{\tablehead}{\arrayrulecolor{accent}\noalign{\global\arrayrulewidth=0.8pt}\hline
+  \noalign{\global\arrayrulewidth=0.4pt}\arrayrulecolor{rule}\endhead}
+\newcommand{\tablerule}{\hline}
+
+% ---------------------------------------------------------------- Flow diagrams
+% \begin{flowdiagram} \flowstep{stage}{description} ... \end{flowdiagram}
+\tikzset{
+  flowbox/.style={draw=codeborder, fill=accentlight, rounded corners=3pt, line width=0.6pt,
+    text width=0.36\linewidth, align=center, font=\small\bfseries\color{accent},
+    inner sep=5pt, minimum height=8mm},
+  flowdesc/.style={text width=0.54\linewidth, align=left, font=\small, inner sep=2pt,
+    minimum height=8mm},
+}
+\newcounter{flowstep}
+\newenvironment{flowdiagram}
+  {\par\addvspace{4pt}\noindent\setcounter{flowstep}{0}\begin{tikzpicture}}
+  {\end{tikzpicture}\par\addvspace{10pt}}
+\newcommand{\flowstep}[2]{%
+  \stepcounter{flowstep}%
+  \ifnum\value{flowstep}=1
+    \coordinate (flowtop) at (0,0);%
+  \else
+    \coordinate (flowtop) at ($(current bounding box.south) - (0,6mm)$);%
+  \fi
+  \node[flowdesc, anchor=north west] (d\arabic{flowstep})
+    at ($(flowtop -| 0,0) + (0.36\linewidth + 18pt, 0)$) {#2};
+  \node[flowbox] (f\arabic{flowstep}) at ($(0.18\linewidth + 5pt, 0) + (0,0 |- d\arabic{flowstep}.center)$) {#1};
+  \draw[rule, line width=0.6pt] (f\arabic{flowstep}.east) -- (d\arabic{flowstep}.west);
+  \ifnum\value{flowstep}>1
+    \draw[accent, line width=1pt, -{Triangle[length=5pt, width=6pt]}]
+      (f\the\numexpr\value{flowstep}-1\relax.south) -- (f\arabic{flowstep}.north);
+  \fi}
+
+% ---------------------------------------------------------------- Checklist
+\newenvironment{checklist}
+  {\begin{itemize}[label={☐}, leftmargin=1.6em, itemsep=2pt, topsep=4pt]}
+  {\end{itemize}}
+
+% ---------------------------------------------------------------- Title block
+\newcommand{\handbooktitle}[3]{%
+  \thispagestyle{empty}%
+  \noindent{\footnotesize\bfseries\color{accent}\MakeUppercase{#1}}\par\vspace{6pt}
+  \noindent{\fontsize{22}{28}\selectfont\bfseries #2}\par\vspace{8pt}
+  \noindent{\large\color{muted}#3}\par\vspace{10pt}}
+\newenvironment{handbookmeta}
+  {\par\noindent{\color{rule}\rule{\linewidth}{0.6pt}}\par\vspace{2pt}\small
+   \renewcommand{\arraystretch}{1.25}%
+   \tabularx{\linewidth}{@{}>{\leavevmode\bfseries\color{muted}}p{0.18\linewidth}
+                                >{\RaggedRight\arraybackslash}X@{}}}
+  {\endtabularx\par\vspace{2pt}\noindent{\color{rule}\rule{\linewidth}{0.6pt}}\par
+   \vspace{10pt}}
+
+% ---------------------------------------------------------------- Language texts
+\newcommand{\handbooklanguage}[1]{%
+  \ifstrequal{#1}{ngerman}{%
+    \def\handbookimportanttitle{Wichtig}\def\handbooktiptitle{Tipp}%
+    \def\handbooknotetitle{Hinweis}\def\handbookeditionlabel{Ausgabe}%
+    \def\handbookpagelabel{Seite \thepage\ von \pageref*{LastPage}}}{%
+    \def\handbookimportanttitle{Important}\def\handbooktiptitle{Tip}%
+    \def\handbooknotetitle{Note}\def\handbookeditionlabel{Edition}%
+    \def\handbookpagelabel{Page \thepage\ of \pageref*{LastPage}}}}

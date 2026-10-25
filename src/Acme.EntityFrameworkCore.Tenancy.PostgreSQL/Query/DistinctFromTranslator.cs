@@ -11,7 +11,8 @@ namespace Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query;
 /// <summary>EF.Functions.Is[Not]DistinctFrom(a, b) -&gt; DistinctFromExpression.</summary>
 /// <remarks>
 /// Produces the custom <see cref="DistinctFromExpression"/> node, because the operator cannot be
-/// expressed with EF's built-in SQL expression types (see chapter 37 of the handbook).
+/// expressed with EF's built-in SQL expression types (see chapter "Custom SQL expression nodes"
+/// of the handbook).
 /// </remarks>
 public class DistinctFromTranslator : IMethodCallTranslator
 {

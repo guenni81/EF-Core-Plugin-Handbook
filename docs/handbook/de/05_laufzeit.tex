@@ -1,0 +1,427 @@
+% ============================================================
+\setpartpreamble{\partintro
+  {Eingreifen beim Speichern, Verbinden und Ausführen, und Ereignisse sauber melden.}
+  {
+    \item Kapitel~\ref{ch:interceptors}: Interceptors
+    \item Kapitel~\ref{ch:diagnostics-and-logging}: Diagnose und Logging
+  }}
+\part{Laufzeit}\label{part:V}
+
+% ------------------------------------------------------------
+\chapter{Interceptors}\label{ch:interceptors}
+
+Interceptors sind Haken in EFs Laufzeit: vor und nach Befehlen, Verbindungen, Transaktionen,
+SaveChanges und der Materialisierung. Sie können beobachten, Werte ändern, Operationen
+unterdrücken oder Ergebnisse ersetzen.
+
+\begin{datatable}{H{1.00}H{1.50}H{0.50}}
+  \textbf{Interface} & \textbf{Ereignisse} & \textbf{Lebensdauer} \\
+  \tablehead
+  \code{ISave\allowbreak{}Changes\allowbreak{}Interceptor} & SavingChanges, SavedChanges,
+  SaveChangesFailed, ThrowingConcurrencyException & Scoped \\
+  \tablerule
+  \code{IDb\allowbreak{}Connection\allowbreak{}Interceptor} & Öffnen, Schließen, Erzeugen
+  der Verbindung & Scoped \\
+  \tablerule
+  \code{IDb\allowbreak{}Command\allowbreak{}Interceptor} & Erzeugen und Ausführen von
+  Befehlen, DataReader & Scoped \\
+  \tablerule
+  \code{IDb\allowbreak{}Transaction\allowbreak{}Interceptor} & Beginnen, Commit, Rollback,
+  Savepoints & Scoped \\
+  \tablerule
+  \code{IIdentity\allowbreak{}Resolution\allowbreak{}Interceptor} & Konflikte beim Anhängen
+  bereits getrackter Entitäten & Scoped \\
+  \tablerule
+  \code{IMaterialization\allowbreak{}Interceptor} & Erzeugen und Initialisieren von
+  Entitäten & \textbf{Singleton} \\
+  \tablerule
+  \code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor} & LINQ-Ausdruck vor der
+  Kompilierung & \textbf{Singleton} \\
+\end{datatable}
+
+Die beiden Singleton-Interceptors implementieren \code{ISingleton\allowbreak{}Interceptor}.
+Sie werden einmal pro internem Provider verwendet, nicht pro Context, und müssen deshalb
+zustandslos und thread-sicher sein.
+
+\section{Zwei Wege der Registrierung}
+
+\begin{datatable}{H{0.96}H{1.20}H{0.84}}
+  \textbf{Weg} & \textbf{Eigenschaften} & \textbf{Wann} \\
+  \tablehead
+  \code{options\allowbreak{}Builder.\allowbreak{}Add\allowbreak{}Interceptors(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}
+  & Instanzen aus der Anwendung; können App-Dienste nutzen; pro Context verschieden &
+  Interceptors mit App-Abhängigkeiten (Mandant, Benutzer, Uhr) \\
+  \tablerule
+  \code{services.\allowbreak{}Add\allowbreak{}Scoped<\allowbreak{}IInterceptor,\allowbreak{}
+  X>(\allowbreak{})} in \code{Apply\allowbreak{}Services} & Im internen Provider aufgelöst
+  („injected interceptors“); haben Zugriff auf EF-Dienste, nicht auf App-Dienste & Rein
+  technische Interceptors ohne App-Abhängigkeit \\
+\end{datatable}
+
+Beide Wege kombiniert EF zu einer Liste. Das Beispiel nutzt den ersten, weil beide
+Interceptors den Mandanten der Anwendung brauchen
+(Kapitel~\ref{ch:public-api-and-integration-into}).
+
+\section{Der SaveChanges-Interceptor}
+
+Er setzt die \code{Tenant\allowbreak{}Id} neuer Entitäten und verhindert, dass Daten eines
+anderen Mandanten geschrieben oder umgehängt werden. Das ergänzt RLS (Defense in Depth) und
+liefert verständlichere Fehler als die Datenbank.
+Kapitel~\ref{ch:bulk-operations-and-the-limits} zeigt, welche Wege an ihm vorbeiführen:
+
+\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Save\allowbreak{}Changes\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}1/\allowbreak{}2)]{csharp}
+public class TenantSaveChangesInterceptor : SaveChangesInterceptor
+{
+    private readonly ITenantProvider _tenants;
+
+    public TenantSaveChangesInterceptor(ITenantProvider tenants)
+    {
+        ArgumentNullException.ThrowIfNull(tenants);
+
+        _tenants = tenants;
+    }
+
+    public override InterceptionResult<int> SavingChanges(
+        DbContextEventData eventData, InterceptionResult<int> result)
+    {
+        if (eventData.Context is { } context) ApplyTenant(context);
+        return result;
+    }
+
+    public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+        DbContextEventData eventData, InterceptionResult<int> result,
+        CancellationToken cancellationToken = default)
+    {
+        if (eventData.Context is { } context) ApplyTenant(context);
+        return ValueTask.FromResult(result);
+    }
+\end{sourcecode}
+
+\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Save\allowbreak{}Changes\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}2/\allowbreak{}2,\allowbreak{} vereinfacht)]{csharp}
+    internal void ApplyTenant(DbContext context)
+    {
+        // Welche Entitäten betroffen sind, steht in der Laufzeit-Annotation
+        // (Kapitel „Fluent API auf Property-Ebene und Laufzeit-Annotations“)
+        var changes = context.ChangeTracker.Entries()
+            .Where(e => e.State is EntityState.Added or EntityState.Modified
+                                   or EntityState.Deleted)
+            .Select(e => (Entry: e, Name: e.Metadata.GetTenantPropertyName()))
+            .Where(x => x.Name is not null)
+            .Select(x => (x.Entry, Property: x.Entry.Property(x.Name!)))
+            .ToList();
+        if (changes.Count == 0) return;
+
+        var current = _tenants.CurrentTenantId
+            ?? throw new TenancyException("Kein aktiver Mandant ...");
+
+        foreach (var (entry, property) in changes)
+        {
+            var currentValue = (TenantId)property.CurrentValue!;
+            var originalValue = (TenantId)property.OriginalValue!;
+            switch (entry.State)
+            {
+                case EntityState.Added when currentValue.IsEmpty:
+                    property.CurrentValue = current;
+                    break;
+                case EntityState.Added when currentValue != current:
+                    throw Mismatch(entry, currentValue, current);
+                case EntityState.Modified when property.IsModified:
+                    throw new TenancyException("Mandanten-Property ist unveränderlich.");
+                case EntityState.Modified or EntityState.Deleted
+                    when originalValue != current:
+                    throw Mismatch(entry, originalValue, current);
+            }
+        }
+    }
+}
+\end{sourcecode}
+
+\begin{important}[Synchron und asynchron]
+  Immer \textbf{beide} Varianten implementieren, synchron und asynchron. EF ruft je nach
+  \code{Save\allowbreak{}Changes} oder \code{Save\allowbreak{}Changes\allowbreak{}Async} nur
+  eine davon auf. Ein Interceptor, der nur die asynchrone Methode überschreibt, ist bei
+  synchronen Aufrufen wirkungslos, ohne dass es jemand bemerkt.
+\end{important}
+
+Die Logik liegt in einer \code{internal}-Methode \code{Apply\allowbreak{}Tenant}. Tests
+können sie über \code{Internals\allowbreak{}Visible\allowbreak{}To} direkt aufrufen, ohne
+eine Datenbank zu brauchen (Kapitel~\ref{ch:test-strategy}).
+
+\section{Der Connection-Interceptor}
+
+Er setzt bei jedem Öffnen der Verbindung das Session-Setting, das die Policies und
+\code{Current\allowbreak{}Tenant(\allowbreak{})} auswerten. Der Ablauf (Öffnen abfangen,
+sync und async, Mandant holen) ist für jede Datenbank gleich und liegt deshalb in einer
+abstrakten Basis im Kernpaket (Kapitel~\ref{ch:what-belongs-in-the-core}). Das
+PostgreSQL-Paket liefert nur den Befehl. Den Setting-Namen holt es über den Context aus den
+Event-Daten
+(\code{context.\allowbreak{}Get\allowbreak{}Service<\allowbreak{}T>(\allowbreak{})}) aus dem
+\emph{internen} Provider, den Mandanten aus dem \emph{App}-Container:
+
+\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}Kern),\allowbreak{} Runtime/\allowbreak{}Tenant\allowbreak{}Connection\allowbreak{}Interceptor.\allowbreak{}cs]{csharp}
+// Kernpaket
+public abstract class TenantSessionInterceptor : DbConnectionInterceptor
+{
+    protected TenantSessionInterceptor(ITenantProvider tenants)
+    {
+        ArgumentNullException.ThrowIfNull(tenants);
+
+        Tenants = tenants;
+    }
+
+    protected ITenantProvider Tenants { get; }
+
+    public override async Task ConnectionOpenedAsync(
+        DbConnection connection, ConnectionEndEventData eventData,
+        CancellationToken cancellationToken = default)
+    {
+        await using var command =
+            CreateSessionCommand(connection, eventData.Context, Tenants.CurrentTenantId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    // ConnectionOpened (synchron) analog
+
+    protected abstract DbCommand CreateSessionCommand(
+        DbConnection connection, DbContext? context, TenantId? tenant);
+}
+
+// PostgreSQL-Paket
+public class TenantConnectionInterceptor : TenantSessionInterceptor
+{
+    public TenantConnectionInterceptor(ITenantProvider tenants)
+        : base(tenants)
+    {
+    }
+
+    protected override DbCommand CreateSessionCommand(
+        DbConnection connection, DbContext? context, TenantId? tenant)
+    {
+        var settingName = context?.GetService<ITenancySingletonOptions>()
+                              .Settings.SettingName
+                          ?? TenancySettings.Default.SettingName;
+
+        var command = connection.CreateCommand();
+        command.CommandText = "SELECT set_config(@name, @value, false)";
+        AddParameter(command, "name", settingName);
+        // Immer setzen, auch leer: kein alter Wert bleibt stehen
+        AddParameter(command, "value", tenant?.ToString() ?? string.Empty);
+        return command;
+    }
+}
+\end{sourcecode}
+
+\begin{note}[Leerer String statt NULL]
+  Npgsql setzt den Session-Zustand zurück, wenn eine Verbindung in den Pool zurückkehrt.
+  Danach liefert
+  \code{current\_\allowbreak{}setting(\allowbreak{}'app.\allowbreak{}tenant\_\allowbreak{}id',\allowbreak{}
+  true)} einen leeren String statt \code{NULL}. Ein \code{''::uuid} würde jede Abfrage
+  abbrechen. Policy und Translator verwenden deshalb
+  \code{nullif(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{},\allowbreak{} '')}:
+  Ohne Mandant ist der Wert \code{NULL}, der Vergleich nie wahr, und es sind keine Zeilen
+  sichtbar. Das ist die sichere Richtung.
+\end{note}
+
+EF öffnet und schließt die Verbindung standardmäßig für jede Abfrage. Jedes Öffnen kostet
+hier einen zusätzlichen Roundtrip. Bei vielen kleinen Abfragen lohnt es sich, die Verbindung
+pro Anfrage einmal explizit zu öffnen (Kapitel~\ref{ch:plugin-performance}).
+
+\section{Wo der Connection-Interceptor nicht läuft}
+
+Der Interceptor läuft, wenn EF eine Verbindung öffnet, und nur dann. Zwei Situationen
+umgehen ihn, und beide entstehen leicht aus Versehen:
+
+\begin{datatable}{H{1.00}H{1.06}H{0.94}}
+  \textbf{Situation} & \textbf{Folge} & \textbf{Abhilfe} \\
+  \tablehead
+  Eine bereits geöffnete Verbindung wird übergeben
+  (\code{Use\allowbreak{}Npgsql(\allowbreak{}connection)},
+  \code{Set\allowbreak{}Db\allowbreak{}Connection}) & EF öffnet sie nie, also läuft der
+  Interceptor nie. Die Session behält ihren bisherigen Wert: keinen oder den eines früheren
+  Mandanten & Verbindungen geschlossen übergeben und EF öffnen lassen; sonst
+  \code{Database.\allowbreak{}Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})}
+  aufrufen \\
+  \tablerule
+  Die Verbindung bleibt offen (\code{Open\allowbreak{}Connection}, eine offene Transaktion),
+  während der Mandant wechselt & Der neue Mandant wirkt erst, wenn die Verbindung erneut
+  geöffnet wird & Ein Context, ein Mandant; ist das nicht möglich, nach dem Wechsel
+  \code{Database.\allowbreak{}Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})}
+  aufrufen \\
+\end{datatable}
+
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Connection\allowbreak{}Lifetime\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+// Bereits offen, mit einem Session-Wert aus früherer Arbeit (Mandant B)
+await using var connection = new NpgsqlConnection(appConnectionString);
+await connection.OpenAsync();
+// ... SELECT set_config('app.tenant_id', <tenant B>, false) ...
+
+// Gedacht für Mandant A, aber EF öffnet die Verbindung nicht: kein Interceptor
+await using var db = CreateAppContext(connection, tenantA);
+var orders = await db.Orders.ToListAsync();       // die Zeilen von Mandant B!
+\end{sourcecode}
+
+Für diese Fälle bietet das Plugin das explizite Gegenstück zum Interceptor.
+\code{Database.\allowbreak{}Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})}
+schreibt den aktuellen Mandanten in die Session, wenn die Verbindung offen ist, und tut
+nichts, wenn sie geschlossen ist, denn dann öffnet EF sie und der Interceptor übernimmt. Die
+Methode verwendet den Befehl des Interceptors selbst und funktioniert deshalb mit jedem
+Provider-Paket:
+
+\begin{sourcecode}[Verwendung]{csharp}
+await using var db = CreateAppContext(connection, tenantA);   // Verbindung bereits offen
+await db.Database.ApplyTenantSessionAsync();                  // Session jetzt: Mandant A
+var orders = await db.Orders.ToListAsync();                   // die Zeilen von Mandant A
+\end{sourcecode}
+
+\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+public virtual async Task<bool> ApplyToOpenConnectionAsync(
+    DbContext context, CancellationToken cancellationToken = default)
+{
+    var connection = context.Database.GetDbConnection();
+    if (connection.State != ConnectionState.Open)
+        return false;                     // EF öffnet sie später; der Interceptor übernimmt
+
+    await using var command =
+        CreateSessionCommand(connection, context, Tenants.CurrentTenantId);
+    // In einer expliziten Transaktion muss der Befehl ihr zugeordnet sein
+    command.Transaction = context.Database.CurrentTransaction?.GetDbTransaction();
+    await command.ExecuteNonQueryAsync(cancellationToken);
+    return true;
+}
+\end{sourcecode}
+
+Die Erweiterungsmethode \code{Apply\allowbreak{}Tenant\allowbreak{}Session} im Kernpaket
+sucht den Interceptor unter den Interceptoren des Contexts und bricht mit einer klaren
+Meldung ab, wenn keiner registriert ist. Zwei Details sind wichtig: Die Methode braucht den
+Context, nicht nur die Verbindung, weil der Provider seine Einstellungen aus dem internen
+Service Provider liest; deshalb erhält \code{Create\allowbreak{}Session\allowbreak{}Command}
+den \code{Db\allowbreak{}Context} statt der Event-Daten. Und der Befehl muss sich einer
+laufenden Transaktion anschließen: PostgreSQL ist hier nachsichtig, SQL Server lehnt einen
+Befehl ab, der ihr nicht zugeordnet ist. Die SQL-Server-Tests prüfen genau diesen Fall; ohne
+die Zeile schlagen sie fehl.
+
+\begin{important}[Ein Context, ein Mandant]
+  Die Isolation folgt der Verbindung, nicht dem Context. Ein Context, der für mehrere
+  Mandanten verwendet wird, oder eine Verbindung, die eine Anfrage überdauert, trägt den
+  Mandanten des Moments, in dem sie geöffnet wurde.
+  \code{Connection\allowbreak{}Lifetime\allowbreak{}Tests} zeigt beide Fälle gegen eine
+  echte Datenbank, zusammen mit den beiden Abhilfen: einer geschlossenen Verbindung, die EF
+  selbst öffnet, und \code{Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})}. Ein
+  Plugin, dessen Hooks nicht jeden Weg abdecken, sollte eine solche explizite API anbieten,
+  statt die Lücke nur zu dokumentieren.
+\end{important}
+
+% ------------------------------------------------------------
+\chapter{Diagnose und Logging}\label{ch:diagnostics-and-logging}
+
+Ein professionelles Plugin meldet Ereignisse über EFs Logging-System. Dann landen die
+Meldungen in denselben Kanälen, die Nutzer ohnehin konfigurieren (\code{ILogger},
+\code{Log\allowbreak{}To}, \code{Diagnostic\allowbreak{}Source}), und Warnungen lassen sich
+per \code{Configure\allowbreak{}Warnings} ignorieren, protokollieren oder zu Fehlern machen.
+
+\section{Event-IDs}
+
+\begin{sourcecode}[Diagnostics/\allowbreak{}Tenancy\allowbreak{}Event\allowbreak{}Id.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+public static class TenancyEventId
+{
+    public const int TenancyBaseId = 1_150_000;     // eigener, dokumentierter Bereich
+
+    private enum Id
+    {
+        TenantIsolationApplied = TenancyBaseId,
+        TenantIsolationOptedOut,
+        PoliciesWithoutRowLevelSecurity,
+    }
+
+    private static readonly string ModelPrefix = "Acme.EntityFrameworkCore.Tenancy.Model.";
+
+    public static readonly EventId TenantIsolationApplied =
+        Make(Id.TenantIsolationApplied);
+    public static readonly EventId TenantIsolationOptedOut =
+        Make(Id.TenantIsolationOptedOut);
+    // ...
+
+    private static EventId Make(Id id) => new((int)id, ModelPrefix + id);
+}
+\end{sourcecode}
+
+EF und Provider belegen niedrige Bereiche. Ein Plugin wählt einen eigenen, hohen Bereich und
+dokumentiert ihn. Die Namen folgen EFs Schema „Assembly.Kategorie.Ereignis“, damit Filter
+nach Präfix funktionieren.
+
+\section{Event-Definitionen}
+
+Eine \code{Event\allowbreak{}Definition<\allowbreak{}T>} bündelt Event-ID, Log-Level,
+Meldungsvorlage und das Warnverhalten aus den Options. EF cached seine Definitionen pro
+internem Provider; das Plugin macht es genauso mit einer eigenen Klasse, die als Singleton
+registriert ist (Kapitel~\ref{ch:registering-services}):
+
+\begin{sourcecode}[Diagnostics/\allowbreak{}Tenancy\allowbreak{}Logging\allowbreak{}Definitions.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+public class TenancyLoggingDefinitions
+{
+    private EventDefinition<string>? _tenantIsolationOptedOut;
+
+    public virtual EventDefinition<string> LogTenantIsolationOptedOut(
+        IDiagnosticsLogger logger)
+        => LazyInitializer.EnsureInitialized(ref _tenantIsolationOptedOut, () =>
+            Create(logger, TenancyEventId.TenantIsolationOptedOut, LogLevel.Warning,
+                nameof(TenancyEventId.TenantIsolationOptedOut),
+                "Entität '{entityType}' implementiert ITenantOwned, ist aber von der "
+                + "Mandantenisolation ausgenommen."));
+
+    private static EventDefinition<string> Create(
+        IDiagnosticsLogger logger, EventId eventId, LogLevel level,
+        string name, string message)
+        => new(
+            logger.Options,                       // enthält das Warnverhalten
+            eventId,
+            level,
+            "TenancyEventId." + name,             // steht in Warning-as-Error-Meldungen
+            l => LoggerMessage.Define<string>(l, eventId, message));
+}
+\end{sourcecode}
+
+\section{Die Logger-Extension}
+
+Die eigentliche Log-Methode folgt exakt dem Muster aus EFs
+\code{Core\allowbreak{}Logger\allowbreak{}Extensions}: erst klassisches Logging, dann die
+Ereignisdaten für DiagnosticSource und \code{Log\allowbreak{}To}:
+
+\begin{sourcecode}[Diagnostics/\allowbreak{}Tenancy\allowbreak{}Logger\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+private static void LogEntityType(
+    IDiagnosticsLogger<DbLoggerCategory.Model> diagnostics,
+    EventDefinition<string> definition,
+    IReadOnlyEntityType entityType)
+{
+    // 1. ILogger; wirft bei ConfigureWarnings(w => w.Throw(...))
+    if (diagnostics.ShouldLog(definition))
+        definition.Log(diagnostics, entityType.DisplayName());
+
+    // 2. DiagnosticSource und LogTo (simple logging)
+    if (diagnostics.NeedsEventData(definition, out var diagnosticSource, out var simpleLog))
+    {
+        var eventData = new EntityTypeEventData(definition, GenerateMessage, entityType);
+        diagnostics.DispatchEventData(definition, eventData, diagnosticSource, simpleLog);
+    }
+}
+\end{sourcecode}
+
+Nutzer können die Warnung damit in einen Fehler verwandeln:
+
+\begin{sourcecode}[Anwendung]{csharp}
+options.UseNpgsql(cs)
+       .UseAcmeTenancy()
+       .ConfigureWarnings(w => w.Throw(TenancyEventId.TenantIsolationOptedOut));
+
+// -> InvalidOperationException beim Modellbau:
+//    "An error was generated for warning '...TenantIsolationOptedOut': Entität
+//     'AuditEntry' ... This exception can be suppressed or logged by passing event ID
+//     'TenancyEventId.TenantIsolationOptedOut' to the 'ConfigureWarnings' method ..."
+\end{sourcecode}
+
+\begin{tip}
+  Sicherheitsrelevante Abweichungen gehören als \textbf{Warnung} ins Log und nicht als
+  Debug-Meldung. Teams mit strengen Anforderungen eskalieren sie per
+  \code{Configure\allowbreak{}Warnings} zu Fehlern; andere sehen sie zumindest beim Start.
+  Das Plugin muss diese Entscheidung nicht für alle treffen.
+\end{tip}

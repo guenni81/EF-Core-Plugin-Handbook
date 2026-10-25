@@ -1,0 +1,442 @@
+% ============================================================
+\setpartpreamble{\partintro
+  {Nachschlagen: Erweiterungspunkte mit Lebensdauern, Dateien des Beispiels, Begriffe und
+  ein Debugging-Werkzeugkasten.}
+  {
+    \item Anhang~\ref{app:A}: Erweiterungspunkte und Lebensdauern
+    \item Anhang~\ref{app:B}: Dateien des Beispiel-Plugins
+    \item Anhang~\ref{app:C}: Glossar
+    \item Anhang~\ref{app:D}: Debugging-Werkzeugkasten
+    \item Lizenz
+  }}
+\part{Anhänge}\label{part:X}
+
+\appendix
+
+% ------------------------------------------------------------
+\chapter{Erweiterungspunkte und Lebensdauern}\label{app:A}
+
+Lebensdauern und Kardinalität laut den Service-Tabellen von EF Core 10
+(\code{Entity\allowbreak{}Framework\allowbreak{}Services\allowbreak{}Builder},
+\code{Entity\allowbreak{}Framework\allowbreak{}Relational\allowbreak{}Services\allowbreak{}Builder}).
+„Mehrfach“ heißt: Plugin-Interface, alle Registrierungen werden verwendet.
+
+\begin{datatable}{H{2.13}H{0.80}H{0.71}H{0.36}}
+  \textbf{Dienst} & \textbf{Lebensdauer} & \textbf{Art} & \textbf{Kap.} \\
+  \tablehead
+  \code{IConvention\allowbreak{}Set\allowbreak{}Plugin} & Scoped & mehrfach & \ref{ch:conventions} \\
+  \tablerule
+  \code{ISingleton\allowbreak{}Options} & Singleton & mehrfach & \ref{ch:registering-services} \\
+  \tablerule
+  \code{IType\allowbreak{}Mapping\allowbreak{}Source\allowbreak{}Plugin} & Singleton &
+  mehrfach & \ref{ch:type-mappings-and-value-converters} \\
+  \tablerule
+  \code{IRelational\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source\allowbreak{}Plugin}
+  & Singleton & mehrfach & \ref{ch:type-mappings-and-value-converters} \\
+  \tablerule
+  \code{IMethod\allowbreak{}Call\allowbreak{}Translator\allowbreak{}Plugin} & Scoped &
+  mehrfach & \ref{ch:translating-methods-and-members} \\
+  \tablerule
+  \code{IMember\allowbreak{}Translator\allowbreak{}Plugin} & Scoped & mehrfach & \ref{ch:translating-methods-and-members} \\
+  \tablerule
+  \code{IAggregate\allowbreak{}Method\allowbreak{}Call\allowbreak{}Translator\allowbreak{}Plugin}
+  & Scoped & mehrfach & \ref{ch:aggregate-translators} \\
+  \tablerule
+  \code{IEvaluatable\allowbreak{}Expression\allowbreak{}Filter\allowbreak{}Plugin} &
+  Singleton & mehrfach & \ref{ch:preventing-client-side-evaluation} \\
+  \tablerule
+  \code{IInterceptor} (injiziert) & Scoped & mehrfach & \ref{ch:interceptors} \\
+  \tablerule
+  \code{ISingleton\allowbreak{}Interceptor} & Singleton & mehrfach & \ref{ch:interceptors} \\
+  \tablerule
+  \code{IRelational\allowbreak{}Annotation\allowbreak{}Provider} & Singleton & einzeln & \ref{ch:declarative-sql-from-annotations}
+  \\
+  \tablerule
+  \code{IMigrations\allowbreak{}Sql\allowbreak{}Generator} & Scoped & einzeln & \ref{ch:declarative-sql-from-annotations} \\
+  \tablerule
+  \code{IMigrations\allowbreak{}Model\allowbreak{}Differ} & Scoped & einzeln & \ref{ch:custom-migration-operations} \\
+  \tablerule
+  \code{IModel\allowbreak{}Validator} & Singleton & einzeln & \ref{ch:model-validation} \\
+  \tablerule
+  \code{IModel\allowbreak{}Customizer} & Singleton & einzeln & – \\
+  \tablerule
+  \code{IModel\allowbreak{}Cache\allowbreak{}Key\allowbreak{}Factory} & Singleton & einzeln
+  & \ref{ch:models-per-runtime-context} \\
+  \tablerule
+  \code{ISql\allowbreak{}Generation\allowbreak{}Helper} & Singleton & einzeln & – \\
+  \tablerule
+  \code{IRelational\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source} & Singleton &
+  einzeln & \ref{ch:type-mappings-and-value-converters} \\
+  \tablerule
+  \code{ISql\allowbreak{}Expression\allowbreak{}Factory} & Scoped & einzeln & \ref{ch:translating-methods-and-members} \\
+  \tablerule
+  \code{IQuery\allowbreak{}Sql\allowbreak{}Generator\allowbreak{}Factory} & Singleton &
+  einzeln & \ref{ch:further-query-extension-points}, \ref{ch:custom-sql-expression-nodes} \\
+  \tablerule
+  \code{IModification\allowbreak{}Command\allowbreak{}Factory} & Singleton & einzeln & \ref{ch:the-update-pipeline} \\
+  \tablerule
+  \code{ICommand\allowbreak{}Batch\allowbreak{}Preparer} & Scoped & einzeln & \ref{ch:the-update-pipeline} \\
+  \tablerule
+  \code{IModification\allowbreak{}Command\allowbreak{}Batch\allowbreak{}Factory} & Scoped &
+  einzeln & \ref{ch:the-update-pipeline} \\
+  \tablerule
+  \code{IUpdate\allowbreak{}Sql\allowbreak{}Generator} & Singleton & einzeln & \ref{ch:the-update-pipeline} \\
+  \tablerule
+  \code{IRelational\allowbreak{}Parameter\allowbreak{}Based\allowbreak{}Sql\allowbreak{}Processor\allowbreak{}Factory}
+  & Scoped & einzeln & \ref{ch:custom-sql-expression-nodes} \\
+\end{datatable}
+
+\section{Design-Time-Dienste (über IDesignTimeServices)}
+
+\begin{datatable}{H{0.87}H{1.13}}
+  \textbf{Dienst} & \textbf{Zweck} \\
+  \tablehead
+  \code{IAnnotation\allowbreak{}Code\allowbreak{}Generator} & Annotations als Fluent API in
+  Snapshot und Scaffolding \\
+  \tablerule
+  \code{ICSharp\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator}
+  & Annotations im Compiled Model filtern oder komplexe Werte übersetzen
+  (Kapitel~\ref{ch:property-level-fluent-api-and}) \\
+  \tablerule
+  \code{ICSharp\allowbreak{}Migration\allowbreak{}Operation\allowbreak{}Generator} & Eigene
+  Operationen als C\# in Migrationen \\
+  \tablerule
+  \code{IDatabase\allowbreak{}Model\allowbreak{}Factory} & Schema lesen für Scaffolding
+  (Kapitel~\ref{ch:scaffolding-in-practice}) \\
+  \tablerule
+  \code{IProvider\allowbreak{}Configuration\allowbreak{}Code\allowbreak{}Generator} &
+  UseXyz-Aufruf im gescaffoldeten Context \\
+\end{datatable}
+
+% ------------------------------------------------------------
+\chapter{Dateien des Beispiel-Plugins}\label{app:B}
+
+\begin{datatable}{H{1.44}H{1.25}H{0.31}}
+  \textbf{Datei} & \textbf{Inhalt} & \textbf{Kap.} \\
+  \tablehead
+  \textbf{Kernpaket} &  &  \\
+  \tablerule
+  \code{Tenant\allowbreak{}Id.\allowbreak{}cs},
+  \code{Tenant\allowbreak{}Id\allowbreak{}Converter.\allowbreak{}cs} & Stark typisierte ID,
+  Konverter & \ref{ch:type-mappings-and-value-converters} \\
+  \tablerule
+  \code{Tenant\allowbreak{}Id\allowbreak{}Json\allowbreak{}Reader\allowbreak{}Writer.\allowbreak{}cs}
+  & JSON-Unterstützung & \ref{ch:type-mappings-and-value-converters} \\
+  \tablerule
+  \code{ITenant\allowbreak{}Owned.\allowbreak{}cs},
+  \code{ITenant\allowbreak{}Provider.\allowbreak{}cs} & Marker, Mandantenquelle & \ref{ch:the-sample-scenario} \\
+  \tablerule
+  \code{No\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Attribute.\allowbreak{}cs} &
+  Data Annotation & \ref{ch:conventions} \\
+  \tablerule
+  \code{Tenancy\allowbreak{}Db\allowbreak{}Functions\allowbreak{}Extensions.\allowbreak{}cs}
+  & \code{EF.\allowbreak{}Functions.\allowbreak{}Current\allowbreak{}Tenant(\allowbreak{})}
+  & \ref{ch:translating-methods-and-members} \\
+  \tablerule
+  \code{Diagnostics/\allowbreak{}*} & Event-IDs, Definitionen, Logger-Extensions & \ref{ch:diagnostics-and-logging} \\
+  \tablerule
+  \code{Interceptors/\allowbreak{}Tenant\allowbreak{}Save\allowbreak{}Changes\allowbreak{}Interceptor.\allowbreak{}cs}
+  & SaveChanges-Logik & \ref{ch:interceptors} \\
+  \tablerule
+  \code{Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs}
+  & Abstrakte Basis für Session-Befehle & \ref{ch:interceptors}, \ref{ch:what-belongs-in-the-core} \\
+  \tablerule
+  \code{Tenancy\allowbreak{}Database\allowbreak{}Facade\allowbreak{}Extensions.\allowbreak{}cs}
+  & \code{Database.\allowbreak{}Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})}
+  & \ref{ch:interceptors} \\
+  \tablerule
+  \code{Metadata/\allowbreak{}*} (Kern) & Laufzeit-Annotation, IsTenantProperty,
+  Kandidatensuche & \ref{ch:property-level-fluent-api-and} \\
+  \tablerule
+  \code{Query/\allowbreak{}Tenancy\allowbreak{}Evaluatable\allowbreak{}Expression\allowbreak{}Filter\allowbreak{}Plugin.\allowbreak{}cs}
+  & Filter für alle Pakete & \ref{ch:preventing-client-side-evaluation}, \ref{ch:what-belongs-in-the-core} \\
+  \tablerule
+  \code{Dependency\allowbreak{}Injection/\allowbreak{}*} & AddAcmeTenancy & \ref{ch:public-api-and-integration-into}, \ref{ch:what-belongs-in-the-core} \\
+  \tablerule
+  \code{Value\allowbreak{}Generation/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Value\allowbreak{}Generator.\allowbreak{}cs},
+  \code{…Factory.\allowbreak{}cs} & Wertgenerierung & \ref{ch:value-generation} \\
+  \tablerule
+  \code{Conventions/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Key\allowbreak{}Value\allowbreak{}Generation\allowbreak{}Convention.\allowbreak{}cs}
+  & Generator für Schlüssel & \ref{ch:value-generation} \\
+  \tablerule
+  \textbf{PostgreSQL-Paket} &  &  \\
+  \tablerule
+  \code{Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs}
+  & Extension, Info, ApplyServices & \ref{ch:the-options-extension}, \ref{ch:registering-services} \\
+  \tablerule
+  \code{Infrastructure/\allowbreak{}Tenancy\allowbreak{}Settings.\allowbreak{}cs} &
+  Einstellungen als Record & \ref{ch:the-options-extension} \\
+  \tablerule
+  \code{Infrastructure/\allowbreak{}ITenancy\allowbreak{}Singleton\allowbreak{}Options.\allowbreak{}cs}
+  & Singleton-Options & \ref{ch:registering-services} \\
+  \tablerule
+  \code{Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Builder.\allowbreak{}cs}
+  & Options-Builder & \ref{ch:public-api-and-integration-into} \\
+  \tablerule
+  \code{Infrastructure/\allowbreak{}Tenancy*Extensions.\allowbreak{}cs} & UseAcmeTenancy,
+  AddAcmeTenancy & \ref{ch:public-api-and-integration-into} \\
+  \tablerule
+  \code{Infrastructure/\allowbreak{}Tenancy\allowbreak{}Identifiers.\allowbreak{}cs} &
+  Validierung von Bezeichnern & \ref{ch:conventions}, \ref{ch:custom-migration-operations} \\
+  \tablerule
+  \code{Storage/\allowbreak{}*} & Type Mapping und Plugin & \ref{ch:type-mappings-and-value-converters} \\
+  \tablerule
+  \code{Query/\allowbreak{}*} & Translators, Evaluatable-Filter & \ref{ch:translating-methods-and-members}, \ref{ch:preventing-client-side-evaluation} \\
+  \tablerule
+  \code{Metadata/\allowbreak{}*} & Annotations, RlsPolicy, PolicyCommand,
+  Annotation-Provider & \ref{ch:annotations-and-fluent-api}, \ref{ch:declarative-sql-from-annotations} \\
+  \tablerule
+  \code{Builders/\allowbreak{}*} & Fluent API, PolicyBuilder & \ref{ch:annotations-and-fluent-api} \\
+  \tablerule
+  \code{Conventions/\allowbreak{}*} & Isolation, Attribut, Validierung, Plugin & \ref{ch:conventions}, \ref{ch:model-validation} \\
+  \tablerule
+  \code{Migrations/\allowbreak{}*} & SQL-Generator, eigene Operationen & \ref{ch:declarative-sql-from-annotations}, \ref{ch:custom-migration-operations} \\
+  \tablerule
+  \code{Design/\allowbreak{}*},
+  \code{Properties/\allowbreak{}Assembly\allowbreak{}Info.\allowbreak{}cs} & Code-Generator,
+  Design-Time & \ref{ch:design-time-services} \\
+  \tablerule
+  \code{Runtime/\allowbreak{}Tenant\allowbreak{}Connection\allowbreak{}Interceptor.\allowbreak{}cs}
+  & Session-Setting setzen & \ref{ch:interceptors} \\
+  \tablerule
+  \code{Query/\allowbreak{}Expressions/\allowbreak{}*},
+  \code{Query/\allowbreak{}Distinct\allowbreak{}From\allowbreak{}Translator.\allowbreak{}cs}
+  & Eigener SQL-Knoten & \ref{ch:custom-sql-expression-nodes} \\
+  \tablerule
+  \code{Query/\allowbreak{}Internal/\allowbreak{}*} & SQL-Generator, Nullability-Prozessor,
+  Factories & \ref{ch:custom-sql-expression-nodes} \\
+  \tablerule
+  \code{Query/\allowbreak{}Every\allowbreak{}Aggregate\allowbreak{}Translator.\allowbreak{}cs}
+  & Aggregat-Translator & \ref{ch:aggregate-translators} \\
+  \tablerule
+  \code{Design/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}CSharp\allowbreak{}Runtime…Generator.\allowbreak{}cs}
+  & Compiled-Model-Filter & \ref{ch:property-level-fluent-api-and} \\
+  \tablerule
+  \code{Scaffolding/\allowbreak{}*} & RLS aus der Datenbank lesen & \ref{ch:scaffolding-in-practice} \\
+  \tablerule
+  \textbf{SQL-Server-Paket} &  &  \\
+  \tablerule
+  \code{Infrastructure/\allowbreak{}*} & Extension, Provider-Builder-Aktivierung & \ref{ch:a-second-provider-sql-server} \\
+  \tablerule
+  \code{Storage/\allowbreak{}*}, \code{Query/\allowbreak{}*} & uniqueidentifier,
+  SESSION\_CONTEXT & \ref{ch:a-second-provider-sql-server} \\
+  \tablerule
+  \code{Conventions/\allowbreak{}*}, \code{Metadata/\allowbreak{}*} & Isolation,
+  Spalten-Annotation & \ref{ch:a-second-provider-sql-server} \\
+  \tablerule
+  \code{Migrations/\allowbreak{}*} & Predicate-Funktion, Security Policy & \ref{ch:a-second-provider-sql-server} \\
+  \tablerule
+  \code{Runtime/\allowbreak{}*} & sp\_set\_session\_context & \ref{ch:a-second-provider-sql-server} \\
+  \tablerule
+  \textbf{Weitere} &  &  \\
+  \tablerule
+  \code{samples/\allowbreak{}Shop\allowbreak{}Sample} & Konsolen-Beispiel mit
+  Design-Time-Factory & \ref{ch:the-sample-scenario}, \ref{ch:advanced-migrations} \\
+  \tablerule
+  \code{samples/\allowbreak{}Shop\allowbreak{}Api} & ASP.NET-Core-Beispiel (Minimal API) &
+  \ref{ch:using-the-plugin-in-asp} \\
+  \tablerule
+  \code{.\allowbreak{}github/\allowbreak{}workflows/\allowbreak{}ci.\allowbreak{}yml} &
+  Build, Tests, Handbuch & \ref{ch:ci-and-api-stability} \\
+  \tablerule
+  \code{Public\allowbreak{}API.\allowbreak{}*.\allowbreak{}txt} & Public-API-Analyzer & \ref{ch:ci-and-api-stability}
+  \\
+  \tablerule
+  \code{docs/\allowbreak{}handbook/\allowbreak{}*} & Quellen dieses Buchs (Deutsch und
+  Englisch) & – \\
+  \tablerule
+  \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Tests} & Unit-Tests
+  ohne Datenbank & \ref{ch:test-strategy} \\
+  \tablerule
+  \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Minimal\allowbreak{}Plugin\allowbreak{}Tests.\allowbreak{}cs}
+  & Das Mini-Plugin & \ref{ch:ef-core-s-architecture-from} \\
+  \tablerule
+  \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Composition\allowbreak{}Tests.\allowbreak{}cs}
+  & Decorator-Beispiel (Audit-Plugin) & \ref{ch:registering-services} \\
+  \tablerule
+  \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Debugging\allowbreak{}Tests.\allowbreak{}cs}
+  & Debugging-Techniken & Anh. D \\
+  \tablerule
+  \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Schema\allowbreak{}Per\allowbreak{}Tenant\allowbreak{}Tests.\allowbreak{}cs}
+  & Modell-Cache-Schlüssel pro Schema & \ref{ch:models-per-runtime-context} \\
+  \tablerule
+  \code{benchmarks/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}} &
+  BenchmarkDotNet-Projekt für die SaveChanges-Logik & \ref{ch:plugin-performance} \\
+  \tablerule
+  \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests}
+  & Testcontainers-Tests gegen PostgreSQL & \ref{ch:interceptors}, \ref{ch:test-strategy}, \ref{ch:bulk-operations-and-the-limits}, \ref{ch:row-level-security-in-production}, \ref{ch:scaffolding-in-practice} \\
+  \tablerule
+  \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Sql\allowbreak{}Server.\allowbreak{}Tests}
+  & Unit- und Testcontainers-Tests für SQL Server & \ref{ch:a-second-provider-sql-server} \\
+\end{datatable}
+
+% ------------------------------------------------------------
+\chapter{Glossar}\label{app:C}
+
+\begin{datatable}{H{0.60}H{1.40}}
+  \textbf{Begriff} & \textbf{Erklärung} \\
+  \tablehead
+  Annotation & Schlüssel-Wert-Metadatum an einem Modellelement. \\
+  \tablerule
+  ConfigurationSource & Herkunft eines Metadatums (Explicit, DataAnnotation, Convention);
+  bestimmt, wer wen überschreiben darf. \\
+  \tablerule
+  Convention & Regel, die das Modell beim Bau automatisch anpasst. \\
+  \tablerule
+  Decorator & Dienst, der die zuvor registrierte Implementierung umhüllt und an sie
+  delegiert; verträgt sich mit anderen Plugins (Kapitel~\ref{ch:registering-services}). \\
+  \tablerule
+  Design-Time-Modell & Vollständiges Modell mit allen Annotations; Grundlage für Migrations.
+  Gegenstück: schlankes Laufzeitmodell. \\
+  \tablerule
+  Differ & \code{IMigrations\allowbreak{}Model\allowbreak{}Differ}; vergleicht zwei
+  relationale Modelle. \\
+  \tablerule
+  Funcletizer & Erste Query-Stufe; wertet Ausdrücke ohne Datenbezug in .NET aus. \\
+  \tablerule
+  Nullability-Prozessor & Query-Stufe, die NULL-Semantik auswertet und Vergleiche optimiert;
+  muss eigene SQL-Knoten kennen. \\
+  \tablerule
+  SqlExpression & Knoten im SQL-Ausdrucksbaum; eigene Knoten für Syntax, die keine Funktion
+  ist. \\
+  \tablerule
+  Laufzeit-Annotation & Annotation, die zur Laufzeit gelesen wird und deshalb im Laufzeit-
+  und Compiled Model erhalten bleiben muss. \\
+  \tablerule
+  Interner Service Provider & EFs eigener DI-Container pro Konfiguration. \\
+  \tablerule
+  Pubternal & Öffentlich sichtbare, aber interne API ohne Kompatibilitätsgarantie (EF1001).
+  \\
+  \tablerule
+  Relationales Modell & Tabellen, Spalten, Indizes, abgeleitet aus dem EF-Modell. \\
+  \tablerule
+  RLS & Row Level Security: Zeilenfilter, die PostgreSQL selbst erzwingt. \\
+  \tablerule
+  Snapshot & Generierter C\#-Code mit dem Modellstand der letzten Migration. \\
+  \tablerule
+  Type Mapping & Verbindung zwischen CLR-Typ und Datenbanktyp inklusive Konvertierung,
+  Vergleich und Literalen. \\
+\end{datatable}
+
+% ------------------------------------------------------------
+\chapter{Debugging-Werkzeugkasten}\label{app:D}
+
+Wenn sich ein Plugin nicht wie erwartet verhält, lautet die Frage fast immer eine von fünf.
+Jede der folgenden Techniken wird in \code{Debugging\allowbreak{}Tests} geprüft.
+
+\begin{datatable}{H{0.61}H{1.39}}
+  \textbf{Frage} & \textbf{Technik} \\
+  \tablehead
+  Ist meine Annotation im Modell? &
+  \code{To\allowbreak{}Debug\allowbreak{}String(\allowbreak{}Metadata\allowbreak{}Debug\allowbreak{}String\allowbreak{}Options.\allowbreak{}Long\allowbreak{}Default)}
+  auf dem Design-Time-Modell \\
+  \tablerule
+  Welche Implementierung eines Einzeldienstes hat gewonnen? &
+  \code{context.\allowbreak{}Get\allowbreak{}Service<\allowbreak{}IMigrations\allowbreak{}Sql\allowbreak{}Generator>(\allowbreak{}).\allowbreak{}Get\allowbreak{}Type(\allowbreak{})}
+  \\
+  \tablerule
+  Ist meine Convention registriert? &
+  \code{Get\allowbreak{}Service<\allowbreak{}IConvention\allowbreak{}Set\allowbreak{}Builder>(\allowbreak{}).\allowbreak{}Create\allowbreak{}Convention\allowbreak{}Set(\allowbreak{})},
+  dann z. B. \code{Model\allowbreak{}Finalizing\allowbreak{}Conventions} \\
+  \tablerule
+  Wie sieht die Abfrage vor und nach der Übersetzung aus? &
+  \code{query.\allowbreak{}Expression.\allowbreak{}Print(\allowbreak{})} und
+  \code{query.\allowbreak{}To\allowbreak{}Query\allowbreak{}String(\allowbreak{})} \\
+  \tablerule
+  Protokolliert mein Plugin? &
+  \code{Log\allowbreak{}To(\allowbreak{}lines.\allowbreak{}Add,\allowbreak{}
+  [event\allowbreak{}Id],\allowbreak{} Log\allowbreak{}Level.\allowbreak{}Debug)},
+  beschränkt auf die Event-IDs des Plugins \\
+\end{datatable}
+
+\begin{sourcecode}[Debugging-Snippets (\allowbreak{}geprüft in tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Debugging\allowbreak{}Tests.\allowbreak{}cs)]{csharp}
+using var ctx = CreateContext();
+
+// 1. Modell: Annotations, Ergebnisse von Conventions, Type Mappings
+var model = ctx.GetService<IDesignTimeModel>().Model;
+Console.WriteLine(model.ToDebugString(MetadataDebugStringOptions.LongDefault));
+
+// 2. Dienste: welcher Ersatz hat gewonnen?
+Console.WriteLine(ctx.GetService<IMigrationsSqlGenerator>().GetType());
+
+// 3. Conventions: ist meine in der Liste?
+var conventions = ctx.GetService<IConventionSetBuilder>().CreateConventionSet();
+Console.WriteLine(string.Join("\n", conventions.ModelFinalizingConventions));
+
+// 4. Abfragen: LINQ-Baum vor, SQL nach der Übersetzung
+var query = ctx.Orders.Where(o => o.TenantId == EF.Functions.CurrentTenant());
+Console.WriteLine(query.Expression.Print());
+Console.WriteLine(query.ToQueryString());
+\end{sourcecode}
+
+\section{Weitere Werkzeuge}
+
+\begin{datatable}{H{0.61}H{1.39}}
+  \textbf{Werkzeug} & \textbf{Einsatz} \\
+  \tablehead
+  Debugger mit Source Link, „Just My Code“ aus & In EF Core und Npgsql hineinsteppen; beide
+  liefern Symbole und Source Link mit. Ein Breakpoint in der eigenen Convention zeigt, wann
+  und wie oft sie läuft. \\
+  \tablerule
+  \code{Debug\allowbreak{}View} im Debugger & Modell, Entitätstypen, Query-Objekte und der
+  Change Tracker zeigen dieselben Texte wie \code{To\allowbreak{}Debug\allowbreak{}String}.
+  \\
+  \tablerule
+  \code{dotnet ef .\allowbreak{}.\allowbreak{}.\allowbreak{} -{}-verbose} & Zeigt, welche
+  Assemblies und Design-Time-Dienste die Tools laden; die erste Anlaufstelle, wenn ein
+  Design-Time-Dienst ignoriert zu werden scheint. \\
+  \tablerule
+  \code{Enable\allowbreak{}Sensitive\allowbreak{}Data\allowbreak{}Logging},
+  \code{Enable\allowbreak{}Detailed\allowbreak{}Errors} & Parameterwerte und ausführliche
+  Fehler im Log; nur für die Entwicklung. \\
+  \tablerule
+  \code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}
+  & EF warnt, wenn zu viele interne Provider entstehen: fast immer ein Hash-Fehler
+  (Kapitel~\ref{ch:the-options-extension}). \\
+  \tablerule
+  Der Quellcode von EF Core auf GitHub & Die maßgebliche Dokumentation interner APIs; die
+  Ordnerstruktur entspricht den Namespaces. \\
+\end{datatable}
+
+\begin{tip}[Im Test reproduzieren, nicht in der App]
+  Fast jedes Plugin-Problem lässt sich ohne Datenbank reproduzieren: einen Context mit dem
+  Plugin bauen und das Modell, die aufgelösten Dienste oder
+  \code{To\allowbreak{}Query\allowbreak{}String(\allowbreak{})} ansehen. Ein solcher Test
+  iteriert schneller als die Anwendung und bleibt danach als Regressionstest erhalten.
+\end{tip}
+
+% ------------------------------------------------------------
+\addchap{Lizenz}
+
+Dieses Handbuch und der Beispielcode im Repository stehen unter der MIT-Lizenz. Sie dürfen
+beides nutzen, kopieren, verändern und weitergeben, auch kommerziell, sofern der folgende
+Copyright- und Lizenzhinweis erhalten bleibt. Maßgeblich ist der englische Originalwortlaut:
+
+Copyright (c) 2026 guenni81
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this
+software and associated documentation files (the “Software”), to deal in the Software
+without restriction, including without limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+Die im PDF eingebetteten DejaVu-Schriften stehen unter einer eigenen freien Lizenz
+(Bitstream-Vera-Schriftlizenz; die DejaVu-Änderungen sind gemeinfrei); siehe
+\code{docs/\allowbreak{}handbook/\allowbreak{}fonts/\allowbreak{}LICENSE-Deja\allowbreak{}Vu.\allowbreak{}txt}
+im Repository.
+
+Genannte Produkt- und Firmennamen sind Marken ihrer jeweiligen Inhaber, etwa Entity
+Framework, .NET und SQL Server (Microsoft) sowie PostgreSQL (PostgreSQL Community
+Association). Sie werden nur beschreibend verwendet. Dieses Handbuch ist ein unabhängiges
+Projekt und steht in keiner Verbindung zu Microsoft, der PostgreSQL Global Development Group
+oder dem Npgsql-Projekt und wird von ihnen weder unterstützt noch empfohlen.

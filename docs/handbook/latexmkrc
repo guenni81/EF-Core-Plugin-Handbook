@@ -1,0 +1,5 @@
+# latexmk EF-Core-Plugin-Handbuch.tex / latexmk EF-Core-Plugin-Handbook.tex -> out/*.pdf
+$pdf_mode = 4;            # LuaLaTeX
+$out_dir = 'out';
+$aux_dir = 'out/aux';
+$lualatex = 'lualatex -interaction=nonstopmode -halt-on-error -file-line-error %O %S';
