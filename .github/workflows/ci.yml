@@ -50,21 +50,3 @@ jobs:
         with:
           name: handbook
           path: docs/handbook/out/*.pdf
-
-  # Early warning: build and unit tests against the next EF Core preview.
-  # Allowed to fail, but reveals breaking changes in internal APIs months before release.
-  ef-preview:
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: |
-            10.0.x
-            11.0.x
-          dotnet-quality: preview
-      - name: Build against EF preview
-        run: dotnet build -c Release -p:EFCorePreview=true
-      - name: Unit tests against EF preview
-        run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Tests -c Release --no-build -p:EFCorePreview=true

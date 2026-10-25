@@ -160,13 +160,6 @@ Micro benchmarks for the SaveChanges logic (BenchmarkDotNet, no database require
 dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks
 ```
 
-Building against the next EF Core preview (early warning for breaking changes in internal
-APIs):
-
-```bash
-dotnet build -p:EFCorePreview=true
-```
-
 ## The samples
 
 The samples show how an application uses the plugin. They need a PostgreSQL server; the

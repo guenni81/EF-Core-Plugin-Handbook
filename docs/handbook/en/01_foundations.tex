@@ -323,49 +323,49 @@ To make this work, the plugin uses every extension point covered in this book:
   \textbf{Requirement} & \textbf{Implementation} & \textbf{Ch.} \\
   \tablehead
   Configuration via \code{Use\allowbreak{}Acme\allowbreak{}Tenancy(\allowbreak{})} & Options
-  extension, settings record, options builder & 4–6 \\
+  extension, settings record, options builder & \ref{ch:the-options-extension}--\ref{ch:public-api-and-integration-into} \\
   \tablerule
   \code{Tenant\allowbreak{}Id} as a column type without configuration & Type mapping plugin,
-  value converter, JSON reader/writer & 10 \\
+  value converter, JSON reader/writer & \ref{ch:type-mappings-and-value-converters} \\
   \tablerule
   \code{EF.\allowbreak{}Functions.\allowbreak{}Current\allowbreak{}Tenant(\allowbreak{})} in
-  LINQ & Method translator, evaluatable expression filter & 12–13 \\
+  LINQ & Method translator, evaluatable expression filter & \ref{ch:translating-methods-and-members}--\ref{ch:preventing-client-side-evaluation} \\
   \tablerule
   \code{tenant\allowbreak{}Id.\allowbreak{}Is\allowbreak{}Empty} in LINQ & Member translator
-  & 12 \\
+  & \ref{ch:translating-methods-and-members} \\
   \tablerule
   RLS for all \code{ITenant\allowbreak{}Owned} entities & Convention with index and optional
-  query filter & 8 \\
+  query filter & \ref{ch:conventions} \\
   \tablerule
   Fluent API, attribute \code{[No\allowbreak{}Tenant\allowbreak{}Isolation]} & Annotations,
-  attribute convention, ConfigurationSource & 7–8 \\
+  attribute convention, ConfigurationSource & \ref{ch:annotations-and-fluent-api}--\ref{ch:conventions} \\
   \tablerule
-  Detect misconfiguration early & Validation convention, custom warnings & 9, 16 \\
+  Detect misconfiguration early & Validation convention, custom warnings & \ref{ch:model-validation}, \ref{ch:diagnostics-and-logging} \\
   \tablerule
-  Set TenantId automatically & SaveChanges interceptor & 15 \\
+  Set TenantId automatically & SaveChanges interceptor & \ref{ch:interceptors} \\
   \tablerule
-  Tenant in the DB session & Connection interceptor & 15 \\
+  Tenant in the DB session & Connection interceptor & \ref{ch:interceptors} \\
   \tablerule
   \code{ENABLE ROW LEVEL SECURITY}, \code{CREATE POLICY} & Annotation provider, migrations
-  SQL generator & 17–18 \\
+  SQL generator & \ref{ch:how-migrations-work}--\ref{ch:declarative-sql-from-annotations} \\
   \tablerule
-  Roles and grants in migrations & Custom migration operations & 19 \\
+  Roles and grants in migrations & Custom migration operations & \ref{ch:custom-migration-operations} \\
   \tablerule
-  Readable snapshots & Annotation code generator, design-time services & 20 \\
+  Readable snapshots & Annotation code generator, design-time services & \ref{ch:design-time-services} \\
   \tablerule
-  Compiled models and AOT & \code{Default} instances, source generators & 21 \\
+  Compiled models and AOT & \code{Default} instances, source generators & \ref{ch:compiled-models-trimming-and-nativeaot} \\
   \tablerule
   \code{EF.\allowbreak{}Functions.\allowbreak{}Is\allowbreak{}Not\allowbreak{}Distinct\allowbreak{}From},
   \code{EF.\allowbreak{}Functions.\allowbreak{}Every} & Custom SQL node, aggregate
-  translator & 37–38 \\
+  translator & \ref{ch:custom-sql-expression-nodes}--\ref{ch:aggregate-translators} \\
   \tablerule
   Tenant property with any name &
-  \code{Is\allowbreak{}Tenant\allowbreak{}Property(\allowbreak{})}, runtime annotation & 39
+  \code{Is\allowbreak{}Tenant\allowbreak{}Property(\allowbreak{})}, runtime annotation & \ref{ch:property-level-fluent-api-and}
   \\
   \tablerule
-  Scaffold RLS from an existing database & Custom database model factory & 40 \\
+  Scaffold RLS from an existing database & Custom database model factory & \ref{ch:scaffolding-in-practice} \\
   \tablerule
-  SQL Server & Second provider package on the same core & 41–42 \\
+  SQL Server & Second provider package on the same core & \ref{ch:what-belongs-in-the-core}--\ref{ch:a-second-provider-sql-server} \\
 \end{datatable}
 
 \section{Package architecture}

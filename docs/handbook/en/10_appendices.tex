@@ -24,66 +24,66 @@ Lifetimes and cardinality according to EF Core 10's service tables
 \begin{datatable}{H{2.13}H{0.80}H{0.71}H{0.36}}
   \textbf{Service} & \textbf{Lifetime} & \textbf{Kind} & \textbf{Ch.} \\
   \tablehead
-  \code{IConvention\allowbreak{}Set\allowbreak{}Plugin} & Scoped & multiple & 8 \\
+  \code{IConvention\allowbreak{}Set\allowbreak{}Plugin} & Scoped & multiple & \ref{ch:conventions} \\
   \tablerule
-  \code{ISingleton\allowbreak{}Options} & Singleton & multiple & 5 \\
+  \code{ISingleton\allowbreak{}Options} & Singleton & multiple & \ref{ch:registering-services} \\
   \tablerule
   \code{IType\allowbreak{}Mapping\allowbreak{}Source\allowbreak{}Plugin} & Singleton &
-  multiple & 10 \\
+  multiple & \ref{ch:type-mappings-and-value-converters} \\
   \tablerule
   \code{IRelational\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source\allowbreak{}Plugin}
-  & Singleton & multiple & 10 \\
+  & Singleton & multiple & \ref{ch:type-mappings-and-value-converters} \\
   \tablerule
   \code{IMethod\allowbreak{}Call\allowbreak{}Translator\allowbreak{}Plugin} & Scoped &
-  multiple & 12 \\
+  multiple & \ref{ch:translating-methods-and-members} \\
   \tablerule
-  \code{IMember\allowbreak{}Translator\allowbreak{}Plugin} & Scoped & multiple & 12 \\
+  \code{IMember\allowbreak{}Translator\allowbreak{}Plugin} & Scoped & multiple & \ref{ch:translating-methods-and-members} \\
   \tablerule
   \code{IAggregate\allowbreak{}Method\allowbreak{}Call\allowbreak{}Translator\allowbreak{}Plugin}
-  & Scoped & multiple & 38 \\
+  & Scoped & multiple & \ref{ch:aggregate-translators} \\
   \tablerule
   \code{IEvaluatable\allowbreak{}Expression\allowbreak{}Filter\allowbreak{}Plugin} &
-  Singleton & multiple & 13 \\
+  Singleton & multiple & \ref{ch:preventing-client-side-evaluation} \\
   \tablerule
-  \code{IInterceptor} (injected) & Scoped & multiple & 15 \\
+  \code{IInterceptor} (injected) & Scoped & multiple & \ref{ch:interceptors} \\
   \tablerule
-  \code{ISingleton\allowbreak{}Interceptor} & Singleton & multiple & 15 \\
+  \code{ISingleton\allowbreak{}Interceptor} & Singleton & multiple & \ref{ch:interceptors} \\
   \tablerule
-  \code{IRelational\allowbreak{}Annotation\allowbreak{}Provider} & Singleton & single & 18
+  \code{IRelational\allowbreak{}Annotation\allowbreak{}Provider} & Singleton & single & \ref{ch:declarative-sql-from-annotations}
   \\
   \tablerule
-  \code{IMigrations\allowbreak{}Sql\allowbreak{}Generator} & Scoped & single & 18 \\
+  \code{IMigrations\allowbreak{}Sql\allowbreak{}Generator} & Scoped & single & \ref{ch:declarative-sql-from-annotations} \\
   \tablerule
-  \code{IMigrations\allowbreak{}Model\allowbreak{}Differ} & Scoped & single & 19 \\
+  \code{IMigrations\allowbreak{}Model\allowbreak{}Differ} & Scoped & single & \ref{ch:custom-migration-operations} \\
   \tablerule
-  \code{IModel\allowbreak{}Validator} & Singleton & single & 9 \\
+  \code{IModel\allowbreak{}Validator} & Singleton & single & \ref{ch:model-validation} \\
   \tablerule
   \code{IModel\allowbreak{}Customizer} & Singleton & single & – \\
   \tablerule
   \code{IModel\allowbreak{}Cache\allowbreak{}Key\allowbreak{}Factory} & Singleton & single &
-  31 \\
+  \ref{ch:models-per-runtime-context} \\
   \tablerule
   \code{ISql\allowbreak{}Generation\allowbreak{}Helper} & Singleton & single & – \\
   \tablerule
   \code{IRelational\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source} & Singleton &
-  single & 10 \\
+  single & \ref{ch:type-mappings-and-value-converters} \\
   \tablerule
-  \code{ISql\allowbreak{}Expression\allowbreak{}Factory} & Scoped & single & 12 \\
+  \code{ISql\allowbreak{}Expression\allowbreak{}Factory} & Scoped & single & \ref{ch:translating-methods-and-members} \\
   \tablerule
   \code{IQuery\allowbreak{}Sql\allowbreak{}Generator\allowbreak{}Factory} & Singleton &
-  single & 14, 37 \\
+  single & \ref{ch:further-query-extension-points}, \ref{ch:custom-sql-expression-nodes} \\
   \tablerule
-  \code{IModification\allowbreak{}Command\allowbreak{}Factory} & Singleton & single & 29 \\
+  \code{IModification\allowbreak{}Command\allowbreak{}Factory} & Singleton & single & \ref{ch:the-update-pipeline} \\
   \tablerule
-  \code{ICommand\allowbreak{}Batch\allowbreak{}Preparer} & Scoped & single & 29 \\
+  \code{ICommand\allowbreak{}Batch\allowbreak{}Preparer} & Scoped & single & \ref{ch:the-update-pipeline} \\
   \tablerule
   \code{IModification\allowbreak{}Command\allowbreak{}Batch\allowbreak{}Factory} & Scoped &
-  single & 29 \\
+  single & \ref{ch:the-update-pipeline} \\
   \tablerule
-  \code{IUpdate\allowbreak{}Sql\allowbreak{}Generator} & Singleton & single & 29 \\
+  \code{IUpdate\allowbreak{}Sql\allowbreak{}Generator} & Singleton & single & \ref{ch:the-update-pipeline} \\
   \tablerule
   \code{IRelational\allowbreak{}Parameter\allowbreak{}Based\allowbreak{}Sql\allowbreak{}Processor\allowbreak{}Factory}
-  & Scoped & single & 37 \\
+  & Scoped & single & \ref{ch:custom-sql-expression-nodes} \\
 \end{datatable}
 
 \section{Design-time services (via IDesignTimeServices)}
@@ -118,156 +118,156 @@ Lifetimes and cardinality according to EF Core 10's service tables
   \tablerule
   \code{Tenant\allowbreak{}Id.\allowbreak{}cs},
   \code{Tenant\allowbreak{}Id\allowbreak{}Converter.\allowbreak{}cs} & Strongly typed ID,
-  converter & 10 \\
+  converter & \ref{ch:type-mappings-and-value-converters} \\
   \tablerule
   \code{Tenant\allowbreak{}Id\allowbreak{}Json\allowbreak{}Reader\allowbreak{}Writer.\allowbreak{}cs}
-  & JSON support & 10 \\
+  & JSON support & \ref{ch:type-mappings-and-value-converters} \\
   \tablerule
   \code{ITenant\allowbreak{}Owned.\allowbreak{}cs},
-  \code{ITenant\allowbreak{}Provider.\allowbreak{}cs} & Marker, tenant source & 3 \\
+  \code{ITenant\allowbreak{}Provider.\allowbreak{}cs} & Marker, tenant source & \ref{ch:the-sample-scenario} \\
   \tablerule
   \code{No\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Attribute.\allowbreak{}cs} &
-  Data annotation & 8 \\
+  Data annotation & \ref{ch:conventions} \\
   \tablerule
   \code{Tenancy\allowbreak{}Db\allowbreak{}Functions\allowbreak{}Extensions.\allowbreak{}cs}
   & \code{EF.\allowbreak{}Functions.\allowbreak{}Current\allowbreak{}Tenant(\allowbreak{})}
-  & 12 \\
+  & \ref{ch:translating-methods-and-members} \\
   \tablerule
-  \code{Diagnostics/\allowbreak{}*} & Event IDs, definitions, logger extensions & 16 \\
+  \code{Diagnostics/\allowbreak{}*} & Event IDs, definitions, logger extensions & \ref{ch:diagnostics-and-logging} \\
   \tablerule
   \code{Interceptors/\allowbreak{}Tenant\allowbreak{}Save\allowbreak{}Changes\allowbreak{}Interceptor.\allowbreak{}cs}
-  & SaveChanges logic & 15 \\
+  & SaveChanges logic & \ref{ch:interceptors} \\
   \tablerule
   \code{Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs}
-  & Abstract base for session commands & 15, 41 \\
+  & Abstract base for session commands & \ref{ch:interceptors}, \ref{ch:what-belongs-in-the-core} \\
   \tablerule
   \code{Tenancy\allowbreak{}Database\allowbreak{}Facade\allowbreak{}Extensions.\allowbreak{}cs}
   & \code{Database.\allowbreak{}Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})}
-  & 15 \\
+  & \ref{ch:interceptors} \\
   \tablerule
   \code{Metadata/\allowbreak{}*} (core) & Runtime annotation, IsTenantProperty, candidate
-  lookup & 39 \\
+  lookup & \ref{ch:property-level-fluent-api-and} \\
   \tablerule
   \code{Query/\allowbreak{}Tenancy\allowbreak{}Evaluatable\allowbreak{}Expression\allowbreak{}Filter\allowbreak{}Plugin.\allowbreak{}cs}
-  & Filter for all packages & 13, 41 \\
+  & Filter for all packages & \ref{ch:preventing-client-side-evaluation}, \ref{ch:what-belongs-in-the-core} \\
   \tablerule
-  \code{Dependency\allowbreak{}Injection/\allowbreak{}*} & AddAcmeTenancy & 6, 41 \\
+  \code{Dependency\allowbreak{}Injection/\allowbreak{}*} & AddAcmeTenancy & \ref{ch:public-api-and-integration-into}, \ref{ch:what-belongs-in-the-core} \\
   \tablerule
   \code{Value\allowbreak{}Generation/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Value\allowbreak{}Generator.\allowbreak{}cs},
-  \code{…Factory.\allowbreak{}cs} & Value generation & 28 \\
+  \code{…Factory.\allowbreak{}cs} & Value generation & \ref{ch:value-generation} \\
   \tablerule
   \code{Conventions/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Key\allowbreak{}Value\allowbreak{}Generation\allowbreak{}Convention.\allowbreak{}cs}
-  & Generator for keys & 28 \\
+  & Generator for keys & \ref{ch:value-generation} \\
   \tablerule
   \textbf{PostgreSQL package} &  &  \\
   \tablerule
   \code{Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs}
-  & Extension, info, ApplyServices & 4, 5 \\
+  & Extension, info, ApplyServices & \ref{ch:the-options-extension}, \ref{ch:registering-services} \\
   \tablerule
   \code{Infrastructure/\allowbreak{}Tenancy\allowbreak{}Settings.\allowbreak{}cs} & Settings
-  as a record & 4 \\
+  as a record & \ref{ch:the-options-extension} \\
   \tablerule
   \code{Infrastructure/\allowbreak{}ITenancy\allowbreak{}Singleton\allowbreak{}Options.\allowbreak{}cs}
-  & Singleton options & 5 \\
+  & Singleton options & \ref{ch:registering-services} \\
   \tablerule
   \code{Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Builder.\allowbreak{}cs}
-  & Options builder & 6 \\
+  & Options builder & \ref{ch:public-api-and-integration-into} \\
   \tablerule
-  \code{Infrastructure/\allowbreak{}Tenancy*Extensions.\allowbreak{}cs} & UseAcmeTenancy & 6
+  \code{Infrastructure/\allowbreak{}Tenancy*Extensions.\allowbreak{}cs} & UseAcmeTenancy & \ref{ch:public-api-and-integration-into}
   \\
   \tablerule
   \code{Infrastructure/\allowbreak{}Tenancy\allowbreak{}Identifiers.\allowbreak{}cs} &
-  Identifier validation & 8, 19 \\
+  Identifier validation & \ref{ch:conventions}, \ref{ch:custom-migration-operations} \\
   \tablerule
-  \code{Storage/\allowbreak{}*} & Type mapping and plugin & 10 \\
+  \code{Storage/\allowbreak{}*} & Type mapping and plugin & \ref{ch:type-mappings-and-value-converters} \\
   \tablerule
-  \code{Query/\allowbreak{}*} & Translators, functions & 12, 13 \\
+  \code{Query/\allowbreak{}*} & Translators, functions & \ref{ch:translating-methods-and-members}, \ref{ch:preventing-client-side-evaluation} \\
   \tablerule
   \code{Metadata/\allowbreak{}*} & Annotations, RlsPolicy, PolicyCommand, annotation
-  provider & 7, 18 \\
+  provider & \ref{ch:annotations-and-fluent-api}, \ref{ch:declarative-sql-from-annotations} \\
   \tablerule
-  \code{Builders/\allowbreak{}*} & Fluent API, PolicyBuilder & 7 \\
+  \code{Builders/\allowbreak{}*} & Fluent API, PolicyBuilder & \ref{ch:annotations-and-fluent-api} \\
   \tablerule
-  \code{Conventions/\allowbreak{}*} & Isolation, attribute, validation, plugin & 8, 9 \\
+  \code{Conventions/\allowbreak{}*} & Isolation, attribute, validation, plugin & \ref{ch:conventions}, \ref{ch:model-validation} \\
   \tablerule
-  \code{Migrations/\allowbreak{}*} & SQL generator, custom operations & 18, 19 \\
+  \code{Migrations/\allowbreak{}*} & SQL generator, custom operations & \ref{ch:declarative-sql-from-annotations}, \ref{ch:custom-migration-operations} \\
   \tablerule
   \code{Design/\allowbreak{}*},
   \code{Properties/\allowbreak{}Assembly\allowbreak{}Info.\allowbreak{}cs} & Code generator,
-  design time & 20 \\
+  design time & \ref{ch:design-time-services} \\
   \tablerule
   \code{Runtime/\allowbreak{}Tenant\allowbreak{}Connection\allowbreak{}Interceptor.\allowbreak{}cs}
-  & Set the session setting & 15 \\
+  & Set the session setting & \ref{ch:interceptors} \\
   \tablerule
   \code{Query/\allowbreak{}Expressions/\allowbreak{}*},
   \code{Query/\allowbreak{}Distinct\allowbreak{}From\allowbreak{}Translator.\allowbreak{}cs}
-  & Custom SQL node & 37 \\
+  & Custom SQL node & \ref{ch:custom-sql-expression-nodes} \\
   \tablerule
   \code{Query/\allowbreak{}Internal/\allowbreak{}*} & SQL generator, nullability processor,
-  factories & 37 \\
+  factories & \ref{ch:custom-sql-expression-nodes} \\
   \tablerule
   \code{Query/\allowbreak{}Every\allowbreak{}Aggregate\allowbreak{}Translator.\allowbreak{}cs}
-  & Aggregate translator & 38 \\
+  & Aggregate translator & \ref{ch:aggregate-translators} \\
   \tablerule
   \code{Design/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}CSharp\allowbreak{}Runtime…Generator.\allowbreak{}cs}
-  & Compiled model filter & 39 \\
+  & Compiled model filter & \ref{ch:property-level-fluent-api-and} \\
   \tablerule
-  \code{Scaffolding/\allowbreak{}*} & Read RLS from the database & 40 \\
+  \code{Scaffolding/\allowbreak{}*} & Read RLS from the database & \ref{ch:scaffolding-in-practice} \\
   \tablerule
   \textbf{SQL Server package} &  &  \\
   \tablerule
-  \code{Infrastructure/\allowbreak{}*} & Extension, provider-builder activation & 42 \\
+  \code{Infrastructure/\allowbreak{}*} & Extension, provider-builder activation & \ref{ch:a-second-provider-sql-server} \\
   \tablerule
   \code{Storage/\allowbreak{}*}, \code{Query/\allowbreak{}*} & uniqueidentifier,
-  SESSION\_CONTEXT & 42 \\
+  SESSION\_CONTEXT & \ref{ch:a-second-provider-sql-server} \\
   \tablerule
   \code{Conventions/\allowbreak{}*}, \code{Metadata/\allowbreak{}*} & Isolation, column
-  annotation & 42 \\
+  annotation & \ref{ch:a-second-provider-sql-server} \\
   \tablerule
-  \code{Migrations/\allowbreak{}*} & Predicate function, security policy & 42 \\
+  \code{Migrations/\allowbreak{}*} & Predicate function, security policy & \ref{ch:a-second-provider-sql-server} \\
   \tablerule
-  \code{Runtime/\allowbreak{}*} & sp\_set\_session\_context & 42 \\
+  \code{Runtime/\allowbreak{}*} & sp\_set\_session\_context & \ref{ch:a-second-provider-sql-server} \\
   \tablerule
   \textbf{Further} &  &  \\
   \tablerule
   \code{samples/\allowbreak{}Shop\allowbreak{}Sample} & Console sample with design-time
-  factory & 3, 32 \\
+  factory & \ref{ch:the-sample-scenario}, \ref{ch:advanced-migrations} \\
   \tablerule
-  \code{samples/\allowbreak{}Shop\allowbreak{}Api} & ASP.NET Core sample (minimal API) & 35
+  \code{samples/\allowbreak{}Shop\allowbreak{}Api} & ASP.NET Core sample (minimal API) & \ref{ch:using-the-plugin-in-asp}
   \\
   \tablerule
   \code{.\allowbreak{}github/\allowbreak{}workflows/\allowbreak{}ci.\allowbreak{}yml} &
-  Build, tests, handbook, preview build & 36 \\
+  Build, tests, handbook & \ref{ch:ci-and-api-stability} \\
   \tablerule
-  \code{Public\allowbreak{}API.\allowbreak{}*.\allowbreak{}txt} & Public API analyzer & 36
+  \code{Public\allowbreak{}API.\allowbreak{}*.\allowbreak{}txt} & Public API analyzer & \ref{ch:ci-and-api-stability}
   \\
   \tablerule
   \code{docs/\allowbreak{}handbook/\allowbreak{}*} & Sources of this book (German and
   English) & – \\
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Tests} & Unit tests
-  without a database & 23 \\
+  without a database & \ref{ch:test-strategy} \\
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Minimal\allowbreak{}Plugin\allowbreak{}Tests.\allowbreak{}cs}
-  & The mini plugin & 2 \\
+  & The mini plugin & \ref{ch:ef-core-s-architecture-from} \\
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Composition\allowbreak{}Tests.\allowbreak{}cs}
-  & Decorator example (audit plugin) & 5 \\
+  & Decorator example (audit plugin) & \ref{ch:registering-services} \\
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Debugging\allowbreak{}Tests.\allowbreak{}cs}
   & Debugging techniques & App. D \\
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Schema\allowbreak{}Per\allowbreak{}Tenant\allowbreak{}Tests.\allowbreak{}cs}
-  & Model cache key per schema & 31 \\
+  & Model cache key per schema & \ref{ch:models-per-runtime-context} \\
   \tablerule
   \code{benchmarks/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}} &
-  BenchmarkDotNet project for the SaveChanges logic & 34 \\
+  BenchmarkDotNet project for the SaveChanges logic & \ref{ch:plugin-performance} \\
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests}
-  & Testcontainers tests against PostgreSQL & 15, 23, 27, 33, 40 \\
+  & Testcontainers tests against PostgreSQL & \ref{ch:interceptors}, \ref{ch:test-strategy}, \ref{ch:bulk-operations-and-the-limits}, \ref{ch:row-level-security-in-production}, \ref{ch:scaffolding-in-practice} \\
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Sql\allowbreak{}Server.\allowbreak{}Tests}
-  & Unit and Testcontainers tests for SQL Server & 42 \\
+  & Unit and Testcontainers tests for SQL Server & \ref{ch:a-second-provider-sql-server} \\
 \end{datatable}
 
 % ------------------------------------------------------------

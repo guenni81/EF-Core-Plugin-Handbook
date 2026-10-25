@@ -335,49 +335,49 @@ Damit das funktioniert, nutzt das Plugin jeden Erweiterungspunkt dieses Buchs:
   \textbf{Anforderung} & \textbf{Umsetzung} & \textbf{Kap.} \\
   \tablehead
   Konfiguration über \code{Use\allowbreak{}Acme\allowbreak{}Tenancy(\allowbreak{})} &
-  Options-Extension, Settings-Record, Options-Builder & 4–6 \\
+  Options-Extension, Settings-Record, Options-Builder & \ref{ch:the-options-extension}--\ref{ch:public-api-and-integration-into} \\
   \tablerule
   \code{Tenant\allowbreak{}Id} als Spaltentyp ohne Konfiguration & Type-Mapping-Plugin,
-  Value Converter, JSON-Reader/Writer & 10 \\
+  Value Converter, JSON-Reader/Writer & \ref{ch:type-mappings-and-value-converters} \\
   \tablerule
   \code{EF.\allowbreak{}Functions.\allowbreak{}Current\allowbreak{}Tenant(\allowbreak{})} in
-  LINQ & Method-Translator, Evaluatable-Expression-Filter & 12–13 \\
+  LINQ & Method-Translator, Evaluatable-Expression-Filter & \ref{ch:translating-methods-and-members}--\ref{ch:preventing-client-side-evaluation} \\
   \tablerule
   \code{tenant\allowbreak{}Id.\allowbreak{}Is\allowbreak{}Empty} in LINQ & Member-Translator
-  & 12 \\
+  & \ref{ch:translating-methods-and-members} \\
   \tablerule
   RLS für alle \code{ITenant\allowbreak{}Owned}-Entitäten & Convention mit Index und
-  optionalem Query-Filter & 8 \\
+  optionalem Query-Filter & \ref{ch:conventions} \\
   \tablerule
   Fluent API, Attribut \code{[No\allowbreak{}Tenant\allowbreak{}Isolation]} & Annotations,
-  Attribut-Convention, ConfigurationSource & 7–8 \\
+  Attribut-Convention, ConfigurationSource & \ref{ch:annotations-and-fluent-api}--\ref{ch:conventions} \\
   \tablerule
-  Fehlkonfiguration früh erkennen & Validierungs-Convention, eigene Warnungen & 9, 16 \\
+  Fehlkonfiguration früh erkennen & Validierungs-Convention, eigene Warnungen & \ref{ch:model-validation}, \ref{ch:diagnostics-and-logging} \\
   \tablerule
-  TenantId automatisch setzen & SaveChanges-Interceptor & 15 \\
+  TenantId automatisch setzen & SaveChanges-Interceptor & \ref{ch:interceptors} \\
   \tablerule
-  Mandant in der DB-Session & Connection-Interceptor & 15 \\
+  Mandant in der DB-Session & Connection-Interceptor & \ref{ch:interceptors} \\
   \tablerule
   \code{ENABLE ROW LEVEL SECURITY}, \code{CREATE POLICY} & Annotation-Provider,
-  Migrations-SQL-Generator & 17–18 \\
+  Migrations-SQL-Generator & \ref{ch:how-migrations-work}--\ref{ch:declarative-sql-from-annotations} \\
   \tablerule
-  Rollen und Rechte in Migrationen & Eigene Migrations-Operationen & 19 \\
+  Rollen und Rechte in Migrationen & Eigene Migrations-Operationen & \ref{ch:custom-migration-operations} \\
   \tablerule
-  Lesbare Snapshots & Annotation-Code-Generator, Design-Time-Services & 20 \\
+  Lesbare Snapshots & Annotation-Code-Generator, Design-Time-Services & \ref{ch:design-time-services} \\
   \tablerule
-  Compiled Models und AOT & \code{Default}-Instanzen, Source-Generatoren & 21 \\
+  Compiled Models und AOT & \code{Default}-Instanzen, Source-Generatoren & \ref{ch:compiled-models-trimming-and-nativeaot} \\
   \tablerule
   \code{EF.\allowbreak{}Functions.\allowbreak{}Is\allowbreak{}Not\allowbreak{}Distinct\allowbreak{}From},
   \code{EF.\allowbreak{}Functions.\allowbreak{}Every} & Eigener SQL-Knoten,
-  Aggregat-Translator & 37–38 \\
+  Aggregat-Translator & \ref{ch:custom-sql-expression-nodes}--\ref{ch:aggregate-translators} \\
   \tablerule
   Mandanten-Property mit beliebigem Namen &
-  \code{Is\allowbreak{}Tenant\allowbreak{}Property(\allowbreak{})}, Laufzeit-Annotation & 39
+  \code{Is\allowbreak{}Tenant\allowbreak{}Property(\allowbreak{})}, Laufzeit-Annotation & \ref{ch:property-level-fluent-api-and}
   \\
   \tablerule
-  RLS aus bestehender Datenbank scaffolden & Eigene Database-Model-Factory & 40 \\
+  RLS aus bestehender Datenbank scaffolden & Eigene Database-Model-Factory & \ref{ch:scaffolding-in-practice} \\
   \tablerule
-  SQL Server & Zweites Provider-Paket auf demselben Kern & 41–42 \\
+  SQL Server & Zweites Provider-Paket auf demselben Kern & \ref{ch:what-belongs-in-the-core}--\ref{ch:a-second-provider-sql-server} \\
 \end{datatable}
 
 \section{Paketarchitektur}

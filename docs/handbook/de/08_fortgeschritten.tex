@@ -708,8 +708,7 @@ zuerst der Claim, sonst der Ambient-Mandant.
 
 Der GitHub-Actions-Workflow im Repository setzt die Empfehlungen aus
 Kapitel~\ref{ch:test-strategy} und \ref{ch:versioning-and-compatibility} um. Ein Job baut
-und testet ohne und mit Datenbank; ein zweiter baut das Handbuch; ein dritter baut gegen die
-nächste EF-Preview und darf fehlschlagen:
+und testet ohne und mit Datenbank, ein zweiter baut das Handbuch:
 
 \begin{sourcecode}[.\allowbreak{}github/\allowbreak{}workflows/\allowbreak{}ci.\allowbreak{}yml (\allowbreak{}gekürzt)]{text}
 jobs:
@@ -726,34 +725,22 @@ jobs:
       - run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests
           -c Release --no-build
 
-  handbook:                            # beide PDFs; scheitert an zu langen Codezeilen
+  handbook:                            # beide PDFs mit LuaLaTeX, im Ordner docs/handbook
     runs-on: ubuntu-latest
+    container: texlive/texlive@sha256:540d…   # TeX Live 2026, per Digest fixiert
     steps:
-      # ... checkout, setup-python, pip install -r docs/handbook/requirements.txt ...
-      - run: python docs/handbook/build.py --lang en
-
-  ef-preview:
-    runs-on: ubuntu-latest
-    continue-on-error: true              # Frühwarnsystem, kein Blocker
-    steps:
-      # ... setup-dotnet mit 11.0.x preview ...
-      - run: dotnet build -c Release -p:EFCorePreview=true
+      # ... checkout ...
+      - run: python3 check_code.py     # scheitert an zu langen Codezeilen
+      - run: latexmk EF-Core-Plugin-Handbuch.tex
 \end{sourcecode}
 
-Der Preview-Build funktioniert über bedingte Paketversionen in
-\code{Directory.\allowbreak{}Packages.\allowbreak{}props}:
-
-\begin{sourcecode}[Directory.\allowbreak{}Packages.\allowbreak{}props (\allowbreak{}Auszug)]{xml}
-<PropertyGroup>
-  <CentralPackageFloatingVersionsEnabled>true</CentralPackageFloatingVersionsEnabled>
-</PropertyGroup>
-<ItemGroup Condition="'$(EFCorePreview)' != 'true'">
-  <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="[10.0.0,11.0.0)" />
-</ItemGroup>
-<ItemGroup Condition="'$(EFCorePreview)' == 'true'">
-  <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="11.0.0-*" />
-</ItemGroup>
-\end{sourcecode}
+Das Beispiel baut bewusst nur gegen stabile Versionen (.NET 10, EF Core 10). Ein
+zusätzlicher Build gegen die nächste EF-Vorabversion, wie ihn
+Kapitel~\ref{ch:versioning-and-compatibility} empfiehlt, zeigt Brüche in internen APIs
+früher. Er braucht aber auch das passende Vorab-SDK von .NET, weil jede EF-Core-Hauptversion
+nur für die gleichnamige .NET-Version erscheint (EF Core 11 nur für \code{net11.\allowbreak{}0}).
+Wer ihn einrichtet, betreibt ihn am besten als eigenen Job mit
+\code{continue-on-\allowbreak{}error}, damit er die reguläre CI nicht blockiert.
 
 \section{Öffentliche API absichern}
 
