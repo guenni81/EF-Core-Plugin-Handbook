@@ -9,8 +9,10 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Acme.EntityFrameworkCore.Tenancy.Tests;
 
 // The smallest complete plugin: EF.Functions.Reverse(text) becomes PostgreSQL's reverse().
-// Each piece is explained in detail later: options extension (chapter 4), service
-// registration (chapter 5), Use method (chapter 6), translators (chapter 12).
+// Each piece is explained in detail later in the handbook: options extension (chapter "The
+// options extension"), service registration (chapter "Registering services"), Use method
+// (chapter "Public API and integration into the application"), translators (chapter
+// "Translating methods and members").
 
 /// <summary>1. The function users call in LINQ. It is never executed.</summary>
 public static class ReverseDbFunctionsExtensions
@@ -113,7 +115,10 @@ public static class ReverseDbContextOptionsBuilderExtensions
     }
 }
 
-/// <summary>The minimal plugin from chapter 2 works end to end.</summary>
+/// <summary>
+/// The minimal plugin from chapter "EF Core's architecture from a plugin's point of view"
+/// works end to end.
+/// </summary>
 public class MinimalPluginTests
 {
     [Fact]

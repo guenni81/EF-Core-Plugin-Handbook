@@ -1,0 +1,646 @@
+% ============================================================
+\setpartpreamble{\partintro
+  {Metadata, Fluent API, conventions, validation and new column types.}
+  {
+    \item Chapter~\ref{ch:annotations-and-fluent-api}: Annotations and Fluent API
+    \item Chapter~\ref{ch:conventions}: Conventions
+    \item Chapter~\ref{ch:model-validation}: Model validation
+    \item Chapter~\ref{ch:type-mappings-and-value-converters}: Type mappings and value
+    converters
+  }}
+\part{The model}\label{part:III}
+
+% ------------------------------------------------------------
+\chapter{Annotations and Fluent API}\label{ch:annotations-and-fluent-api}
+
+Annotations are EF's mechanism for extensible metadata: key-value pairs on every model
+element (model, entity type, property, index, ...). A plugin stores its configuration as
+annotations, and the entire remaining infrastructure (conventions, migrations, snapshots,
+compiled models) can work with them.
+
+\section{Rules for annotations}
+
+\begin{datatable}{H{0.75}H{1.25}}
+  \textbf{Rule} & \textbf{Reason} \\
+  \tablehead
+  Own prefix (\code{Acme:Rls:}) & Avoids collisions with EF, providers and other plugins. \\
+  \tablerule
+  Simple values only: string, bool, numbers, enums & Snapshots and migrations write values
+  as C\# literals. Custom classes cannot be serialized. \\
+  \tablerule
+  Complex values as a string (e.g. JSON) & The differ compares strings reliably via
+  \code{Equals}. A record with a \code{string[]} would be compared by reference and
+  constantly appear “changed”. \\
+  \tablerule
+  Do not store default values & “Annotation missing” and “annotation has default” differ for
+  the differ and produce empty migrations. \\
+  \tablerule
+  One annotation per piece of configuration & Every policy has its own annotation, so the
+  diff shows exactly which one changed. \\
+\end{datatable}
+
+\begin{sourcecode}[Metadata/\allowbreak{}Rls\allowbreak{}Annotation\allowbreak{}Names.\allowbreak{}cs,\allowbreak{} Metadata/\allowbreak{}Rls\allowbreak{}Policy.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
+public static class RlsAnnotationNames
+{
+    public const string Prefix = "Acme:Rls:";
+    public const string Enabled = Prefix + "Enabled";
+    public const string Forced = Prefix + "Forced";
+    public const string PolicyPrefix = Prefix + "Policy:";     // + policy name
+    public const string QueryFilterKey = "Acme.Tenancy";
+}
+
+public sealed record RlsPolicy(string Name, PolicyCommand Command, bool Permissive,
+    string[]? Roles, string? Using, string? WithCheck)
+{
+    public string Serialize()
+        => JsonSerializer.Serialize(this, RlsJsonContext.Default.RlsPolicy);
+
+    public static RlsPolicy Deserialize(string json) => /* ... */;
+}
+\end{sourcecode}
+
+\section{The Fluent API}
+
+Fluent API methods are extension methods on EF's builders. Three design rules make them
+professional: the \textbf{non-generic} variant is the actual implementation (the model
+snapshot uses non-generic builders, chapter~\ref{ch:design-time-services}). The
+\textbf{generic} variant only delegates and preserves the type for further chaining. And the
+class lives in the namespace
+\code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core} so it is
+available everywhere without a \code{using}.
+
+\begin{sourcecode}[Builders/\allowbreak{}Rls\allowbreak{}Entity\allowbreak{}Type\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
+namespace Microsoft.EntityFrameworkCore;
+
+public static class RlsEntityTypeBuilderExtensions
+{
+    public static EntityTypeBuilder HasRowLevelSecurity(
+        this EntityTypeBuilder builder, bool force = false)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        builder.Metadata.SetAnnotation(RlsAnnotationNames.Enabled, true);
+
+        if (force)
+            builder.Metadata.SetAnnotation(RlsAnnotationNames.Forced, true);
+        else
+            builder.Metadata.RemoveAnnotation(RlsAnnotationNames.Forced);   // no default!
+
+        return builder;
+    }
+
+    public static EntityTypeBuilder HasPolicy(
+        this EntityTypeBuilder builder, string name, Action<PolicyBuilder> configure)
+    {
+        var policyBuilder = new PolicyBuilder(name);
+        configure(policyBuilder);
+        builder.Metadata.SetAnnotation(
+            RlsAnnotationNames.PolicyPrefix + name, policyBuilder.Build().Serialize());
+        return builder;
+    }
+
+    public static EntityTypeBuilder<TEntity> HasRowLevelSecurity<TEntity>(
+        this EntityTypeBuilder<TEntity> builder, bool force = false) where TEntity : class
+        => (EntityTypeBuilder<TEntity>)HasRowLevelSecurity(
+            (EntityTypeBuilder)builder, force);
+
+    // ... HasNoRowLevelSecurity, HasPolicy<TEntity> analogous
+}
+\end{sourcecode}
+
+Nested configuration such as \code{Has\allowbreak{}Policy} accepts an
+\code{Action<\allowbreak{}Policy\allowbreak{}Builder>}. The builder checks the database's
+rules already while the model is built. A mistake like “INSERT policy with USING” therefore
+surfaces on the application's first start, not when the migration runs in production:
+
+\begin{sourcecode}[Builders/\allowbreak{}Policy\allowbreak{}Builder.\allowbreak{}cs › Build]{csharp}
+internal RlsPolicy Build()
+{
+    if (_using is null && _withCheck is null)
+        throw new InvalidOperationException(
+            $"Policy '{_name}' requires USING or WITH CHECK.");
+
+    if (_command == PolicyCommand.Insert && _using is not null)
+        throw new InvalidOperationException(
+            $"INSERT policy '{_name}' only allows WITH CHECK.");
+
+    if (_command is PolicyCommand.Select or PolicyCommand.Delete && _withCheck is not null)
+        throw new InvalidOperationException(
+            $"{_command} policy '{_name}' only allows USING.");
+
+    return new RlsPolicy(_name, _command, _permissive,
+        _roles.Count > 0 ? [.. _roles] : null, _using, _withCheck);
+}
+\end{sourcecode}
+
+\section{Configuration sources}
+
+EF remembers for every piece of metadata \emph{where} it came from. A source can override an
+equally strong or weaker one, but never a stronger one. This is the mechanism through which
+plugins set sensible defaults that users can always override:
+
+\begin{datatable}{H{0.82}H{1.64}H{0.55}}
+  \textbf{ConfigurationSource} & \textbf{Set by} & \textbf{Strength} \\
+  \tablehead
+  \code{Explicit} & Fluent API in \code{On\allowbreak{}Model\allowbreak{}Creating}
+  (\code{Metadata.\allowbreak{}Set\allowbreak{}Annotation}) & strongest \\
+  \tablerule
+  \code{Data\allowbreak{}Annotation} & Attribute conventions
+  (\code{from\allowbreak{}Data\allowbreak{}Annotation: true}) & medium \\
+  \tablerule
+  \code{Convention} & Conventions via \code{IConvention*Builder} & weakest \\
+\end{datatable}
+
+For custom conventions the plugin therefore also offers overloads on the convention builder.
+They return \code{null} when a stronger source decided otherwise:
+
+\begin{sourcecode}[Builders/\allowbreak{}Rls\allowbreak{}Entity\allowbreak{}Type\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs › convention variant]{csharp}
+public static IConventionEntityTypeBuilder? HasRowLevelSecurity(
+    this IConventionEntityTypeBuilder builder,
+    bool enabled,
+    bool fromDataAnnotation = false)
+    => builder.HasAnnotation(RlsAnnotationNames.Enabled, enabled, fromDataAnnotation)
+           is null
+        ? null
+        : builder;
+\end{sourcecode}
+
+% ------------------------------------------------------------
+\chapter{Conventions}\label{ch:conventions}
+
+Conventions change the model automatically. EF itself consists largely of conventions:
+discovering keys, finding relationships, deriving table names. A plugin adds its own to make
+configuration unnecessary.
+
+\section{Convention types and timing}
+
+A convention implements one or more interfaces. Each stands for an event during model
+building. The most important ones:
+
+\begin{datatable}{H{1.04}H{0.91}H{1.04}}
+  \textbf{Interface} & \textbf{Event} & \textbf{Typical use} \\
+  \tablehead
+  \code{IEntity\allowbreak{}Type\allowbreak{}Added\allowbreak{}Convention} & Entity type was
+  added & Evaluate attributes, base configuration \\
+  \tablerule
+  \code{IProperty\allowbreak{}Added\allowbreak{}Convention} & Property was added & Column
+  types, naming conventions \\
+  \tablerule
+  \code{IForeign\allowbreak{}Key\allowbreak{}Added\allowbreak{}Convention} & Relationship
+  created & Indexes, delete behavior \\
+  \tablerule
+  \code{IEntity\allowbreak{}Type\allowbreak{}Base\allowbreak{}Type\allowbreak{}Changed\allowbreak{}Convention}
+  & Inheritance changed & Move configuration \\
+  \tablerule
+  \code{IModel\allowbreak{}Finalizing\allowbreak{}Convention} & Model is being finalized
+  (still mutable) & Everything that depends on the finished model \\
+  \tablerule
+  \code{IModel\allowbreak{}Finalized\allowbreak{}Convention} & Model is finished (read-only)
+  & Validation \\
+\end{datatable}
+
+\begin{important}[The most common convention mistake]
+  Reactive conventions (\code{*Added}, \code{*Changed}) run while the user is still
+  configuring. A column name may still change afterwards, an entity type may still get a
+  base type. If you depend on that, you must react to \emph{all} relevant events or use
+  \code{IModel\allowbreak{}Finalizing\allowbreak{}Convention}. The latter is simpler and
+  right for most plugins.
+\end{important}
+
+\section{Plugging in conventions}
+
+The plugin interface \code{IConvention\allowbreak{}Set\allowbreak{}Plugin} receives the
+convention set and adds its own conventions.
+\code{Convention\allowbreak{}Set.\allowbreak{}Add} registers a convention in all lists whose
+interfaces it implements, each time at the end:
+
+\begin{sourcecode}[Conventions/\allowbreak{}Tenancy\allowbreak{}Convention\allowbreak{}Set\allowbreak{}Plugin.\allowbreak{}cs]{csharp}
+public class TenancyConventionSetPlugin : IConventionSetPlugin
+{
+    private readonly ProviderConventionSetBuilderDependencies _dependencies;
+    private readonly IDbContextOptions _options;
+    private readonly ISqlGenerationHelper _sqlGenerationHelper;
+    private readonly TenancyLoggingDefinitions _loggingDefinitions;
+
+    public TenancyConventionSetPlugin(
+        ProviderConventionSetBuilderDependencies dependencies,
+        IDbContextOptions options,
+        ISqlGenerationHelper sqlGenerationHelper,
+        TenancyLoggingDefinitions loggingDefinitions)
+    {
+        // ... ArgumentNullException.ThrowIfNull for all parameters ...
+        _dependencies = dependencies;
+        _options = options;
+        _sqlGenerationHelper = sqlGenerationHelper;
+        _loggingDefinitions = loggingDefinitions;
+    }
+
+    public virtual ConventionSet ModifyConventions(ConventionSet conventionSet)
+    {
+        var settings = _options.FindExtension<TenancyOptionsExtension>()?.Settings;
+        if (settings is null)
+            return conventionSet;
+
+        // chapter "Value generation"
+        conventionSet.Add(new TenantIdKeyValueGenerationConvention());
+        conventionSet.Add(new NoTenantIsolationAttributeConvention(_dependencies));
+        conventionSet.Add(new TenantIsolationConvention(
+            settings, _sqlGenerationHelper, _dependencies.Logger, _loggingDefinitions));
+        conventionSet.Add(new TenancyModelValidationConvention(
+            _dependencies.Logger, _loggingDefinitions));
+
+        return conventionSet;
+    }
+}
+\end{sourcecode}
+
+\code{Provider\allowbreak{}Convention\allowbreak{}Set\allowbreak{}Builder\allowbreak{}Dependencies}
+is the parameter object that EF's own conventions receive too. Among other things it
+contains the model logger, the validation logger and the type mapping source. Other services
+such as \code{ISql\allowbreak{}Generation\allowbreak{}Helper} can be injected as well,
+because the plugin itself is resolved from the internal provider.
+
+\section{The isolation convention}
+
+The sample's central convention runs at \code{Model\allowbreak{}Finalizing} because column
+names are only final then. It finds the tenant property (marked with
+\code{Is\allowbreak{}Tenant\allowbreak{}Property(\allowbreak{})} or
+\code{Tenant\allowbreak{}Id} for \code{ITenant\allowbreak{}Owned},
+chapter~\ref{ch:property-level-fluent-api-and}), enables RLS with a policy, creates an
+index, sets a runtime annotation for the SaveChanges interceptor and optionally a query
+filter:
+
+\begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Convention.\allowbreak{}cs › Process\allowbreak{}Model\allowbreak{}Finalizing]{csharp}
+public virtual void ProcessModelFinalizing(
+    IConventionModelBuilder modelBuilder,
+    IConventionContext<IConventionModelBuilder> context)
+{
+    foreach (var entityType in modelBuilder.Metadata.GetEntityTypes())
+    {
+        if (entityType.BaseType is not null       // root types of a hierarchy only
+            || entityType.IsOwned())              // owned types share the table
+            continue;
+
+        // Marked property or "TenantId" with ITenantOwned (core package,
+        // chapter "Property-level Fluent API and runtime annotations")
+        if (entityType.FindTenantPropertyCandidate() is not IConventionProperty property)
+            continue;                             // (+ type check, shortened)
+
+        if (entityType.IsRlsOptedOut())
+        {
+            _logger.TenantIsolationOptedOut(_loggingDefinitions, entityType);  // warning
+            continue;
+        }
+
+        // No table (view, ToSqlQuery, keyless) -> no RLS
+        if (StoreObjectIdentifier.Create(entityType, StoreObjectType.Table)
+            is not { } table)
+            continue;
+
+        // Runtime annotation: this is how the SaveChanges interceptor finds the property
+        entityType.Builder.HasAnnotation(
+            TenancyAnnotationNames.TenantProperty, property.Name);
+
+        ApplyRowLevelSecurity(entityType, property, table);
+        if (_settings.CreateTenantIndex) EnsureTenantIndex(entityType, property);
+        if (_settings.ApplyQueryFilter) ApplyQueryFilter(entityType, property);
+
+        _logger.TenantIsolationApplied(_loggingDefinitions, entityType);       // debug
+    }
+}
+\end{sourcecode}
+
+\begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Convention.\allowbreak{}cs › Apply\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security]{csharp}
+protected virtual void ApplyRowLevelSecurity(
+    IConventionEntityType entityType,
+    IConventionProperty property,
+    StoreObjectIdentifier table)
+{
+    // Column name for exactly this table (may differ with table splitting)
+    var column = _sqlGenerationHelper.DelimitIdentifier(property.GetColumnName(table)!);
+    var condition =
+        $"{column} = nullif(current_setting('{_settings.SettingName}', true), '')::uuid";
+
+    var policy = new RlsPolicy(_settings.PolicyName, PolicyCommand.All, Permissive: true,
+        Roles: null, Using: condition, WithCheck: condition);
+
+    // Convention builder: does NOT override explicit configuration
+    var builder = entityType.Builder;
+    builder.HasAnnotation(RlsAnnotationNames.Enabled, true);
+    if (_settings.ForceRowLevelSecurity)
+        builder.HasAnnotation(RlsAnnotationNames.Forced, true);
+    builder.HasAnnotation(RlsAnnotationNames.PolicyPrefix + _settings.PolicyName,
+        policy.Serialize());
+}
+\end{sourcecode}
+
+\begin{important}[Validate SQL you generate yourself]
+  The setting name is written into the policy expression without escaping. Unlike SQL that
+  the developer writes in
+  \code{Using(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})} themselves, here the
+  \emph{plugin} assembles SQL and is responsible for keeping invalid input out. That is why
+  the options builder validates the name with a strict regular expression
+  (\code{[a-z\_\allowbreak{}][a-z0-9\_\allowbreak{}]*\textbackslash{}.\allowbreak{}[a-z\_\allowbreak{}][a-z0-9\_\allowbreak{}]*}).
+\end{important}
+
+\section{Structural changes: index and query filter}
+
+Conventions may not only set annotations but change the model structurally. The index is
+only created if no index or key already starts with the tenant column. The query filter is
+built as an expression tree and registered as a \textbf{named filter}, new in EF Core 10.
+Named filters coexist with the user's own filters and can be switched off selectively with
+\code{Ignore\allowbreak{}Query\allowbreak{}Filters(\allowbreak{}[\textquotedbl{}Acme.\allowbreak{}Tenancy\textquotedbl{}])}.
+
+\begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Convention.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+protected virtual void EnsureTenantIndex(
+    IConventionEntityType entityType, IConventionProperty property)
+{
+    var covered = entityType.GetIndexes().Any(i => i.Properties[0] == property)
+                  || entityType.GetKeys().Any(k => k.Properties[0] == property);
+    if (!covered)
+        entityType.Builder.HasIndex(new[] { property });
+}
+
+protected virtual void ApplyQueryFilter(
+    IConventionEntityType entityType, IConventionProperty property)
+{
+    // e => EF.Property<TenantId>(e, "...") == EF.Functions.CurrentTenant()
+    // EF.Property works for any property name and for shadow properties too
+    var parameter = Expression.Parameter(entityType.ClrType, "e");
+    var body = Expression.Equal(
+        Expression.Call(typeof(EF), nameof(EF.Property), [typeof(TenantId)],
+            parameter, Expression.Constant(property.Name)),
+        Expression.Call(CurrentTenantMethod, Expression.Property(null, FunctionsProperty)));
+
+    entityType.Builder.HasQueryFilter(
+        RlsAnnotationNames.QueryFilterKey, Expression.Lambda(body, parameter));
+}
+\end{sourcecode}
+
+Notably, the filter uses the plugin's own function
+\code{EF.\allowbreak{}Functions.\allowbreak{}Current\allowbreak{}Tenant(\allowbreak{})}. It
+is therefore translated to SQL by the translator from
+chapter~\ref{ch:translating-methods-and-members}. The plugin's building blocks interlock.
+
+\section{Final names, whoever sets them}
+
+The isolation convention reads the column name only at \code{Model\allowbreak{}Finalizing}
+and only through \code{Get\allowbreak{}Column\allowbreak{}Name(\allowbreak{}table)}. Names
+that other conventions or plugins change are final by then. The sample checks this against
+EFCore.NamingConventions, which renames tables and columns to snake\_case, in both
+activation orders:
+
+\begin{sourcecode}[Usage]{csharp}
+options.UseNpgsql(connectionString).UseAcmeTenancy().UseSnakeCaseNamingConvention();
+\end{sourcecode}
+
+\begin{sourcecode}[Generated migration SQL (\allowbreak{}excerpt,\allowbreak{} tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Naming\allowbreak{}Convention\allowbreak{}Tests.\allowbreak{}cs)]{sql}
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON orders AS PERMISSIVE FOR ALL
+    USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
+    WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
+CREATE INDEX ix_orders_tenant_id ON orders (tenant_id);
+\end{sourcecode}
+
+\begin{tip}[Never assemble names yourself]
+  A plugin that assembles names itself (from \code{Name} properties or by string
+  concatenation) breaks as soon as a naming plugin is active. Always ask the model for the
+  final name, and as late as possible.
+\end{tip}
+
+\section{Attribute conventions}
+
+Data annotations are evaluated with an attribute convention. EF provides the base class
+\code{Type\allowbreak{}Attribute\allowbreak{}Convention\allowbreak{}Base<\allowbreak{}TAttribute>},
+which finds the attribute and only asks for the reaction. The value is set with
+\code{from\allowbreak{}Data\allowbreak{}Annotation: true} so the Fluent API can override it:
+
+\begin{sourcecode}[Conventions/\allowbreak{}No\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Attribute\allowbreak{}Convention.\allowbreak{}cs]{csharp}
+public class NoTenantIsolationAttributeConvention
+    : TypeAttributeConventionBase<NoTenantIsolationAttribute>
+{
+    public NoTenantIsolationAttributeConvention(
+        ProviderConventionSetBuilderDependencies dependencies)
+        : base(dependencies)
+    {
+    }
+
+    protected override void ProcessEntityTypeAdded(
+        IConventionEntityTypeBuilder entityTypeBuilder,
+        NoTenantIsolationAttribute attribute,
+        IConventionContext<IConventionEntityTypeBuilder> context)
+        => entityTypeBuilder.HasRowLevelSecurity(enabled: false, fromDataAnnotation: true);
+}
+\end{sourcecode}
+
+\begin{tip}
+  The attribute itself lives in the \emph{core package}, the convention in the provider
+  package. Entity classes can use the attribute without depending on PostgreSQL. This is the
+  same split as with EF's own attributes in
+  \code{System.\allowbreak{}Component\allowbreak{}Model.\allowbreak{}Data\allowbreak{}Annotations}.
+\end{tip}
+
+% ------------------------------------------------------------
+\chapter{Model validation}\label{ch:model-validation}
+
+A plugin should detect misconfiguration before it leads to wrong SQL or data leaks. EF
+validates models through \code{IModel\allowbreak{}Validator}, but there is only one, and it
+belongs to the provider. For plugins, an
+\code{IModel\allowbreak{}Finalized\allowbreak{}Convention} is the better place: it runs on
+the finished model and collides with nobody.
+
+\begin{sourcecode}[Conventions/\allowbreak{}Tenancy\allowbreak{}Model\allowbreak{}Validation\allowbreak{}Convention.\allowbreak{}cs]{csharp}
+public virtual IModel ProcessModelFinalized(IModel model)
+{
+    foreach (var entityType in model.GetEntityTypes())
+    {
+        if (!entityType.HasRlsConfiguration())
+            continue;
+
+        if (entityType.BaseType is not null)
+            throw new InvalidOperationException(
+                $"RLS on '{entityType.DisplayName()}' is invalid: only allowed on the root "
+                + $"type ('{entityType.GetRootType().DisplayName()}').");
+
+        if (StoreObjectIdentifier.Create(entityType, StoreObjectType.Table) is null)
+            throw new InvalidOperationException("... not mapped to a table ...");
+
+        if (!entityType.IsRlsEnabled() && entityType.GetRlsPolicies().Count > 0)
+            _logger.PoliciesWithoutRowLevelSecurity(_loggingDefinitions, entityType);
+    }
+    return model;
+}
+\end{sourcecode}
+
+The validation distinguishes two kinds of problems. \textbf{Structural errors} that are
+guaranteed to lead to wrong behavior throw an exception. \textbf{Questionable configuration}
+that may be intended produces a warning through the logging system. Users can turn such
+warnings into errors selectively (chapter~\ref{ch:diagnostics-and-logging}).
+
+% ------------------------------------------------------------
+\chapter{Type mappings and value converters}\label{ch:type-mappings-and-value-converters}
+
+A type mapping connects a CLR type with a database type. It determines the column type in
+migrations, how parameters are set, what literals look like in SQL, how values are compared
+and copied and how they are stored in JSON columns. For custom types a plugin has two
+options:
+
+\begin{datatable}{H{0.92}H{1.04}H{1.04}}
+  \textbf{Approach} & \textbf{Advantages} & \textbf{Disadvantages} \\
+  \tablehead
+  Value converter (user configures \code{Has\allowbreak{}Conversion}) & No plugin needed &
+  Must be configured for every property or via \code{Configure\allowbreak{}Conventions} \\
+  \tablerule
+  \code{IRelational\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source\allowbreak{}Plugin}
+  & Type works everywhere without configuration, own literals, full control &
+  Provider-specific (store type) \\
+\end{datatable}
+
+\section{The type and its converter}
+
+The strongly typed \code{Tenant\allowbreak{}Id} and its converter live in the core package.
+The converter has a shared instance; the section on compiled models explains why.
+
+\begin{sourcecode}[Tenant\allowbreak{}Id.\allowbreak{}cs,\allowbreak{} Tenant\allowbreak{}Id\allowbreak{}Converter.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
+public readonly record struct TenantId(Guid Value)
+{
+    public static TenantId Empty => default;
+    public bool IsEmpty => Value == Guid.Empty;              // translated to SQL
+    public static TenantId New() => new(Guid.CreateVersion7());
+}
+
+public sealed class TenantIdConverter : ValueConverter<TenantId, Guid>
+{
+    public static TenantIdConverter Instance { get; } = new();
+
+    public TenantIdConverter()
+        : base(id => id.Value, value => new TenantId(value))
+    {
+    }
+}
+\end{sourcecode}
+
+\section{The type mapping}
+
+\begin{sourcecode}[Storage/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Type\allowbreak{}Mapping.\allowbreak{}cs]{csharp}
+public class TenantIdTypeMapping : RelationalTypeMapping
+{
+    // Required for compiled models: public static Default property
+    public static TenantIdTypeMapping Default { get; } = new();
+
+    public TenantIdTypeMapping()
+        : base(new RelationalTypeMappingParameters(
+            new CoreTypeMappingParameters(
+                typeof(TenantId),
+                converter: TenantIdConverter.Instance,
+                jsonValueReaderWriter: TenantIdJsonReaderWriter.Instance),
+            storeType: "uuid",
+            dbType: System.Data.DbType.Guid))
+    {
+    }
+
+    protected TenantIdTypeMapping(RelationalTypeMappingParameters parameters)
+        : base(parameters)
+    {
+    }
+
+    // EF clones mappings, e.g. for facets or changed comparers
+    protected override RelationalTypeMapping Clone(
+        RelationalTypeMappingParameters parameters)
+        => new TenantIdTypeMapping(parameters);
+
+    protected override string GenerateNonNullSqlLiteral(object value)
+    {
+        var guid = value switch
+        {
+            TenantId id => id.Value,
+            Guid g => g,
+            _ => throw new ArgumentException($"Unexpected type {value.GetType()}."),
+        };
+        return $"'{guid}'::uuid";
+    }
+}
+\end{sourcecode}
+
+Every custom mapping needs the protected constructor taking
+\code{Relational\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Parameters} and a
+\code{Clone} override that creates its own type. Without it, a cloned mapping loses its
+behavior, for example literal generation.
+
+\section{The type mapping plugin}
+
+\code{Relational\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source} asks all plugins
+\emph{before} falling back to the provider's mappings. A plugin returns \code{null} when it
+is not responsible:
+
+\begin{sourcecode}[Storage/\allowbreak{}Tenancy\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source\allowbreak{}Plugin.\allowbreak{}cs]{csharp}
+public class TenancyTypeMappingSourcePlugin : IRelationalTypeMappingSourcePlugin
+{
+    public virtual RelationalTypeMapping? FindMapping(
+        in RelationalTypeMappingInfo mappingInfo)
+    {
+        if (mappingInfo.ClrType != typeof(TenantId))
+            return null;
+
+        // Explicitly different column type (HasColumnType("text")): not responsible
+        var storeTypeBase = mappingInfo.StoreTypeNameBase;
+        if (storeTypeBase is not null
+            && !string.Equals(storeTypeBase, "uuid", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return TenantIdTypeMapping.Default;
+    }
+}
+\end{sourcecode}
+
+\begin{note}
+  Without a mapping, EF would not recognize \code{Tenant\allowbreak{}Id} as a scalar type
+  during model building and would abort with an error. With the plugin, the type works as a
+  property, as a key, in queries, as a parameter and in JSON columns, without a single line
+  of configuration.
+\end{note}
+
+\section{JSON support}
+
+For JSON columns a mapping needs a
+\code{Json\allowbreak{}Value\allowbreak{}Reader\allowbreak{}Writer}. It has three duties:
+read, write, and describe how it is created in generated code. The pattern follows EF's own
+\code{Json\allowbreak{}Guid\allowbreak{}Reader\allowbreak{}Writer}:
+
+\begin{sourcecode}[Tenant\allowbreak{}Id\allowbreak{}Json\allowbreak{}Reader\allowbreak{}Writer.\allowbreak{}cs]{csharp}
+public sealed class TenantIdJsonReaderWriter : JsonValueReaderWriter<TenantId>
+{
+    private static readonly PropertyInfo InstanceProperty =
+        typeof(TenantIdJsonReaderWriter).GetProperty(nameof(Instance))!;
+
+    public static TenantIdJsonReaderWriter Instance { get; } = new();
+
+    private TenantIdJsonReaderWriter()
+    {
+    }
+
+    public override TenantId FromJsonTyped(
+        ref Utf8JsonReaderManager manager, object? existingObject = null)
+        => new(manager.CurrentReader.GetGuid());
+
+    public override void ToJsonTyped(Utf8JsonWriter writer, TenantId value)
+        => writer.WriteStringValue(value.Value);
+
+    // For compiled models and precompiled queries
+    public override Expression ConstructorExpression
+        => Expression.Property(null, InstanceProperty);
+}
+\end{sourcecode}
+
+\begin{important}[Compiled models need Default and Instance]
+  When generating for NativeAOT (\code{dotnet ef dbcontext optimize -{}-nativeaot}), the
+  compiled model generator (chapter~\ref{ch:compiled-models-trimming-and-nativeaot}) emits
+  code of the form
+  \code{Tenant\allowbreak{}Id\allowbreak{}Type\allowbreak{}Mapping.\allowbreak{}Default.\allowbreak{}Clone(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}
+  for every type mapping. It requires a \textbf{public static property} named \code{Default}
+  on a \textbf{public} type and aborts otherwise. It only takes over converters and
+  readers/writers without extra code when they are \emph{the same instance} as in the
+  default mapping. That is why the mapping uses the static instances rather than \code{new
+  .\allowbreak{}.\allowbreak{}.\allowbreak{}(\allowbreak{})}. Without NativeAOT, EF 10
+  resolves type mappings at startup instead; a plugin should still meet the requirements,
+  because users decide on NativeAOT, not the plugin.
+\end{important}

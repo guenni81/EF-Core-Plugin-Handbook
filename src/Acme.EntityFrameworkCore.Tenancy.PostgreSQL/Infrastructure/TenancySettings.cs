@@ -2,7 +2,7 @@ namespace Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure;
 
 /// <summary>
 /// All model-relevant settings. As a record: Equals/GetHashCode over all fields,
-/// which is used directly for the service provider hash (chapter 4).
+/// which is used directly for the service provider hash (chapter "The options extension").
 /// </summary>
 public sealed record TenancySettings
 {

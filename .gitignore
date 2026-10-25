@@ -23,3 +23,6 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# LaTeX auxiliary files of the handbook
+docs/handbook/out/aux/

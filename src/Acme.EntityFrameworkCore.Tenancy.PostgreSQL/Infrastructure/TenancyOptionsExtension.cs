@@ -86,8 +86,8 @@ public class TenancyOptionsExtension : IDbContextOptionsExtension
         services.Replace(ServiceDescriptor
             .Singleton<IRelationalAnnotationProvider, TenancyAnnotationProvider>());
 
-        // 4) Deep extension: custom SQL expression node (chapter 37). It needs a SQL
-        //    generator that writes it and a nullability processor that knows it.
+        // 4) Deep extension: custom SQL expression node (chapter "Custom SQL expression nodes").
+        //    It needs a SQL generator that writes it and a nullability processor that knows it.
         services.Replace(ServiceDescriptor
             .Singleton<IQuerySqlGeneratorFactory, TenancyNpgsqlQuerySqlGeneratorFactory>());
         services.Replace(ServiceDescriptor

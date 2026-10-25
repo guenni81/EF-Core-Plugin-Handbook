@@ -1,0 +1,514 @@
+% ============================================================
+\setpartpreamble{\partintro
+  {Schema-Änderungen erzeugen, die Werkzeuge von dotnet ef erweitern und Compiled Models
+  unterstützen.}
+  {
+    \item Kapitel~\ref{ch:how-migrations-work}: Wie Migrations funktionieren
+    \item Kapitel~\ref{ch:declarative-sql-from-annotations}: Deklaratives SQL aus
+    Annotations
+    \item Kapitel~\ref{ch:custom-migration-operations}: Eigene Migrations-Operationen
+    \item Kapitel~\ref{ch:design-time-services}: Design-Time-Services
+    \item Kapitel~\ref{ch:compiled-models-trimming-and-nativeaot}: Compiled Models, Trimming
+    und NativeAOT
+    \item Kapitel~\ref{ch:scaffolding-reverse-engineering}: Scaffolding (Reverse
+    Engineering)
+  }}
+\part{Migrations und Design-Time}\label{part:VI}
+
+% ------------------------------------------------------------
+\chapter{Wie Migrations funktionieren}\label{ch:how-migrations-work}
+
+Migrations vergleichen zwei Modelle und erzeugen daraus Operationen und SQL. Ein Plugin kann
+sich an mehreren Stellen einklinken; um die richtige zu wählen, muss man den Ablauf kennen:
+
+\begin{flowdiagram}
+  \flowstep{Design-Time-Modell}{Modell inklusive aller Design-Time-Annotations}
+  \flowstep{IRelationalAnnotationProvider}{Überträgt Annotations auf Tabellen, Spalten,
+  Indizes des relationalen Modells}
+  \flowstep{IMigrationsModelDiffer}{Vergleicht altes (Snapshot) und neues relationales
+  Modell}
+  \flowstep{MigrationOperations}{CreateTable, AlterTable, ... mit .Annotation /
+  .OldAnnotation}
+  \flowstep{ICSharpMigrationsGenerator}{Schreibt Migration, Designer-Datei und Snapshot
+  (dotnet ef)}
+  \flowstep{IMigrationsSqlGenerator}{Erzeugt SQL beim Anwenden oder Skripten}
+\end{flowdiagram}
+
+Für Plugins gibt es zwei grundsätzliche Strategien. \textbf{Deklarativ}: Das Plugin
+beschreibt den gewünschten Zustand als Annotations; EF erkennt Änderungen von selbst, und
+das Plugin muss nur SQL erzeugen. \textbf{Imperativ}: Das Plugin bietet eigene Operationen
+an, die Nutzer von Hand in Migrationen schreiben. Gute Plugins nutzen beide: deklarativ für
+alles, was zum Modell gehört, imperativ für alles andere.
+
+\begin{note}
+  \code{Database.\allowbreak{}Ensure\allowbreak{}Created(\allowbreak{})} nutzt dieselbe
+  Pipeline: Es berechnet den Diff vom leeren Zustand zum Design-Time-Modell und führt das
+  SQL des Migrations-Generators aus. Eigene Migrations-SQL eines Plugins wirkt also auch
+  dort, was Integrationstests erheblich vereinfacht (Kapitel~\ref{ch:test-strategy}).
+\end{note}
+
+% ------------------------------------------------------------
+\chapter{Deklaratives SQL aus Annotations}\label{ch:declarative-sql-from-annotations}
+
+\section{Der Annotation-Provider}
+
+Der Differ vergleicht das \emph{relationale} Modell (Tabellen, Spalten), nicht die
+Entity-Typen. Welche Annotations eine Tabelle trägt, entscheidet der
+\code{IRelational\allowbreak{}Annotation\allowbreak{}Provider}. Den gibt es pro Context
+einmal, und er gehört dem Provider; das Plugin erbt deshalb von der Npgsql-Implementierung:
+
+\begin{sourcecode}[Metadata/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Annotation\allowbreak{}Provider.\allowbreak{}cs]{csharp}
+public class TenancyAnnotationProvider : NpgsqlAnnotationProvider
+{
+    public TenancyAnnotationProvider(RelationalAnnotationProviderDependencies dependencies)
+        : base(dependencies)
+    {
+    }
+
+    public override IEnumerable<IAnnotation> For(ITable table, bool designTime)
+    {
+        foreach (var annotation in base.For(table, designTime))
+            yield return annotation;
+
+        if (!designTime)          // nur für Migrations: Laufzeitmodell bleibt schlank
+            yield break;
+
+        var entityType = (IEntityType)table.EntityTypeMappings.First().TypeBase;
+        foreach (var annotation in entityType.GetAnnotations())
+        {
+            if (!annotation.Name.StartsWith(RlsAnnotationNames.Prefix,
+                                            StringComparison.Ordinal))
+                continue;
+            // Opt-out-Marker nicht weitergeben, sonst entstehen leere Migrationen
+            if (annotation.Name == RlsAnnotationNames.Enabled && annotation.Value is false)
+                continue;
+            yield return annotation;
+        }
+    }
+}
+\end{sourcecode}
+
+Ab hier übernimmt EF: Ändert sich eine Policy, erzeugt der Differ eine
+\code{Alter\allowbreak{}Table\allowbreak{}Operation} mit neuen und alten Annotations. In der
+generierten Migration sieht das so aus, ganz ohne eigenen Code-Generator:
+
+\begin{sourcecode}[Generierte Migration (\allowbreak{}Ausschnitt)]{csharp}
+migrationBuilder.AlterTable(name: "Orders")
+    .Annotation("Acme:Rls:Policy:tenant_isolation", "{...neu...}")
+    .OldAnnotation("Acme:Rls:Policy:tenant_isolation", "{...alt...}");
+\end{sourcecode}
+
+\section{Der SQL-Generator}
+
+Auch den \code{IMigrations\allowbreak{}Sql\allowbreak{}Generator} gibt es nur einmal. Das
+Plugin erbt vom Npgsql-Generator und ergänzt \code{Create\allowbreak{}Table} und
+\code{Alter\allowbreak{}Table}:
+
+\begin{sourcecode}[Migrations/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+protected override void Generate(
+    CreateTableOperation operation, IModel? model,
+    MigrationCommandListBuilder builder, bool terminate = true)
+{
+    // Unterminiertes SQL kann keine weiteren Statements aufnehmen (wie bei Npgsql)
+    if (!terminate && operation.HasRlsConfiguration())
+        throw new ArgumentException(
+            "RLS kann nicht in unterminiertem CREATE TABLE entstehen.");
+
+    base.Generate(operation, model, builder, terminate);
+    if (terminate)
+        GenerateRowLevelSecurity(operation.Name, operation.Schema, previous: null,
+            operation, builder);
+}
+
+protected override void Generate(
+    AlterTableOperation operation, IModel? model, MigrationCommandListBuilder builder)
+{
+    base.Generate(operation, model, builder);
+    GenerateRowLevelSecurity(operation.Name, operation.Schema, operation.OldTable,
+        operation, builder);
+}
+\end{sourcecode}
+
+\begin{sourcecode}[Migrations/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+protected virtual void GenerateRowLevelSecurity(string tableName, string? schema,
+    IReadOnlyAnnotatable? previous, IReadOnlyAnnotatable current,
+    MigrationCommandListBuilder builder)
+{
+    var table = Delimit(tableName, schema);
+    var oldPolicies = previous?.GetRlsPolicies() ?? new Dictionary<string, string>();
+    var newPolicies = current.GetRlsPolicies();
+
+    // 1. Entfernte oder geänderte Policies löschen
+    foreach (var (name, json) in oldPolicies)
+        if (!newPolicies.TryGetValue(name, out var n) || n != json)
+            Statement(builder, $"DROP POLICY {Delimit(name)} ON {table}");
+
+    // 2. RLS-Status (ENABLE/DISABLE, FORCE/NO FORCE)
+    if ((previous?.IsRlsEnabled() ?? false) != current.IsRlsEnabled())
+        Statement(builder, $"ALTER TABLE {table} "
+            + (current.IsRlsEnabled() ? "ENABLE" : "DISABLE") + " ROW LEVEL SECURITY");
+    // ... FORCE analog
+
+    // 3. Neue oder geänderte Policies anlegen
+    foreach (var (name, json) in newPolicies)
+        if (!oldPolicies.TryGetValue(name, out var o) || o != json)
+            Statement(builder, CreatePolicySql(table, RlsPolicy.Deserialize(json)));
+}
+
+protected virtual void Statement(MigrationCommandListBuilder builder, string sql)
+{
+    builder.Append(sql).AppendLine(Dependencies.SqlGenerationHelper.StatementTerminator);
+    EndStatement(builder);
+}
+\end{sourcecode}
+
+\begin{datatable}{H{0.60}H{1.40}}
+  \textbf{Detail} & \textbf{Begründung} \\
+  \tablehead
+  DROP + CREATE statt \code{ALTER POLICY} & \code{ALTER POLICY} kann weder \code{FOR} noch
+  PERMISSIVE/RESTRICTIVE ändern. DDL ist in PostgreSQL transaktional; es entsteht keine
+  sichtbare Lücke. \\
+  \tablerule
+  \code{End\allowbreak{}Statement(\allowbreak{}builder)} & Beendet den Befehl wie die
+  Basisklasse; berücksichtigt dabei Transaktionsunterdrückung. \\
+  \tablerule
+  Eigene \code{Delimit}-Helfer & Npgsqls \code{Delimit\allowbreak{}Identifier}-Helfer sind
+  privat. Bezeichner immer über
+  \code{Dependencies.\allowbreak{}Sql\allowbreak{}Generation\allowbreak{}Helper} maskieren,
+  nie per String-Verkettung. \\
+  \tablerule
+  DropTable, RenameTable & Nichts zu tun: PostgreSQL entfernt bzw. verschiebt Policies mit
+  der Tabelle. \\
+\end{datatable}
+
+% ------------------------------------------------------------
+\chapter{Eigene Migrations-Operationen}\label{ch:custom-migration-operations}
+
+Manches gehört nicht ins Modell, aber in Migrationen: Rollen, Rechte, Extensions,
+Daten-Backfills. Dafür bietet das Plugin eigene Operationen an. Sie bestehen aus drei
+Teilen: der Operationsklasse, einer Extension-Method auf
+\code{Migration\allowbreak{}Builder} und der SQL-Erzeugung im Generator.
+
+\begin{sourcecode}[Migrations/\allowbreak{}Operations/\allowbreak{}Tenancy\allowbreak{}Operations.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+public class CreateApplicationRoleOperation : MigrationOperation
+{
+    public required string Name { get; init; }
+    public bool CanLogin { get; init; }       // Passwörter gehören NICHT in Migrationen
+}
+\end{sourcecode}
+
+\begin{sourcecode}[Migrations/\allowbreak{}Operations/\allowbreak{}Tenancy\allowbreak{}Migration\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+namespace Microsoft.EntityFrameworkCore.Migrations;      // in Migrationen immer importiert
+
+public static class TenancyMigrationBuilderExtensions
+{
+    public static OperationBuilder<CreateApplicationRoleOperation> CreateApplicationRole(
+        this MigrationBuilder migrationBuilder, string name, bool canLogin = false)
+    {
+        var operation = new CreateApplicationRoleOperation
+        {
+            Name = TenancyIdentifiers.ValidateIdentifier(name, "Rollenname"),
+            CanLogin = canLogin,
+        };
+        migrationBuilder.Operations.Add(operation);
+        return new OperationBuilder<CreateApplicationRoleOperation>(operation);
+    }
+}
+\end{sourcecode}
+
+Der Generator verteilt Operationen über die zentrale
+\code{Generate(\allowbreak{}Migration\allowbreak{}Operation,\allowbreak{}
+.\allowbreak{}.\allowbreak{}.\allowbreak{})}-Methode. Unbekannte Typen gehen an die
+Basisklasse:
+
+\begin{sourcecode}[Migrations/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+protected override void Generate(
+    MigrationOperation operation, IModel? model, MigrationCommandListBuilder builder)
+{
+    switch (operation)
+    {
+        case CreateApplicationRoleOperation createRole: Generate(createRole, builder); break;
+        case DropApplicationRoleOperation dropRole:     Generate(dropRole, builder); break;
+        case GrantTablePrivilegesOperation grant:       Generate(grant, builder); break;
+        default: base.Generate(operation, model, builder); break;
+    }
+}
+
+protected virtual void Generate(CreateApplicationRoleOperation operation,
+    MigrationCommandListBuilder builder)
+{
+    var literal = Literal(operation.Name);           // 'shop_app'  (für den Vergleich)
+    var identifier = Delimit(operation.Name);    // shop_app (CREATE ROLE, ggf. in "...")
+    var login = operation.CanLogin ? "LOGIN" : "NOLOGIN";
+
+    builder
+        .AppendLine("DO $$")
+        .AppendLine("BEGIN")
+        .AppendLine("    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles")
+        .AppendLine($"                   WHERE rolname = {literal}) THEN")
+        .AppendLine($"        CREATE ROLE {identifier} {login} NOSUPERUSER NOBYPASSRLS;")
+        .AppendLine("    END IF;")
+        .AppendLine("END")
+        .Append("$$");
+    builder.AppendLine(Dependencies.SqlGenerationHelper.StatementTerminator);
+    EndStatement(builder);
+}
+\end{sourcecode}
+
+\begin{important}[Literal oder Bezeichner]
+  Der Rollenname kommt zweimal vor, aber in zwei Formen: als \textbf{String-Literal} im
+  Vergleich (\code{'shop\_\allowbreak{}app'}, erzeugt über das String-Type-Mapping) und als
+  \textbf{Bezeichner} in \code{CREATE ROLE} (\code{shop\_\allowbreak{}app}, bei Bedarf in
+  doppelten Anführungszeichen). Wer beides verwechselt oder per String-Verkettung baut,
+  erzeugt ungültiges SQL oder eine Injection-Lücke. Zusätzlich validiert die
+  Extension-Method den Namen.
+\end{important}
+
+\begin{tip}
+  Operationen idempotent formulieren (\code{IF NOT EXISTS}, \code{DROP
+  .\allowbreak{}.\allowbreak{}.\allowbreak{} IF EXISTS}). Rollen existieren clusterweit und
+  überleben Datenbanken; eine Migration, die beim zweiten Ausführen in einer neuen Datenbank
+  scheitert, ist ein häufiger Ärger.
+\end{tip}
+
+In einer Migration nutzt man die Operationen wie EFs eigene:
+
+\begin{sourcecode}[Migrations/\allowbreak{}20261021\_\allowbreak{}Initial.\allowbreak{}cs (\allowbreak{}handergänzt)]{csharp}
+protected override void Up(MigrationBuilder migrationBuilder)
+{
+    // VOR den Tabellen (Kapitel „Migrations für Fortgeschrittene“)
+    migrationBuilder.CreateApplicationRole("shop_support");
+    // ... von EF generierte Operationen (Tabellen, RLS über Annotations) ...
+    migrationBuilder.CreateApplicationRole("shop_app", canLogin: true);
+    migrationBuilder.GrantTablePrivileges("shop_app");
+}
+
+protected override void Down(MigrationBuilder migrationBuilder)
+{
+    migrationBuilder.DropApplicationRole("shop_app");
+    // ...
+}
+\end{sourcecode}
+
+\begin{note}[Wenn der Differ eigene Operationen erzeugen soll]
+  Sollen eigene Operationen vom \emph{Differ} automatisch erzeugt werden, braucht es einen
+  abgeleiteten \code{IMigrations\allowbreak{}Model\allowbreak{}Differ} und einen
+  \code{ICSharp\allowbreak{}Migration\allowbreak{}Operation\allowbreak{}Generator}, der die
+  Operation als C\# schreibt. Beides sind Einzeldienste mit viel interner API. Fast immer
+  ist der deklarative Weg über Annotations
+  (Kapitel~\ref{ch:declarative-sql-from-annotations}) die bessere Wahl.
+\end{note}
+
+% ------------------------------------------------------------
+\chapter{Design-Time-Services}\label{ch:design-time-services}
+
+Die Werkzeuge von \code{dotnet ef} (Migrationen anlegen, Snapshots schreiben, Scaffolding,
+Compiled Models) verwenden einen eigenen Service Provider mit Design-Time-Diensten. Ein
+Plugin erweitert ihn über \code{IDesign\allowbreak{}Time\allowbreak{}Services}.
+
+\section{Automatisch geladen}
+
+Damit Nutzer nichts konfigurieren müssen, verweist ein Assembly-Attribut auf die Klasse. Das
+Tooling findet es in jeder Assembly, die das Startprojekt referenziert. Das zweite Argument
+beschränkt das Laden auf Contexts mit dem passenden Provider:
+
+\begin{sourcecode}[Properties/\allowbreak{}Assembly\allowbreak{}Info.\allowbreak{}cs]{csharp}
+[assembly: DesignTimeServicesReference(
+    "Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Design.TenancyDesignTimeServices, "
+        + "Acme.EntityFrameworkCore.Tenancy.PostgreSQL",
+    "Npgsql.EntityFrameworkCore.PostgreSQL")]
+\end{sourcecode}
+
+\begin{sourcecode}[Design/\allowbreak{}Tenancy\allowbreak{}Design\allowbreak{}Time\allowbreak{}Services.\allowbreak{}cs]{csharp}
+public class TenancyDesignTimeServices : IDesignTimeServices
+{
+    public void ConfigureDesignTimeServices(IServiceCollection services)
+    {
+        // Alle Registrierungen entfernen (EF-Default, Npgsql), dann unsere setzen:
+        // unabhängig von der Reihenfolge, in der das Tooling Services lädt
+        services.RemoveAll<IAnnotationCodeGenerator>();
+        services.AddSingleton<IAnnotationCodeGenerator, TenancyAnnotationCodeGenerator>();
+    }
+}
+\end{sourcecode}
+
+\section{Lesbare Snapshots: der Annotation-Code-Generator}
+
+Ohne Zutun schreibt EF unbekannte Annotations als
+\code{Has\allowbreak{}Annotation(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}
+in den Snapshot, bei Policies mit JSON-Werten. Das funktioniert, ist aber kaum lesbar. Ein
+eigener \code{IAnnotation\allowbreak{}Code\allowbreak{}Generator} übersetzt sie in die
+Fluent API:
+
+\begin{sourcecode}[Shop\allowbreak{}Context\allowbreak{}Model\allowbreak{}Snapshot.\allowbreak{}cs]{csharp}
+// Vorher
+b.HasAnnotation("Acme:Rls:Enabled", true);
+b.HasAnnotation("Acme:Rls:Policy:tenant_isolation", "{\"Name\":\"tenant_isolation\",...}");
+
+// Nachher
+RlsEntityTypeBuilderExtensions.HasRowLevelSecurity(b, true);
+RlsEntityTypeBuilderExtensions.HasPolicy(b, "tenant_isolation", p => p
+    .Using("\"TenantId\" = nullif(current_setting('app.tenant_id', true), '')::uuid")
+    .WithCheck("\"TenantId\" = nullif(current_setting('app.tenant_id', true), '')::uuid"));
+\end{sourcecode}
+
+EF Core 10 schreibt Erweiterungsmethoden im Snapshot als statische Aufrufe
+(\code{Extensions.\allowbreak{}Methode(\allowbreak{}b,\allowbreak{}
+.\allowbreak{}.\allowbreak{}.\allowbreak{})}) statt als
+\code{b.\allowbreak{}Methode(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}. Das
+vermeidet Mehrdeutigkeiten, wenn mehrere Provider oder Plugins gleichnamige Methoden
+definieren. Tests, die den erzeugten Code prüfen, sollten diese Form erwarten.
+
+\begin{sourcecode}[Design/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+public override IReadOnlyList<MethodCallCodeFragment> GenerateFluentApiCalls(
+    IEntityType entityType, IDictionary<string, IAnnotation> annotations)
+{
+    var calls = new List<MethodCallCodeFragment>();
+
+    // VERTRAG: Übersetzte Annotations aus dem Dictionary ENTFERNEN
+    if (annotations.TryGetValue(RlsAnnotationNames.Enabled, out var enabled)
+        && enabled.Value is true)
+    {
+        annotations.Remove(RlsAnnotationNames.Enabled);
+        var forced = annotations.Remove(RlsAnnotationNames.Forced, out var f)
+                     && f.Value is true;
+        calls.Add(new MethodCallCodeFragment(HasRowLevelSecurityMethod, forced));
+    }
+
+    foreach (var key in annotations.Keys
+                 .Where(k => k.StartsWith(RlsAnnotationNames.PolicyPrefix,
+                                          StringComparison.Ordinal))
+                 .ToList())                         // Kopie: Dictionary ändert sich
+    {
+        var policy = RlsPolicy.Deserialize((string)annotations[key].Value!);
+        annotations.Remove(key);
+        calls.Add(new MethodCallCodeFragment(HasPolicyMethod, policy.Name,
+            new NestedClosureCodeFragment("p", BuildPolicyChain(policy))));
+    }
+
+    calls.AddRange(base.GenerateFluentApiCalls(entityType, annotations));
+    return calls;
+}
+\end{sourcecode}
+
+\begin{datatable}{H{0.70}H{1.30}}
+  \textbf{Stolperstelle} & \textbf{Lösung} \\
+  \tablehead
+  Übersetzte Annotation bleibt im Dictionary & Erscheint doppelt im Snapshot. Immer
+  entfernen; was übrig bleibt, schreibt EF als \code{Has\allowbreak{}Annotation}. \\
+  \tablerule
+  Generische Methode im \code{Method\allowbreak{}Info} & Der Snapshot nutzt den
+  nicht-generischen \code{Entity\allowbreak{}Type\allowbreak{}Builder}. Nicht-generische
+  Überladung per \code{Get\allowbreak{}Runtime\allowbreak{}Method} mit exakten
+  Parametertypen wählen. \\
+  \tablerule
+  \code{params}-Argument als Array &
+  \code{Method\allowbreak{}Call\allowbreak{}Code\allowbreak{}Fragment} nimmt \code{params
+  object?[]}. Ein \code{string[]} würde wegen Array-Kovarianz zur Argumentliste: in
+  \code{new object?[] \{ roles \}} verpacken. \\
+  \tablerule
+  Enums im Snapshot & Werden als \code{Policy\allowbreak{}Command.\allowbreak{}Select}
+  gerendert. Das Enum liegt deshalb im immer importierten Namespace
+  \code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core}. \\
+  \tablerule
+  Lambda-Argumente &
+  \code{Nested\allowbreak{}Closure\allowbreak{}Code\allowbreak{}Fragment(\allowbreak{}\textquotedbl{}p\textquotedbl{},\allowbreak{}
+  kette)} erzeugt \code{p =>
+  p.\allowbreak{}Using(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}; Ketten
+  entstehen mit
+  \code{fragment.\allowbreak{}Chain(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}.
+  \\
+\end{datatable}
+
+Der Generator betrifft nur Snapshot und Designer-Dateien. Die eigentlichen Migrationen
+behalten
+\code{.\allowbreak{}Annotation(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})} an
+\code{Alter\allowbreak{}Table}; das ist der vorgesehene Mechanismus für Änderungen.
+
+% ------------------------------------------------------------
+\chapter{Compiled Models, Trimming und NativeAOT}\label{ch:compiled-models-trimming-and-nativeaot}
+
+\code{dotnet ef dbcontext optimize} erzeugt ein \textbf{Compiled Model}: C\#-Code, der das
+Laufzeitmodell direkt aufbaut, statt es beim Start über Conventions zu berechnen. Das
+verkürzt die Startzeit großer Modelle deutlich und ist Voraussetzung für NativeAOT. Ein
+Plugin muss dafür an vier Stellen vorbereitet sein:
+
+\begin{datatable}{H{0.66}H{1.32}H{1.02}}
+  \textbf{Baustein} & \textbf{Anforderung} & \textbf{Im Beispiel} \\
+  \tablehead
+  Type Mappings & Öffentlicher Typ mit öffentlicher statischer Property \code{Default} (für
+  NativeAOT genutzt); Konverter/Comparer als gemeinsame Instanzen &
+  \code{Tenant\allowbreak{}Id\allowbreak{}Type\allowbreak{}Mapping.\allowbreak{}Default},
+  \code{Tenant\allowbreak{}Id\allowbreak{}Converter.\allowbreak{}Instance} \\
+  \tablerule
+  JSON-Reader/Writer & Statische \code{Instance} und
+  \code{Constructor\allowbreak{}Expression} &
+  \code{Tenant\allowbreak{}Id\allowbreak{}Json\allowbreak{}Reader\allowbreak{}Writer} \\
+  \tablerule
+  Value Generators & Konfiguriert mit
+  \code{Has\allowbreak{}Value\allowbreak{}Generator\allowbreak{}Factory(\allowbreak{}Type)};
+  Factory mit öffentlichem parameterlosem Konstruktor &
+  \code{Tenant\allowbreak{}Id\allowbreak{}Value\allowbreak{}Generator\allowbreak{}Factory}
+  (Kapitel~\ref{ch:value-generation}) \\
+  \tablerule
+  Annotations & Einfache Werte übernimmt EF automatisch; ein
+  \code{ICSharp\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator}
+  filtert Design-Time-Annotations und übersetzt komplexe Werte & Filtert RLS-Policies,
+  behält die Laufzeit-Annotation (Kapitel~\ref{ch:property-level-fluent-api-and}) \\
+\end{datatable}
+
+Der dritte Punkt wird oft missverstanden. EF übernimmt Annotations mit einfachen Werten
+(Strings, Zahlen, bool, Enums) \textbf{automatisch} ins Compiled Model; das zeigt der
+Quellcode von
+\code{CSharp\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator},
+der sie mit \code{Generate\allowbreak{}Simple\allowbreak{}Annotations} schreibt. Ein eigener
+Generator ist deshalb nicht nötig, damit Annotations \emph{erhalten} bleiben, sondern um
+reine Design-Time-Annotations \emph{herauszufiltern}, die zur Laufzeit niemand liest, und um
+Annotations mit komplexen Werten in Code zu übersetzen.
+Kapitel~\ref{ch:property-level-fluent-api-and} zeigt beides im Beispiel.
+
+\section{Trimming und AOT}
+
+Beide Pakete setzen
+\code{<\allowbreak{}Is\allowbreak{}Aot\allowbreak{}Compatible>true<\allowbreak{}/\allowbreak{}Is\allowbreak{}Aot\allowbreak{}Compatible>}.
+Der Compiler meldet dann Code, der Reflection ohne Annotationen nutzt. Die
+JSON-Serialisierung der Policies verwendet einen Source-Generator statt Reflection:
+
+\begin{sourcecode}[Metadata/\allowbreak{}Rls\allowbreak{}Policy.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+[JsonSourceGenerationOptions(UseStringEnumConverter = true)]
+[JsonSerializable(typeof(RlsPolicy))]
+internal partial class RlsJsonContext : JsonSerializerContext;
+\end{sourcecode}
+
+\begin{note}
+  Conventions, Snapshots und Migrations laufen nur zur Design-Zeit oder beim Modellbau; mit
+  Compiled Model und vorkompilierten Abfragen fallen sie zur Laufzeit weg. Für AOT kritisch
+  sind deshalb vor allem Type Mappings, Konverter, Translators (laufen beim Build) und
+  Interceptors.
+\end{note}
+
+% ------------------------------------------------------------
+\chapter{Scaffolding (Reverse Engineering)}\label{ch:scaffolding-reverse-engineering}
+
+\code{dotnet ef dbcontext scaffold} liest ein bestehendes Datenbankschema und erzeugt
+Entitäten und einen Context. Ein Plugin, das eigene Schema-Elemente verwaltet, kann sie
+dabei ebenfalls erkennen. Der Weg führt über zwei Design-Time-Dienste:
+
+\begin{datatable}{H{0.60}H{1.40}}
+  \textbf{Dienst} & \textbf{Aufgabe} \\
+  \tablehead
+  \code{IDatabase\allowbreak{}Model\allowbreak{}Factory} & Liest das Schema in ein
+  \code{Database\allowbreak{}Model}. Ein abgeleiteter Npgsql-Factory könnte
+  \code{pg\_\allowbreak{}policies} und
+  \code{pg\_\allowbreak{}class.\allowbreak{}relrowsecurity} abfragen und als Annotations an
+  \code{Database\allowbreak{}Table} hängen. \\
+  \tablerule
+  \code{IAnnotation\allowbreak{}Code\allowbreak{}Generator} & Schreibt diese Annotations als
+  Fluent API in den generierten \code{On\allowbreak{}Model\allowbreak{}Creating}, mit
+  derselben Logik wie beim Snapshot. \\
+\end{datatable}
+
+Das Beispiel implementiert beides: Eine eigene Database-Model-Factory liest RLS-Status und
+Policies aus der Datenbank, und der Annotation-Code-Generator aus
+Kapitel~\ref{ch:design-time-services} schreibt sie in den gescaffoldeten Context.
+Kapitel~\ref{ch:scaffolding-in-practice} zeigt die Umsetzung im Detail.

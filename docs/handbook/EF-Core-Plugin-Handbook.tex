@@ -1,0 +1,22 @@
+% The EF Core Plugin Handbook (English edition). Build: latexmk EF-Core-Plugin-Handbook.tex
+\documentclass[a4paper, 10pt, oneside, open=any, parskip=half, english,
+               headings=small]{scrbook}
+\usepackage[english]{babel}
+\usepackage{handbook}
+\handbooklanguage{english}
+\newcommand{\handbookheadleft}{The EF Core Plugin Handbook}
+\hypersetup{pdfkeywords={Version \handbookversion}, pdftitle={The EF Core Plugin Handbook},
+  pdfsubject={Professional plugins for Entity Framework Core from A to Z}}
+
+\begin{document}
+\input{en/01_foundations}
+\input{en/02_infrastructure}
+\input{en/03_model}
+\input{en/04_queries}
+\input{en/05_runtime}
+\input{en/06_migrations_design_time}
+\input{en/07_quality}
+\input{en/08_advanced}
+\input{en/09_deep_extensions}
+\input{en/10_appendices}
+\end{document}

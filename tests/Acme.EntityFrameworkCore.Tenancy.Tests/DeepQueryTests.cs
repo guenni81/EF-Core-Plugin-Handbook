@@ -2,7 +2,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Acme.EntityFrameworkCore.Tenancy.Tests;
 
-/// <summary>Custom SQL expression node and aggregate translator (chapters 37 and 38).</summary>
+/// <summary>
+/// Custom SQL expression node and aggregate translator (chapters "Custom SQL expression nodes"
+/// and "Aggregate translators").
+/// </summary>
 public class DeepQueryTests
 {
     [Fact]

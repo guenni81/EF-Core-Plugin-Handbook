@@ -5,8 +5,8 @@ namespace Acme.EntityFrameworkCore.Tenancy.Tests;
 
 /// <summary>
 /// Database.ApplyTenantSession(): the explicit counterpart to the session interceptor for
-/// connections EF does not open itself (chapter 15). Behavior against a real database is
-/// covered by the integration tests.
+/// connections EF does not open itself (chapter "Interceptors"). Behavior against a real
+/// database is covered by the integration tests.
 /// </summary>
 public class ApplyTenantSessionTests
 {

@@ -5,7 +5,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Acme.EntityFrameworkCore.Tenancy.Tests;
 
-/// <summary>Property-level Fluent API and runtime annotation (chapter 39).</summary>
+/// <summary>
+/// Property-level Fluent API and runtime annotation (chapter "Property-level Fluent API and
+/// runtime annotations").
+/// </summary>
 public class TenantPropertyTests
 {
     private sealed class FixedTenant : ITenantProvider

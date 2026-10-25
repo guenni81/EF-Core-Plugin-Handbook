@@ -27,15 +27,16 @@ public class TenancyDesignTimeServices : IDesignTimeServices
         // Remove all registrations (EF default, Npgsql) each time, then add ours:
         // independent of the order in which the tooling loads services.
 
-        // Snapshot and scaffolding: annotations as Fluent API (chapter 20)
+        // Snapshot and scaffolding: annotations as Fluent API (chapter "Design-time services")
         services.RemoveAll<IAnnotationCodeGenerator>();
         services.AddSingleton<IAnnotationCodeGenerator, TenancyAnnotationCodeGenerator>();
 
-        // Compiled models: filter out design-time annotations (chapter 39)
+        // Compiled models: filter out design-time annotations
+        // (chapter "Property-level Fluent API and runtime annotations")
         services.RemoveAll<ICSharpRuntimeAnnotationCodeGenerator>();
         services.AddSingleton<ICSharpRuntimeAnnotationCodeGenerator, TenancyCSharpRuntimeAnnotationCodeGenerator>();
 
-        // Scaffolding: read RLS and policies from the database (chapter 40)
+        // Scaffolding: read RLS and policies from the database (chapter "Scaffolding in practice")
         services.RemoveAll<IDatabaseModelFactory>();
         services.AddSingleton<IDatabaseModelFactory, TenancyDatabaseModelFactory>();
     }

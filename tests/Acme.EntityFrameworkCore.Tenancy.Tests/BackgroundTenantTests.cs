@@ -39,7 +39,7 @@ public sealed class AmbientTenantProvider : ITenantProvider
 /// <summary>
 /// Background work: the tenant comes from an AsyncLocal scope instead of a request. Each job
 /// sets the tenant first and creates its DI scope (and thus its context) inside it
-/// (chapter 35).
+/// (chapter "Using the plugin in ASP.NET Core").
 /// </summary>
 public class BackgroundTenantTests
 {

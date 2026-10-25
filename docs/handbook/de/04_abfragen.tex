@@ -1,0 +1,326 @@
+% ============================================================
+\setpartpreamble{\partintro
+  {Wie LINQ zu SQL wird und wie ein Plugin eigene Funktionen und Member übersetzt.}
+  {
+    \item Kapitel~\ref{ch:the-query-pipeline}: Die Query-Pipeline
+    \item Kapitel~\ref{ch:translating-methods-and-members}: Methoden und Member übersetzen
+    \item Kapitel~\ref{ch:preventing-client-side-evaluation}: Clientseitige Auswertung
+    verhindern
+    \item Kapitel~\ref{ch:further-query-extension-points}: Weitere Erweiterungspunkte der
+    Abfrage
+  }}
+\part{Abfragen}\label{part:IV}
+
+% ------------------------------------------------------------
+\chapter{Die Query-Pipeline}\label{ch:the-query-pipeline}
+
+Eine LINQ-Abfrage durchläuft in EF Core mehrere Stufen, bevor SQL entsteht. Wer weiß, wo
+welche Stufe sitzt, weiß auch, wo ein Plugin ansetzen muss:
+
+\begin{flowdiagram}
+  \flowstep{Funcletizer}{Wertet Teilausdrücke ohne Datenbezug in .NET aus und macht
+  Parameter daraus. Plugin: IEvaluatableExpressionFilterPlugin}
+  \flowstep{Preprocessing}{Navigationen expandieren, Query-Filter einfügen, normalisieren.
+  Plugin: IQueryExpressionInterceptor}
+  \flowstep{Queryable-Übersetzung}{Where, Select, OrderBy usw. werden zu einer
+  SelectExpression}
+  \flowstep{SQL-Übersetzung}{Ausdrücke werden zu SqlExpressions. Plugins: Method-, Member-
+  und Aggregate-Translators}
+  \flowstep{Postprocessing}{Nullability-Optimierung, Parameter-abhängige Anpassungen}
+  \flowstep{SQL-Generierung}{QuerySqlGenerator schreibt den SQL-Text}
+  \flowstep{Materialisierung}{Zeilen werden zu Objekten. Plugin:
+  IMaterializationInterceptor}
+\end{flowdiagram}
+
+Die kompilierte Abfrage wird gecacht. Translators laufen also nur einmal pro Abfrageform,
+nicht bei jeder Ausführung. Werte, die sich pro Ausführung ändern (Parameter,
+Session-Settings), müssen deshalb im SQL als Parameter oder als Datenbankfunktion stehen,
+nie als zur Übersetzungszeit eingesetzte Konstante. Genau deshalb übersetzt das Beispiel
+\code{Current\allowbreak{}Tenant(\allowbreak{})} in einen Aufruf von
+\code{current\_\allowbreak{}setting(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}
+und setzt nicht den aktuellen Mandanten ein.
+
+% ------------------------------------------------------------
+\chapter{Methoden und Member übersetzen}\label{ch:translating-methods-and-members}
+
+\section{Das EF.Functions-Muster}
+
+Datenbankfunktionen, die keine Entsprechung in .NET haben, werden als Extension-Methods auf
+\code{Db\allowbreak{}Functions} deklariert. Sie werden nie ausgeführt; der Körper wirft nur
+eine Exception für den Fall, dass jemand sie außerhalb von LINQ aufruft. Die Deklaration
+liegt im Kernpaket, die Übersetzung im Provider-Paket:
+
+\begin{sourcecode}[Tenancy\allowbreak{}Db\allowbreak{}Functions\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}Kernpaket)]{csharp}
+namespace Microsoft.EntityFrameworkCore;
+
+public static class TenancyDbFunctionsExtensions
+{
+    public static TenantId CurrentTenant(this DbFunctions _)
+        => throw new InvalidOperationException(
+            $"{nameof(CurrentTenant)} ist nur in LINQ-to-Entities-Abfragen verwendbar.");
+}
+\end{sourcecode}
+
+\section{Ein Method-Call-Translator}
+
+Ein \code{IMethod\allowbreak{}Call\allowbreak{}Translator} bekommt jeden Methodenaufruf, den
+EF nicht selbst kennt. Er prüft, ob er zuständig ist, und baut dann aus
+\code{ISql\allowbreak{}Expression\allowbreak{}Factory} einen SQL-Ausdrucksbaum:
+
+\begin{sourcecode}[Query/\allowbreak{}Current\allowbreak{}Tenant\allowbreak{}Translator.\allowbreak{}cs]{csharp}
+public class CurrentTenantTranslator : IMethodCallTranslator
+{
+    private static readonly MethodInfo CurrentTenantMethod =
+        typeof(TenancyDbFunctionsExtensions).GetRuntimeMethod(
+            nameof(TenancyDbFunctionsExtensions.CurrentTenant), [typeof(DbFunctions)])!;
+
+    private readonly ISqlExpressionFactory _sql;
+    private readonly IRelationalTypeMappingSource _typeMappingSource;
+    private readonly ITenancySingletonOptions _options;
+
+    public CurrentTenantTranslator(
+        ISqlExpressionFactory sql,
+        IRelationalTypeMappingSource typeMappingSource,
+        ITenancySingletonOptions options)
+    {
+        // ... ArgumentNullException.ThrowIfNull für alle Parameter ...
+        _sql = sql;
+        _typeMappingSource = typeMappingSource;
+        _options = options;
+    }
+
+    public virtual SqlExpression? Translate(
+        SqlExpression? instance, MethodInfo method,
+        IReadOnlyList<SqlExpression> arguments,
+        IDiagnosticsLogger<DbLoggerCategory.Query> logger)
+    {
+        if (method != CurrentTenantMethod)
+            return null;                          // nicht zuständig -> nächster Translator
+
+        var text = _typeMappingSource.FindMapping(typeof(string))!;
+        var boolean = _typeMappingSource.FindMapping(typeof(bool))!;
+
+        var currentSetting = _sql.Function(
+            "current_setting",
+            [
+                _sql.Constant(_options.Settings.SettingName, text),
+                _sql.Constant(true, boolean),
+            ],
+            nullable: true,
+            argumentsPropagateNullability: [true, false],
+            typeof(string), text);
+
+        var nullIfEmpty = _sql.Function(
+            "nullif",
+            [currentSetting, _sql.Constant(string.Empty, text)],
+            nullable: true,
+            argumentsPropagateNullability: [true, false],
+            typeof(string), text);
+
+        return _sql.Convert(nullIfEmpty, typeof(TenantId), TenantIdTypeMapping.Default);
+    }
+}
+\end{sourcecode}
+
+Aus \code{o.\allowbreak{}Tenant\allowbreak{}Id ==
+EF.\allowbreak{}Functions.\allowbreak{}Current\allowbreak{}Tenant(\allowbreak{})} wird
+damit:
+
+\begin{sourcecode}[Erzeugtes SQL (\allowbreak{}Ausschnitt)]{sql}
+WHERE o."TenantId" = CAST(nullif(current_setting('app.tenant_id', TRUE), '') AS uuid)
+\end{sourcecode}
+
+\begin{datatable}{H{0.60}H{1.40}}
+  \textbf{Detail} & \textbf{Bedeutung} \\
+  \tablehead
+  \code{return null} & Vertrag für „nicht zuständig“. Niemals eine Exception für fremde
+  Methoden werfen; dann ist der nächste Translator an der Reihe. \\
+  \tablerule
+  \code{arguments} & Bei Extension-Methods ist \code{arguments[0]} der \code{this}-Parameter
+  (hier \code{Db\allowbreak{}Functions}). \\
+  \tablerule
+  \code{nullable} & Kann das Ergebnis NULL sein? EF optimiert damit \code{IS
+  NULL}-Prüfungen. Falsche Angaben führen zu falschen Ergebnissen. \\
+  \tablerule
+  \code{arguments\allowbreak{}Propagate\allowbreak{}Nullability} & Wird das Ergebnis NULL,
+  wenn dieses Argument NULL ist? Für \code{nullif(\allowbreak{}x,\allowbreak{} '')}: ja für
+  x, nein für den Leerstring. \\
+  \tablerule
+  Type Mappings & Jeder SQL-Ausdruck braucht ein Mapping. Es bestimmt Literale, Parameter
+  und Casts. \code{Convert} mit dem TenantId-Mapping erzeugt
+  \code{CAST(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{} AS uuid)}. \\
+  \tablerule
+  \code{Constant(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})} & Konstanten
+  werden als Literal über das Mapping erzeugt und korrekt maskiert, auch der Setting-Name.
+  \\
+\end{datatable}
+
+\section{Ein Member-Translator}
+
+Für Properties und Felder gibt es \code{IMember\allowbreak{}Translator}. Das Beispiel
+übersetzt \code{tenant\allowbreak{}Id.\allowbreak{}Is\allowbreak{}Empty}. Die Konstante
+bekommt das Type Mapping der Spalte, damit das Literal im richtigen Format entsteht:
+
+\begin{sourcecode}[Query/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Member\allowbreak{}Translator.\allowbreak{}cs]{csharp}
+public class TenantIdMemberTranslator : IMemberTranslator
+{
+    private static readonly PropertyInfo IsEmptyProperty =
+        typeof(TenantId).GetProperty(nameof(TenantId.IsEmpty))!;
+
+    private readonly ISqlExpressionFactory _sql;
+
+    public TenantIdMemberTranslator(ISqlExpressionFactory sql)
+    {
+        ArgumentNullException.ThrowIfNull(sql);
+
+        _sql = sql;
+    }
+
+    public virtual SqlExpression? Translate(
+        SqlExpression? instance, MemberInfo member, Type returnType,
+        IDiagnosticsLogger<DbLoggerCategory.Query> logger)
+    {
+        if (instance is null || !Equals(member, IsEmptyProperty))
+            return null;
+
+        return _sql.Equal(instance, _sql.Constant(TenantId.Empty, instance.TypeMapping));
+    }
+}
+\end{sourcecode}
+
+\section{Translator-Plugins}
+
+Translators werden nicht direkt registriert, sondern über Plugin-Klassen, die eine Liste
+liefern. Die Plugins sind \textbf{Scoped} (Anhang~\ref{app:A}) und können daher
+Scoped-Dienste wie \code{ISql\allowbreak{}Expression\allowbreak{}Factory} injizieren:
+
+\begin{sourcecode}[Query/\allowbreak{}Tenancy\allowbreak{}Translator\allowbreak{}Plugins.\allowbreak{}cs]{csharp}
+public class TenancyMethodCallTranslatorPlugin : IMethodCallTranslatorPlugin
+{
+    public TenancyMethodCallTranslatorPlugin(
+        ISqlExpressionFactory sql,
+        IRelationalTypeMappingSource typeMappingSource,
+        ITenancySingletonOptions options)
+    {
+        Translators = [new CurrentTenantTranslator(sql, typeMappingSource, options)];
+    }
+
+    public virtual IEnumerable<IMethodCallTranslator> Translators { get; }
+}
+
+public class TenancyMemberTranslatorPlugin : IMemberTranslatorPlugin
+{
+    public TenancyMemberTranslatorPlugin(ISqlExpressionFactory sql)
+    {
+        Translators = [new TenantIdMemberTranslator(sql)];
+    }
+
+    public virtual IEnumerable<IMemberTranslator> Translators { get; }
+}
+\end{sourcecode}
+
+\begin{tip}
+  \code{query.\allowbreak{}To\allowbreak{}Query\allowbreak{}String(\allowbreak{})} erzeugt
+  das SQL einer Abfrage, ohne sie auszuführen und ohne Datenbankverbindung. Es ist das
+  wichtigste Werkzeug, um Translators zu entwickeln und zu testen
+  (Kapitel~\ref{ch:test-strategy}).
+\end{tip}
+
+% ------------------------------------------------------------
+\chapter{Clientseitige Auswertung verhindern}\label{ch:preventing-client-side-evaluation}
+
+Der erste Schritt der Pipeline, der Funcletizer, wertet jeden Teilausdruck vorab in .NET
+aus, der keinen Bezug zu Abfragedaten hat. Aus \code{o.\allowbreak{}Total > limit * 2} wird
+so ein Parameter. Für
+\code{EF.\allowbreak{}Functions.\allowbreak{}Current\allowbreak{}Tenant(\allowbreak{})} wäre
+das fatal: Der Ausdruck hat keinen Datenbezug, also würde EF die Methode ausführen, und die
+wirft ihre Exception.
+
+EF kennt nur wenige Ausnahmen. Im Quellcode von
+\code{Evaluatable\allowbreak{}Expression\allowbreak{}Filter} (EF Core 10) sind das
+\code{Date\allowbreak{}Time.\allowbreak{}Now},
+\code{Date\allowbreak{}Time.\allowbreak{}Utc\allowbreak{}Now},
+\code{Date\allowbreak{}Time.\allowbreak{}Today}, die
+\code{Date\allowbreak{}Time\allowbreak{}Offset}-Gegenstücke,
+\code{Guid.\allowbreak{}New\allowbreak{}Guid(\allowbreak{})},
+\code{Random.\allowbreak{}Next(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})} und
+alle Methoden, die in EFs eigener Klasse
+\code{Db\allowbreak{}Functions\allowbreak{}Extensions} deklariert sind. Eigene
+EF.Functions-Methoden liegen in einer anderen Klasse und fallen \textbf{nicht} darunter.
+Danach fragt EF alle registrierten Plugins:
+
+\begin{sourcecode}[Kernpaket: Tenancy\allowbreak{}Db\allowbreak{}Functions\allowbreak{}Attribute.\allowbreak{}cs,\allowbreak{} Query/\allowbreak{}Tenancy\allowbreak{}Evaluatable…Plugin.\allowbreak{}cs]{csharp}
+[AttributeUsage(AttributeTargets.Class, Inherited = false)]
+public sealed class TenancyDbFunctionsAttribute : Attribute;
+
+public class TenancyEvaluatableExpressionFilterPlugin : IEvaluatableExpressionFilterPlugin
+{
+    public virtual bool IsEvaluatableExpression(Expression expression)
+        => expression is not MethodCallExpression { Method.DeclaringType: { } type }
+           || !type.IsDefined(typeof(TenancyDbFunctionsAttribute), inherit: false);
+}
+
+[TenancyDbFunctions]
+public static class TenancyDbFunctionsExtensions { /* CurrentTenant() */ }
+\end{sourcecode}
+
+Das Plugin liegt im \textbf{Kernpaket} und erkennt Funktionsklassen an einem Attribut. So
+deckt ein einziges Plugin auch die PostgreSQL-spezifischen Funktionen aus
+Kapitel~\ref{ch:custom-sql-expression-nodes} und \ref{ch:aggregate-translators} und jedes
+künftige Provider-Paket ab, ohne dass der Kern diese Klassen kennen muss.
+
+\begin{important}[Wann das Plugin nötig ist]
+  Ob eine eigene EF.Functions-Methode dieses Plugin braucht, hängt davon ab, ob sie
+  Argumente mit Datenbezug hat.
+  \code{EF.\allowbreak{}Functions.\allowbreak{}Soundex(\allowbreak{}c.\allowbreak{}Name)}
+  ist unproblematisch, weil \code{c.\allowbreak{}Name} auf eine Spalte zeigt. Methoden ohne
+  Argumente oder nur mit Konstanten (\code{Current\allowbreak{}Tenant(\allowbreak{})},
+  \code{Random(\allowbreak{})}, \code{Server\allowbreak{}Time(\allowbreak{})}) brauchen es
+  immer. Fehlt es, kommt die Exception aus dem Methodenkörper, was schwer zu diagnostizieren
+  ist.
+\end{important}
+
+% ------------------------------------------------------------
+\chapter{Weitere Erweiterungspunkte der Abfrage}\label{ch:further-query-extension-points}
+
+Das Beispiel braucht Method- und Member-Translators. Komplexe Plugins greifen auf weitere
+Punkte zurück; hier ein Überblick mit Einordnung:
+
+\begin{datatable}{H{0.96}H{1.08}H{0.96}}
+  \textbf{Erweiterungspunkt} & \textbf{Zweck} & \textbf{Hinweise} \\
+  \tablehead
+  \code{IAggregate\allowbreak{}Method\allowbreak{}Call\allowbreak{}Translator\allowbreak{}Plugin}
+  & Eigene Aggregatfunktionen in \code{Group\allowbreak{}By} (z. B.
+  \code{bool\_\allowbreak{}and}, Statistikfunktionen) & Scoped, mehrfach registrierbar;
+  umgesetzt in Kapitel~\ref{ch:aggregate-translators} \\
+  \tablerule
+  \code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor} & LINQ-Ausdrucksbaum vor der
+  Übersetzung umschreiben & Singleton-Interceptor; ideal für Query-Rewrites, Tags, Hints \\
+  \tablerule
+  \code{IMaterialization\allowbreak{}Interceptor} & Objekte bei der Materialisierung
+  erzeugen, initialisieren oder prüfen & Singleton-Interceptor; muss zustandslos und
+  thread-sicher sein \\
+  \tablerule
+  \code{IMethod\allowbreak{}Call\allowbreak{}Translator\allowbreak{}Provider} u. a. &
+  Translator-Infrastruktur ersetzen & Einzeldienste des Providers; nur in Ausnahmefällen \\
+  \tablerule
+  \code{IQuery\allowbreak{}Sql\allowbreak{}Generator\allowbreak{}Factory} & SQL-Generierung
+  für eigene SqlExpression-Typen & Singleton, Provider-Dienst; umgesetzt in
+  Kapitel~\ref{ch:custom-sql-expression-nodes} \\
+  \tablerule
+  \code{IRelational\allowbreak{}Parameter\allowbreak{}Based\allowbreak{}Sql\allowbreak{}Processor\allowbreak{}Factory}
+  & Nullability-Verarbeitung eigener Ausdrucksknoten & Scoped, Provider-Dienst; umgesetzt in
+  Kapitel~\ref{ch:custom-sql-expression-nodes} \\
+  \tablerule
+  \code{IQuery\allowbreak{}Translation\allowbreak{}Postprocessor\allowbreak{}Factory} &
+  Ausdrucksbaum nach der Übersetzung anpassen & Provider-Dienst; tiefer Eingriff, eng an
+  EF-Interna gebunden \\
+\end{datatable}
+
+\begin{note}[Vorkompilierte Abfragen]
+  Mit NativeAOT und vorkompilierten Abfragen (seit EF Core 9) übersetzt EF Abfragen bereits
+  beim Build. Translators laufen dann im Build-Prozess, nicht zur Laufzeit. Sie dürfen
+  deshalb nur von Options und Modell abhängen, nie von Laufzeitzustand. Das Beispiel erfüllt
+  das: Der Setting-Name ist eine Option, der Mandant selbst wird erst in der
+  Datenbank-Session ausgewertet.
+\end{note}

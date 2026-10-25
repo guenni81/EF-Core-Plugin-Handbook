@@ -1,0 +1,506 @@
+% ============================================================
+\setpartpreamble{\partintro
+  {How a plugin is configured, registers its services and connects to the application's DI
+  container.}
+  {
+    \item Chapter~\ref{ch:the-options-extension}: The options extension
+    \item Chapter~\ref{ch:registering-services}: Registering services
+    \item Chapter~\ref{ch:public-api-and-integration-into}: Public API and integration into
+    the application
+  }}
+\part{Infrastructure}\label{part:II}
+
+% ------------------------------------------------------------
+\chapter{The options extension}\label{ch:the-options-extension}
+
+The entry point of every real plugin is a class implementing
+\code{IDb\allowbreak{}Context\allowbreak{}Options\allowbreak{}Extension}. It has three jobs:
+it carries the configuration, it registers the services in the internal provider in
+\code{Apply\allowbreak{}Services}, and it describes itself to the cache through \code{Info}.
+
+\section{Configuration as a record}
+
+All model-relevant settings of the sample live in a record. Records provide \code{Equals}
+and \code{Get\allowbreak{}Hash\allowbreak{}Code} over all fields, which is exactly what the
+cache key needs. New settings are added to the record without touching hashing or
+comparison.
+
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Settings.\allowbreak{}cs]{csharp}
+public sealed record TenancySettings
+{
+    public static TenancySettings Default { get; } = new();
+
+    public string SettingName { get; init; } = "app.tenant_id";
+    public string PolicyName { get; init; } = "tenant_isolation";
+    public bool ForceRowLevelSecurity { get; init; } = true;
+    public bool ApplyQueryFilter { get; init; }
+    public bool CreateTenantIndex { get; init; } = true;
+}
+\end{sourcecode}
+
+\section{Immutability}
+
+EF compares and caches options. Once added, an extension must therefore never change again;
+every change creates a copy. The pattern from EF Core itself: a protected copy constructor
+and a virtual \code{Clone} method, so derived extensions clone their own type.
+
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+public class TenancyOptionsExtension : IDbContextOptionsExtension
+{
+    private DbContextOptionsExtensionInfo? _info;
+
+    public TenancyOptionsExtension()
+    {
+    }
+
+    protected TenancyOptionsExtension(TenancyOptionsExtension copyFrom)
+    {
+        ArgumentNullException.ThrowIfNull(copyFrom);
+
+        Settings = copyFrom.Settings;
+    }
+
+    public virtual TenancySettings Settings { get; private set; } = TenancySettings.Default;
+
+    public virtual DbContextOptionsExtensionInfo Info => _info ??= new ExtensionInfo(this);
+
+    protected virtual TenancyOptionsExtension Clone() => new(this);
+
+    public virtual TenancyOptionsExtension WithSettings(TenancySettings settings)
+    {
+        var clone = Clone();
+        clone.Settings = settings;
+        return clone;
+    }
+\end{sourcecode}
+
+\section{The info class and the service provider cache}
+
+The info class decides whether EF may reuse a cached internal service provider. Two methods
+must agree for this:
+\code{Get\allowbreak{}Service\allowbreak{}Provider\allowbreak{}Hash\allowbreak{}Code} as a
+fast pre-filter and
+\code{Should\allowbreak{}Use\allowbreak{}Same\allowbreak{}Service\allowbreak{}Provider} as
+the exact comparison.
+
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Extension\allowbreak{}Info]{csharp}
+private sealed class ExtensionInfo : DbContextOptionsExtensionInfo
+{
+    public ExtensionInfo(TenancyOptionsExtension extension)
+        : base(extension)
+    {
+    }
+
+    private new TenancyOptionsExtension Extension => (TenancyOptionsExtension)base.Extension;
+
+    public override bool IsDatabaseProvider => false;
+
+    public override string LogFragment
+        => $"AcmeTenancy(Setting={Extension.Settings.SettingName}) ";
+
+    public override int GetServiceProviderHashCode() => Extension.Settings.GetHashCode();
+
+    public override bool ShouldUseSameServiceProvider(DbContextOptionsExtensionInfo other)
+        => other is ExtensionInfo o && o.Extension.Settings == Extension.Settings;
+
+    public override void PopulateDebugInfo(IDictionary<string, string> debugInfo)
+    {
+        debugInfo["Acme:Tenancy:Force"] =
+            Extension.Settings.ForceRowLevelSecurity.ToString();
+        // ... further settings
+    }
+}
+\end{sourcecode}
+
+There are two classic mistakes with these methods, with opposite consequences:
+
+\begin{datatable}{H{0.65}H{1.35}}
+  \textbf{Mistake} & \textbf{Consequence} \\
+  \tablehead
+  A model-relevant option is missing from the hash & Two contexts with different
+  configuration share provider and model. The second gets the cached, \textbf{wrong} model.
+  Often unnoticed in tests, because only one configuration runs there. \\
+  \tablerule
+  A value that varies per context is in the hash (tenant, connection string, instance) & A
+  new internal provider including model is created for every context. Memory and startup
+  time explode; EF warns after 20 providers with
+  \code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}.
+  \\
+\end{datatable}
+
+\begin{important}[The rule of thumb for the hash]
+  The hash must contain exactly what \textbf{influences which services are registered or
+  what the model looks like}, and nothing else. The tenant itself changes per request and
+  must therefore never end up in the options; it arrives at run time through an interceptor
+  (chapter~\ref{ch:interceptors}).
+\end{important}
+
+\code{Log\allowbreak{}Fragment} appears in EF's startup message (“initialized using provider
+… with options: …”) and helps when troubleshooting.
+\code{Populate\allowbreak{}Debug\allowbreak{}Info} supplies values for EF's diagnostics when
+too many service providers are created. \code{Is\allowbreak{}Database\allowbreak{}Provider}
+is \code{true} only for real providers.
+
+\section{Validation}
+
+\code{Validate} is called when the service provider is created. Here the plugin checks
+preconditions arising from the combination of extensions and reports them with a clear
+message instead of a later follow-up error:
+
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Validate]{csharp}
+public virtual void Validate(IDbContextOptions options)
+{
+    if (options.FindExtension<NpgsqlOptionsExtension>() is null)
+        throw new InvalidOperationException(
+            "UseAcmeTenancy() requires UseNpgsql(). Other databases need their own "
+            + "provider package.");
+}
+\end{sourcecode}
+
+% ------------------------------------------------------------
+\chapter{Registering services}\label{ch:registering-services}
+
+\code{Apply\allowbreak{}Services} fills the internal service provider. EF provides a builder
+for this that knows the lifetime and cardinality of every EF service:
+\code{Entity\allowbreak{}Framework\allowbreak{}Services\allowbreak{}Builder} for core
+services and
+\code{Entity\allowbreak{}Framework\allowbreak{}Relational\allowbreak{}Services\allowbreak{}Builder}
+additionally for relational services. It registers each service with the correct lifetime
+and automatically uses \code{Try\allowbreak{}Add\allowbreak{}Enumerable} for services that
+can be registered multiple times.
+
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Apply\allowbreak{}Services]{csharp}
+public virtual void ApplyServices(IServiceCollection services)
+{
+    // 1) Plugin interfaces: multiple registrations, composable with other plugins
+    new EntityFrameworkRelationalServicesBuilder(services)
+        .TryAdd<IRelationalTypeMappingSourcePlugin, TenancyTypeMappingSourcePlugin>()
+        .TryAdd<IMethodCallTranslatorPlugin, TenancyMethodCallTranslatorPlugin>()
+        .TryAdd<IMemberTranslatorPlugin, TenancyMemberTranslatorPlugin>()
+        .TryAdd<IEvaluatableExpressionFilterPlugin,
+                TenancyEvaluatableExpressionFilterPlugin>()
+        .TryAdd<IConventionSetPlugin, TenancyConventionSetPlugin>()
+        .TryAdd<ISingletonOptions, ITenancySingletonOptions>(
+            p => p.GetRequiredService<ITenancySingletonOptions>())
+        // 2) Own services that EF does not know
+        .TryAddProviderSpecificServices(m => m
+            .TryAddSingleton<ITenancySingletonOptions, TenancySingletonOptions>()
+            .TryAddSingleton<TenancyLoggingDefinitions, TenancyLoggingDefinitions>());
+
+    // 3) Replace single services of the provider
+    services.Replace(ServiceDescriptor
+        .Scoped<IMigrationsSqlGenerator, TenancyMigrationsSqlGenerator>());
+    services.Replace(ServiceDescriptor
+        .Singleton<IRelationalAnnotationProvider, TenancyAnnotationProvider>());
+}
+\end{sourcecode}
+
+\begin{datatable}{H{0.83}H{0.77}H{1.40}}
+  \textbf{Method} & \textbf{When} & \textbf{Why} \\
+  \tablehead
+  \code{Try\allowbreak{}Add<\allowbreak{}TService,\allowbreak{} TImpl>(\allowbreak{})} & EF
+  services and plugin interfaces & Lifetime and multiple registration come from EF's table.
+  Wrong lifetimes otherwise cause exceptions or subtly wrong behavior. \\
+  \tablerule
+  \code{Try\allowbreak{}Add\allowbreak{}Provider\allowbreak{}Specific\allowbreak{}Services}
+  & Own services EF does not know & The builder rejects unknown types; here you set the
+  lifetime yourself. \\
+  \tablerule
+  \code{services.\allowbreak{}Replace(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}
+  & Replace a single provider service & The provider registers with
+  \code{Try\allowbreak{}Add}. \code{Replace} wins regardless of whether the plugin runs
+  before or after the provider. \\
+\end{datatable}
+
+\begin{note}[Why Replace works in both orders]
+  EF calls the extensions' \code{Apply\allowbreak{}Services} in the order they were added.
+  If the plugin runs first, \code{Replace} adds the service and the provider's later
+  \code{Try\allowbreak{}Add} does nothing. If it runs afterwards, \code{Replace} replaces
+  the provider's service. Both orders lead to the same result.
+\end{note}
+
+\section{Singleton options}
+
+Singleton services such as type mapping plugins cannot resolve
+\code{IDb\allowbreak{}Context\allowbreak{}Options} per context. For them there is
+\code{ISingleton\allowbreak{}Options}: a singleton that EF initializes once from the options
+when creating the provider and validates for every further context.
+
+\begin{sourcecode}[Infrastructure/\allowbreak{}ITenancy\allowbreak{}Singleton\allowbreak{}Options.\allowbreak{}cs]{csharp}
+public class TenancySingletonOptions : ITenancySingletonOptions
+{
+    public TenancySettings Settings { get; private set; } = TenancySettings.Default;
+
+    // Once per internal service provider
+    public virtual void Initialize(IDbContextOptions options)
+        => Settings = options.FindExtension<TenancyOptionsExtension>()?.Settings
+                      ?? TenancySettings.Default;
+
+    // For every context: options must not differ from the provider's state
+    public virtual void Validate(IDbContextOptions options)
+    {
+        var settings = options.FindExtension<TenancyOptionsExtension>()?.Settings
+                       ?? TenancySettings.Default;
+        if (settings != Settings)
+            throw new InvalidOperationException("Tenancy options changed afterwards ...");
+    }
+}
+\end{sourcecode}
+
+The double registration in \code{Apply\allowbreak{}Services} is required: once under its own
+interface so services can inject it, and once as \code{ISingleton\allowbreak{}Options} so EF
+finds and initializes it. The factory variant ensures that both registrations return
+\emph{the same} instance.
+
+\section{Staying composable despite replacement}
+
+When a plugin replaces a single service, a second plugin doing the same cannot be active at
+the same time. Professional plugins mitigate this by additionally offering the actual logic
+publicly and reusably. In the sample, \code{Create\allowbreak{}Policy\allowbreak{}Sql} is
+public and all generator methods are virtual. A user who must combine two plugins writes
+their own generator deriving from one and calling the logic of the other. This option
+belongs in the documentation.
+
+Better still, a plugin avoids the conflict altogether by \textbf{decorating} the service
+instead of replacing it: it takes whatever implementation is registered at that point (the
+provider's or another plugin's), wraps it and delegates to it. An example is a (fictional)
+audit plugin that attaches a trigger to every new table. In its
+\code{Apply\allowbreak{}Services} it looks up the existing registration and replaces only
+the descriptor, not the logic:
+
+\begin{sourcecode}[tests/\allowbreak{}Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Tests/\allowbreak{}Composition\allowbreak{}Tests.\allowbreak{}cs › Audit\allowbreak{}Options\allowbreak{}Extension]{csharp}
+public void ApplyServices(IServiceCollection services)
+{
+    // Registered so far: the provider's generator or that of another plugin
+    var inner = services.LastOrDefault(d => d.ServiceType == typeof(IMigrationsSqlGenerator))
+        ?? throw new InvalidOperationException("Call UseContosoAudit() after UseNpgsql().");
+
+    services.Replace(ServiceDescriptor.Describe(
+        typeof(IMigrationsSqlGenerator),
+        sp => new AuditMigrationsSqlGenerator(
+            (IMigrationsSqlGenerator)CreateInstance(sp, inner),
+            sp.GetRequiredService<MigrationsSqlGeneratorDependencies>()),
+        inner.Lifetime));     // lifetime of the original
+}
+
+// Creates the implementation the way the original descriptor would have
+private static object CreateInstance(IServiceProvider sp, ServiceDescriptor descriptor)
+    => descriptor.ImplementationInstance
+       ?? descriptor.ImplementationFactory?.Invoke(sp)
+       ?? ActivatorUtilities.CreateInstance(sp, descriptor.ImplementationType!);
+\end{sourcecode}
+
+The trick works because EF calls \code{Apply\allowbreak{}Services} in the order in which the
+extensions were added; when the audit plugin runs, the provider has already registered its
+generator. \code{Create\allowbreak{}Instance} reproduces the original registration exactly:
+an instance, a factory, or a type whose dependencies (such as Npgsql's singleton options)
+\code{Activator\allowbreak{}Utilities} resolves from the container. The decorator itself
+only uses the public interface:
+
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Composition\allowbreak{}Tests.\allowbreak{}cs › Audit\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator (\allowbreak{}shortened)]{csharp}
+public class AuditMigrationsSqlGenerator : IMigrationsSqlGenerator
+{
+    // Constructor: (IMigrationsSqlGenerator inner, MigrationsSqlGeneratorDependencies deps)
+
+    public IReadOnlyList<MigrationCommand> Generate(
+        IReadOnlyList<MigrationOperation> operations,
+        IModel? model = null,
+        MigrationsSqlGenerationOptions options = MigrationsSqlGenerationOptions.Default)
+    {
+        var commands = _inner.Generate(operations, model, options).ToList();   // unchanged
+        var builder = new MigrationCommandListBuilder(_dependencies);
+        var sql = _dependencies.SqlGenerationHelper;
+
+        // Appended at the end: by then every table of this migration exists
+        foreach (var table in operations.OfType<CreateTableOperation>())
+        {
+            builder.Append("CREATE TRIGGER audit_changes ")
+                .Append("AFTER INSERT OR UPDATE OR DELETE ON ")
+                .Append(sql.DelimitIdentifier(table.Name, table.Schema))
+                .Append(" FOR EACH ROW EXECUTE FUNCTION audit.log_change()")
+                .AppendLine(sql.StatementTerminator)
+                .EndCommand();
+        }
+
+        commands.AddRange(builder.GetCommandList());
+        return commands;
+    }
+}
+\end{sourcecode}
+
+In the application, the two plugins are combined without a single line of glue code:
+
+\begin{sourcecode}[Program.\allowbreak{}cs]{csharp}
+services.AddDbContext<ShopContext>((sp, options) => options
+    .UseNpgsql(connectionString)
+    .UseAcmeTenancy(sp)       // replaces IMigrationsSqlGenerator
+    .UseContosoAudit());      // wraps whatever is registered: here Acme's
+\end{sourcecode}
+
+\begin{important}[Decorate where possible, replace where necessary]
+  Decorators compose with each other in any order, because each one wraps whatever it finds.
+  A plugin that uses \code{Replace} however discards everything registered before it,
+  including decorators. A replacing plugin therefore has to be activated first, and a
+  decorator must check that there is something to decorate and fail with a clear message
+  otherwise (the provider is missing or was added later).
+
+  Decorating requires that the public interface is enough. The tenancy plugin needs
+  protected hooks inside \code{CREATE TABLE} and therefore derives from Npgsql's generator.
+  For such cases the fallback described above remains: public logic such as
+  \code{Create\allowbreak{}Policy\allowbreak{}Sql}, virtual methods, and
+  \code{Replace\allowbreak{}Service} in the application.
+\end{important}
+
+\begin{tip}
+  The test \code{Composition\allowbreak{}Tests} in the sample contains the complete audit
+  plugin. It checks that the decorator wraps Acme's generator, that the migration contains
+  the SQL of both plugins, and that activating the decorator before the provider fails.
+\end{tip}
+
+% ------------------------------------------------------------
+\chapter{Public API and integration into the application}\label{ch:public-api-and-integration-into}
+
+\section{The Use method}
+
+Users activate the plugin through an extension method on
+\code{Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder}. It fetches the
+existing extension or creates a new one and registers it through
+\code{IDb\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder\allowbreak{}Infrastructure}:
+
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+public static DbContextOptionsBuilder UseAcmeTenancy(
+    this DbContextOptionsBuilder optionsBuilder,
+    Action<TenancyOptionsBuilder>? configure = null)
+{
+    ArgumentNullException.ThrowIfNull(optionsBuilder);
+
+    var extension = optionsBuilder.Options.FindExtension<TenancyOptionsExtension>()
+                    ?? new TenancyOptionsExtension();
+
+    ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(extension);
+    configure?.Invoke(new TenancyOptionsBuilder(optionsBuilder));
+    return optionsBuilder;
+}
+
+// Generic overload: method chaining stays typed
+public static DbContextOptionsBuilder<TContext> UseAcmeTenancy<TContext>(
+    this DbContextOptionsBuilder<TContext> optionsBuilder,
+    Action<TenancyOptionsBuilder>? configure = null) where TContext : DbContext
+    => (DbContextOptionsBuilder<TContext>)UseAcmeTenancy(
+        (DbContextOptionsBuilder)optionsBuilder, configure);
+\end{sourcecode}
+
+The file lives in the namespace
+\code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core}. That way the
+method can be found without an additional \code{using}, just like
+\code{Use\allowbreak{}Npgsql}. This is the common convention in the EF ecosystem.
+
+\section{The options builder}
+
+Settings are configured through a dedicated builder. It validates input immediately and
+writes every change back as a new extension:
+
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Builder.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+public class TenancyOptionsBuilder
+{
+    public TenancyOptionsBuilder(DbContextOptionsBuilder optionsBuilder)
+    {
+        ArgumentNullException.ThrowIfNull(optionsBuilder);
+
+        OptionsBuilder = optionsBuilder;
+    }
+
+    protected virtual DbContextOptionsBuilder OptionsBuilder { get; }
+
+    public virtual TenancyOptionsBuilder UseSettingName(string settingName)
+        => With(s => s with
+        {
+            SettingName = TenancyIdentifiers.ValidateSettingName(settingName),
+        });
+
+    public virtual TenancyOptionsBuilder ApplyQueryFilter(bool apply = true)
+        => With(s => s with { ApplyQueryFilter = apply });
+
+    protected virtual TenancyOptionsBuilder With(
+        Func<TenancySettings, TenancySettings> change)
+    {
+        var extension = OptionsBuilder.Options.FindExtension<TenancyOptionsExtension>()
+                        ?? new TenancyOptionsExtension();
+
+        ((IDbContextOptionsBuilderInfrastructure)OptionsBuilder)
+            .AddOrUpdateExtension(extension.WithSettings(change(extension.Settings)));
+        return this;
+    }
+}
+\end{sourcecode}
+
+\begin{note}[Alternative: activation through the provider builder]
+  Provider-specific plugins are sometimes activated through the provider's options builder
+  instead, for example \code{Use\allowbreak{}Npgsql(\allowbreak{}cs,\allowbreak{} o =>
+  o.\allowbreak{}Use\allowbreak{}Noda\allowbreak{}Time(\allowbreak{}))}. For this you write
+  an extension method on
+  \code{Npgsql\allowbreak{}Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder}
+  and reach the actual builder through
+  \code{IRelational\allowbreak{}Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder\allowbreak{}Infrastructure.\allowbreak{}Options\allowbreak{}Builder}.
+  The PostgreSQL package uses the simpler route via
+  \code{Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder}; the SQL Server
+  package in chapter~\ref{ch:a-second-provider-sql-server} shows the provider-builder style.
+\end{note}
+
+\section{Connecting two containers}
+
+Some parts of a plugin need services of the \emph{application}: the connection interceptor
+needs the current tenant, which only the application knows. The internal EF provider cannot
+resolve app services, though. The clean solution: such components live in the app container
+and are handed to EF via \code{Add\allowbreak{}Interceptors}.
+
+\begin{sourcecode}[Dependency\allowbreak{}Injection/\allowbreak{}… (\allowbreak{}core),\allowbreak{} Infrastructure/\allowbreak{}… (\allowbreak{}Postgre\allowbreak{}SQL),\allowbreak{} excerpts]{csharp}
+// Core package: only register the tenant provider in the app container
+public static IServiceCollection AddAcmeTenancy<TTenantProvider>(
+    this IServiceCollection services,
+    ServiceLifetime lifetime = ServiceLifetime.Scoped)
+    where TTenantProvider : class, ITenantProvider
+{
+    services.TryAdd(ServiceDescriptor.Describe(
+        typeof(ITenantProvider), typeof(TTenantProvider), lifetime));
+    return services;
+}
+
+// Provider package: Use overload creates the interceptors from this provider
+public static DbContextOptionsBuilder UseAcmeTenancy(
+    this DbContextOptionsBuilder optionsBuilder,
+    IServiceProvider applicationServices,
+    Action<TenancyOptionsBuilder>? configure = null)
+{
+    var tenants = applicationServices.GetRequiredService<ITenantProvider>();
+
+    return optionsBuilder
+        .UseAcmeTenancy(configure)
+        .AddInterceptors(
+            new TenantConnectionInterceptor(tenants),
+            new TenantSaveChangesInterceptor(tenants));
+}
+\end{sourcecode}
+
+With
+\code{Add\allowbreak{}Db\allowbreak{}Context(\allowbreak{}(\allowbreak{}sp,\allowbreak{} o)
+=> .\allowbreak{}.\allowbreak{}.\allowbreak{})}, \code{sp} is the scope of the current
+request, because EF builds options per scope by default. The tenant provider and therefore
+the interceptors see the right tenant. The registration lives in the core package because it
+is the same for every provider (chapter~\ref{ch:what-belongs-in-the-core}). For the bridge
+in the other direction, an interceptor can read services from the \emph{internal} provider
+via
+\code{event\allowbreak{}Data.\allowbreak{}Context.\allowbreak{}Get\allowbreak{}Service<\allowbreak{}T>(\allowbreak{})};
+the connection interceptor gets the setting name from the singleton options that way
+(chapter~\ref{ch:interceptors}).
+
+\begin{important}[DbContext pooling]
+  With \code{Add\allowbreak{}Db\allowbreak{}Context\allowbreak{}Pool}, contexts are reused
+  and receive their options only once. Scoped interceptors from the first scope would be
+  reused for all later requests, with the tenant of the first request. For pooling, the
+  tenant provider must be a singleton that determines the tenant anew on every access, for
+  example via \code{IHttp\allowbreak{}Context\allowbreak{}Accessor}.
+  Chapter~\ref{ch:using-the-plugin-in-asp} shows this variant, and the same applies to
+  \code{Add\allowbreak{}Db\allowbreak{}Context\allowbreak{}Factory}, whose factory is a
+  singleton by default.
+\end{important}

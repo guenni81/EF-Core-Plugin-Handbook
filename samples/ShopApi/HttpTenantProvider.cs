@@ -25,7 +25,8 @@ public sealed class HttpTenantProvider : ITenantProvider
 
     /// <summary>
     /// Determined anew on every access. This makes the provider work as a singleton too,
-    /// e.g. with AddDbContextPool (chapters 6 and 35 of the handbook).
+    /// e.g. with AddDbContextPool (chapters "Public API and integration into the application"
+    /// and "Using the plugin in ASP.NET Core" of the handbook).
     /// </summary>
     public TenantId? CurrentTenantId
     {

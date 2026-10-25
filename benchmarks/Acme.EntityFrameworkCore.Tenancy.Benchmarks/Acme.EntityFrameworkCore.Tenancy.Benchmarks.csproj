@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
-    Micro benchmarks for the plugin's hot paths (chapter 34). Not run in CI; start manually
-    from this folder with "dotnet run -c Release" (see README).
+    Micro benchmarks for the plugin's hot paths (chapter "Plugin performance"). Not run in CI;
+    start manually from this folder with "dotnet run -c Release" (see README).
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>

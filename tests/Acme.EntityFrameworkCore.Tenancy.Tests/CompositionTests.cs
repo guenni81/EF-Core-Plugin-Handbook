@@ -13,7 +13,8 @@ namespace Acme.EntityFrameworkCore.Tenancy.Tests;
 /// Decorator of a second, fictional audit plugin: instead of replacing
 /// <see cref="IMigrationsSqlGenerator"/>, it wraps whatever generator is registered (the
 /// provider's or another plugin's), delegates to it and appends its own commands. This way
-/// it composes with other plugins without any code in the application (chapter 5).
+/// it composes with other plugins without any code in the application (chapter "Registering
+/// services").
 /// </summary>
 public class AuditMigrationsSqlGenerator : IMigrationsSqlGenerator
 {

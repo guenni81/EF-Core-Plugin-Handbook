@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <!-- Allows "11.0.0-*" in the CI preview build (chapter 36) -->
+    <!-- Allows "11.0.0-*" in the CI preview build (chapter "CI and API stability") -->
     <CentralPackageFloatingVersionsEnabled>true</CentralPackageFloatingVersionsEnabled>
   </PropertyGroup>
 
