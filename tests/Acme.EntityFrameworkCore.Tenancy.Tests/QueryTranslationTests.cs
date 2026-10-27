@@ -22,6 +22,20 @@ public class QueryTranslationTests
     }
 
     [Fact]
+    public void CurrentTenant_can_be_null_and_keeps_the_null_check()
+    {
+        // Regression: with a propagating argument EF treated the function as never NULL and
+        // turned "no current tenant" into WHERE FALSE (chapter "Translating methods and members")
+        using var ctx = Contexts.Create();
+
+        var noTenant = ctx.Orders.Where(o => EF.Functions.CurrentTenant() == null).ToQueryString();
+        var other = ctx.Orders.Where(o => o.TenantId != EF.Functions.CurrentTenant()).ToQueryString();
+
+        Assert.EndsWith("WHERE nullif(current_setting('app.tenant_id', TRUE), '') IS NULL", noTenant);
+        Assert.Contains("OR nullif(current_setting('app.tenant_id', TRUE), '') IS NULL", other);
+    }
+
+    [Fact]
     public void CurrentTenant_uses_configured_setting_name()
     {
         using var ctx = Contexts.Create(t => t.UseSettingName("app.mandant"));

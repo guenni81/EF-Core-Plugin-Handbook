@@ -43,7 +43,8 @@ public sealed record TenancySettings
 \section{Immutability}
 
 EF compares and caches options. Once added, an extension must therefore never change again;
-every change creates a copy. The pattern from EF Core itself: a protected copy constructor
+every change creates a copy. What happens otherwise is shown by failure case~4 in
+chapter~\ref{ch:state-lifetimes-and-thread-safety}: new contexts silently keep working with the old value. The pattern from EF Core itself: a protected copy constructor
 and a virtual \code{Clone} method, so derived extensions clone their own type.
 
 \begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
@@ -126,9 +127,41 @@ There are two classic mistakes with these methods, with opposite consequences:
   A value that varies per context is in the hash (tenant, connection string, instance) & A
   new internal provider including model is created for every context. Memory and startup
   time explode; from the 21st provider on, EF throws by default with
-  \code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}.
+  \code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}
+  (failure case~2 in chapter~\ref{ch:state-lifetimes-and-thread-safety}).
   \\
 \end{datatable}
+
+The first mistake typically arises when a plugin without settings gets one later and the
+info class from the first version stays as it was:
+
+\begin{sourcecode}[Info class (\allowbreak{}WRONG)]{csharp}
+// From the first version without settings; SettingName was added later
+public override int GetServiceProviderHashCode() => 0;
+
+public override bool ShouldUseSameServiceProvider(DbContextOptionsExtensionInfo other)
+    => other is ExtensionInfo;
+\end{sourcecode}
+
+\begin{failure}[What happens if the hash forgets a setting?]
+  \textbf{Observable.} A context with \code{app.\allowbreak{}b} runs on the provider EF
+  built for \code{app.\allowbreak{}a}: singletons and model carry the value of the first
+  configuration. There is neither an error nor a warning, and tests with only one
+  configuration see nothing.
+
+  \textbf{Cause.} Hash and comparison are the key of the provider cache. If both say
+  “equal”, EF uses the cached provider; \code{ISingleton\allowbreak{}Options} is not
+  initialized again, and \code{Validate} does not run in the normal case
+  (chapter~\ref{ch:state-lifetimes-and-thread-safety}).
+
+  \textbf{Solution.} Include all model-relevant settings in hash and comparison, most
+  simply as a record like \code{Tenancy\allowbreak{}Settings}.
+
+  \textbf{Test:}
+  \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Setting\allowbreak{}\_missing\allowbreak{}\_from\allowbreak{}\_the\allowbreak{}\_hash\allowbreak{}\_…};
+  the counter-check is
+  \code{Options\allowbreak{}Tests.\allowbreak{}Different\allowbreak{}\_settings\allowbreak{}\_produce\allowbreak{}\_different\allowbreak{}\_models\allowbreak{}\_…}.
+\end{failure}
 
 \begin{important}[The rule of thumb for the hash]
   The hash must contain exactly what \textbf{influences which services are registered or
@@ -220,6 +253,31 @@ public virtual void ApplyServices(IServiceCollection services)
   \code{Try\allowbreak{}Add} does nothing. If it runs afterwards, \code{Replace} replaces
   the provider's service. Both orders lead to the same result.
 \end{note}
+
+Bypassing the builder means choosing the lifetime yourself, and the obvious choice is wrong:
+
+\begin{sourcecode}[Apply\allowbreak{}Services (\allowbreak{}WRONG)]{csharp}
+public void ApplyServices(IServiceCollection services)
+    => services.AddSingleton<IMethodCallTranslatorPlugin, ReverseTranslatorPlugin>();
+\end{sourcecode}
+
+\begin{failure}[What happens if a plugin interface gets the wrong lifetime?]
+  \textbf{Observable.} Registration and model building succeed. Only the first query that
+  uses the function fails, with \code{Argument\allowbreak{}Null\allowbreak{}Exception}:
+  “Value cannot be null. (Parameter 'provider')”. The message names neither the plugin nor
+  the lifetime.
+
+  \textbf{Cause.} EF expects translator plugins as scoped. As a singleton, the plugin is
+  created in the root scope of the internal provider, where its scoped dependency
+  \code{ISql\allowbreak{}Expression\allowbreak{}Factory} cannot be resolved. The internal
+  provider does not check lifetimes (chapter~\ref{ch:state-lifetimes-and-thread-safety}).
+
+  \textbf{Solution.} Always register EF services and plugin interfaces through the services
+  builder; \code{Try\allowbreak{}Add} takes the lifetime from EF's table.
+
+  \textbf{Test:}
+  \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Plugin\allowbreak{}\_interface\allowbreak{}\_registered\allowbreak{}\_as\allowbreak{}\_singleton\allowbreak{}\_…}.
+\end{failure}
 
 \section{Singleton options}
 
@@ -830,11 +888,12 @@ creating contexts shift them:
   (chapter~\ref{ch:row-level-security-in-production}) \\
 \end{datatable}
 
-\section{Five failure cases}
+\section{Six failure cases}
 
 Each of the following cases is reproduced as a test in the sample, the wrong variant next to
 the right one (\code{State\allowbreak{}And\allowbreak{}Lifetime\allowbreak{}Tests}, case~5
-in \code{Materialization\allowbreak{}Tests}).
+in \code{Materialization\allowbreak{}Tests}, case~6 in
+\code{Failure\allowbreak{}Case\allowbreak{}Tests}).
 
 \begin{datatable}{H{0.70}H{0.75}H{0.85}H{0.70}}
   \textbf{Case} & \textbf{Cause} & \textbf{Observable} & \textbf{Solution} \\
@@ -866,6 +925,11 @@ in \code{Materialization\allowbreak{}Tests}).
   of the first call & False alarms for other tenants, hidden leaks, race conditions; one
   instance per context creates one provider per context & Get data on every call through the
   context (chapter~\ref{ch:materialization-from-rows-to-objects}) \\
+  \tablerule
+  6. Scoped state with pooling & A scoped plugin service collects data “per request”, such as
+  counters or buffers & With pooling, the next request sees the data of the previous one,
+  because context and scope are reused & Also register the service as
+  \code{IResettable\allowbreak{}Service} and clear it in \code{Reset\allowbreak{}State} \\
 \end{datatable}
 
 Case~3 is the most treacherous because it starts without any warning. In the application

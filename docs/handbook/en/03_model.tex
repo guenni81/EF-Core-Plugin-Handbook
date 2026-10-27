@@ -164,6 +164,33 @@ public static IConventionEntityTypeBuilder? HasRowLevelSecurity(
         : builder;
 \end{sourcecode}
 
+The check of the source lives in the builder, not in the metadata. A convention that writes
+directly to the metadata bypasses it:
+
+\begin{sourcecode}[Convention (\allowbreak{}WRONG)]{csharp}
+// In ProcessModelFinalizing: directly on the metadata instead of through entityType.Builder
+entityType.SetAnnotation(RlsAnnotationNames.Enabled, true);
+\end{sourcecode}
+
+\begin{failure}[What happens if a convention bypasses the configuration source?]
+  \textbf{Observable.} The user switches RLS off for an entity with
+  \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})},
+  and after model building it is on again. The next migration enables RLS for a table that
+  was explicitly excluded.
+
+  \textbf{Cause.} \code{Set\allowbreak{}Annotation} on the convention metadata overwrites
+  any existing value. Only the convention builder compares the sources and returns
+  \code{null} when a stronger one has decided.
+
+  \textbf{Solution.} In conventions always write through
+  \code{entity\allowbreak{}Type.\allowbreak{}Builder} or use the plugin's convention
+  overloads.
+
+  \textbf{Test:}
+  \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Convention\allowbreak{}\_writing\allowbreak{}\_to\allowbreak{}\_the\allowbreak{}\_metadata\allowbreak{}\_…}
+  and the counter-check through the builder.
+\end{failure}
+
 % ------------------------------------------------------------
 \chapter{Conventions}\label{ch:conventions}
 
@@ -198,13 +225,37 @@ building. The most important ones:
   & Validation \\
 \end{datatable}
 
-\begin{important}[The most common convention mistake]
-  Reactive conventions (\code{*Added}, \code{*Changed}) run while the user is still
-  configuring. A column name may still change afterwards, an entity type may still get a
-  base type. If you depend on that, you must react to \emph{all} relevant events or use
-  \code{IModel\allowbreak{}Finalizing\allowbreak{}Convention}. The latter is simpler and
-  right for most plugins.
-\end{important}
+The most common convention mistake is the wrong point in time:
+
+\begin{sourcecode}[Convention (\allowbreak{}WRONG)]{csharp}
+public void ProcessPropertyAdded(IConventionPropertyBuilder propertyBuilder,
+    IConventionContext<IConventionPropertyBuilder> context)
+{
+    // Remember the column name right away, for example for the policy expression
+    propertyBuilder.HasAnnotation("Acme:Column", propertyBuilder.Metadata.GetColumnName());
+}
+\end{sourcecode}
+
+\begin{failure}[What happens if a convention runs too early?]
+  \textbf{Observable.} If the user then configures
+  \code{Has\allowbreak{}Column\allowbreak{}Name(\textquotedbl{}tenant\textquotedbl{})} or a
+  naming plugin renames the column, the remembered name stays
+  \code{Tenant\allowbreak{}Id}. The policy refers to a column that does not exist, and the
+  migration only fails in the database.
+
+  \textbf{Cause.} Reactive conventions (\code{*Added}, \code{*Changed}) run while the user is
+  still configuring. A column name may still change afterwards, an entity type may still get
+  a base type.
+
+  \textbf{Solution.} Read whatever depends on the finished model in an
+  \code{IModel\allowbreak{}Finalizing\allowbreak{}Convention}, through
+  \code{Get\allowbreak{}Column\allowbreak{}Name(\allowbreak{}table)}. A convention that must
+  stay reactive reacts to \emph{all} relevant events.
+
+  \textbf{Test:}
+  \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Convention\allowbreak{}\_reading\allowbreak{}\_the\allowbreak{}\_column\allowbreak{}\_name\allowbreak{}\_too\allowbreak{}\_early\allowbreak{}\_…}
+  and the counter-check at \code{Model\allowbreak{}Finalizing}.
+\end{failure}
 
 \section{Plugging in conventions}
 

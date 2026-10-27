@@ -68,7 +68,8 @@ public static IReadOnlyList<string> MigrationSql(DbContext? source, DbContext ta
   Für Migrations-Tests immer das \textbf{Design-Time-Modell} verwenden
   (\code{IDesign\allowbreak{}Time\allowbreak{}Model}). \code{context.\allowbreak{}Model} ist
   das schlanke Laufzeitmodell; Annotations, die der Annotation-Provider nur zur Design-Zeit
-  weitergibt, fehlen darin.
+  weitergibt, fehlen darin (Fehlerfall in
+  Kapitel~\ref{ch:declarative-sql-from-annotations}).
 \end{important}
 
 \begin{note}[Warum nicht SQLite oder InMemory?]

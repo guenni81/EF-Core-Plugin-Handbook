@@ -59,6 +59,11 @@ Npgsql bietet ihn nicht als Funktion an; er erfüllt alle drei Gründe.
   Nullability-Prozessor & Kennt die NULL-Semantik & Exception beim Übersetzen \\
 \end{datatable}
 
+Die beiden letzten Zeilen betreffen auch die Kombination mit anderen Plugins: Ersetzt ein
+zweites Plugin den Generator oder den Prozessor, fehlt das SQL des Knotens still oder die
+Abfrage wirft. \code{Composition\allowbreak{}Matrix\allowbreak{}Tests} zeigt beides
+(Kapitel~\ref{ch:registering-services}).
+
 \begin{sourcecode}[Query/\allowbreak{}Expressions/\allowbreak{}Distinct\allowbreak{}From\allowbreak{}Expression.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
 public class DistinctFromExpression : SqlExpression
 {

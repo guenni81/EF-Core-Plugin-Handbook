@@ -167,6 +167,32 @@ public static IConventionEntityTypeBuilder? HasRowLevelSecurity(
         : builder;
 \end{sourcecode}
 
+Die Prüfung der Quelle steckt im Builder, nicht in den Metadaten. Wer in einer Convention
+direkt an die Metadaten schreibt, umgeht sie:
+
+\begin{sourcecode}[Convention (\allowbreak{}FALSCH)]{csharp}
+// In ProcessModelFinalizing: direkt an den Metadaten statt über entityType.Builder
+entityType.SetAnnotation(RlsAnnotationNames.Enabled, true);
+\end{sourcecode}
+
+\begin{failure}[Was passiert, wenn eine Convention die Konfigurationsquelle umgeht?]
+  \textbf{Beobachtbar.} Der Anwender schaltet RLS für eine Entität mit
+  \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})}
+  ab, und nach dem Modellbau ist es wieder an. Die nächste Migration aktiviert RLS für eine
+  Tabelle, die ausdrücklich ausgenommen war.
+
+  \textbf{Ursache.} \code{Set\allowbreak{}Annotation} am Convention-Metadatum überschreibt
+  jeden vorhandenen Wert. Nur der Convention-Builder vergleicht die Quellen und gibt
+  \code{null} zurück, wenn eine stärkere entschieden hat.
+
+  \textbf{Lösung.} In Conventions immer über \code{entity\allowbreak{}Type.\allowbreak{}Builder}
+  schreiben oder die Convention-Überladungen des Plugins verwenden.
+
+  \textbf{Test:}
+  \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Convention\allowbreak{}\_writing\allowbreak{}\_to\allowbreak{}\_the\allowbreak{}\_metadata\allowbreak{}\_…}
+  und die Gegenprobe über den Builder.
+\end{failure}
+
 % ------------------------------------------------------------
 \chapter{Conventions}\label{ch:conventions}
 
@@ -201,13 +227,37 @@ während des Modellbaus. Die wichtigsten:
   & Validierung \\
 \end{datatable}
 
-\begin{important}[Der häufigste Convention-Fehler]
-  Reaktive Conventions (\code{*Added}, \code{*Changed}) laufen, während der Nutzer noch
-  konfiguriert. Ein Spaltenname kann sich danach noch ändern, ein Entity-Typ kann noch einen
-  Basistyp bekommen. Wer davon abhängt, muss auf \emph{alle} relevanten Ereignisse reagieren
-  oder \code{IModel\allowbreak{}Finalizing\allowbreak{}Convention} verwenden. Letzteres ist
-  einfacher und für die meisten Plugins richtig.
-\end{important}
+Der häufigste Convention-Fehler ist der falsche Zeitpunkt:
+
+\begin{sourcecode}[Convention (\allowbreak{}FALSCH)]{csharp}
+public void ProcessPropertyAdded(IConventionPropertyBuilder propertyBuilder,
+    IConventionContext<IConventionPropertyBuilder> context)
+{
+    // Spaltennamen gleich merken, etwa für den Policy-Ausdruck
+    propertyBuilder.HasAnnotation("Acme:Column", propertyBuilder.Metadata.GetColumnName());
+}
+\end{sourcecode}
+
+\begin{failure}[Was passiert, wenn eine Convention zu früh läuft?]
+  \textbf{Beobachtbar.} Konfiguriert der Anwender danach
+  \code{Has\allowbreak{}Column\allowbreak{}Name(\textquotedbl{}tenant\textquotedbl{})} oder
+  benennt ein Naming-Plugin die Spalte um, bleibt der gemerkte Name
+  \code{Tenant\allowbreak{}Id}. Die Policy verweist auf eine Spalte, die es nicht gibt, und
+  die Migration scheitert erst in der Datenbank.
+
+  \textbf{Ursache.} Reaktive Conventions (\code{*Added}, \code{*Changed}) laufen, während
+  der Anwender noch konfiguriert. Ein Spaltenname kann sich danach noch ändern, ein
+  Entity-Typ noch einen Basistyp bekommen.
+
+  \textbf{Lösung.} Was vom fertigen Modell abhängt, in einer
+  \code{IModel\allowbreak{}Finalizing\allowbreak{}Convention} lesen, und zwar über
+  \code{Get\allowbreak{}Column\allowbreak{}Name(\allowbreak{}table)}. Wer reaktiv bleiben
+  muss, reagiert auf \emph{alle} relevanten Ereignisse.
+
+  \textbf{Test:}
+  \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Convention\allowbreak{}\_reading\allowbreak{}\_the\allowbreak{}\_column\allowbreak{}\_name\allowbreak{}\_too\allowbreak{}\_early\allowbreak{}\_…}
+  und die Gegenprobe bei \code{Model\allowbreak{}Finalizing}.
+\end{failure}
 
 \section{Conventions einhängen}
 

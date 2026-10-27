@@ -98,6 +98,35 @@ migrationBuilder.AlterTable(name: "Orders")
     .OldAnnotation("Acme:Rls:Policy:tenant_isolation", "{...alt...}");
 \end{sourcecode}
 
+Weil der Annotation-Provider die Annotations nur für \code{design\allowbreak{}Time} weitergibt,
+fehlen sie in einem Modell: dem Laufzeitmodell, das \code{context.\allowbreak{}Model}
+liefert.
+
+\begin{sourcecode}[Startprüfung eines Plugins (\allowbreak{}FALSCH)]{csharp}
+// Hat jede isolierte Tabelle RLS? Gelesen aus dem Laufzeitmodell
+var table = context.Model.GetRelationalModel().FindTable("Orders", null);
+var enabled = table?[RlsAnnotationNames.Enabled];          // immer null
+\end{sourcecode}
+
+\begin{failure}[Was passiert, wenn Plugin-Code das Laufzeitmodell statt des Design-Time-Modells liest?]
+  \textbf{Beobachtbar.} Code, der Schema-Annotations des Plugins aus dem relationalen
+  Laufzeitmodell liest, findet keine: Eine Prüfung meldet nichts, ein selbst erzeugtes Skript
+  enthält keine Policies. Den Differ schützt EF selbst:
+  \code{Get\allowbreak{}Differences} mit dem Laufzeitmodell bricht mit dem Hinweis auf
+  \code{IDesign\allowbreak{}Time\allowbreak{}Model} ab.
+
+  \textbf{Ursache.} Das Laufzeitmodell ist schlank. Der Annotation-Provider gibt Annotations
+  für Tabellen nur zur Design-Zeit weiter, damit sie die Laufzeit nicht belasten.
+
+  \textbf{Lösung.} Für alles, was mit dem Schema zu tun hat,
+  \code{context.\allowbreak{}Get\allowbreak{}Service<\allowbreak{}IDesign\allowbreak{}Time\allowbreak{}Model>(\allowbreak{}).\allowbreak{}Model}
+  verwenden.
+
+  \textbf{Test:}
+  \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Table\allowbreak{}\_annotations\allowbreak{}\_of\allowbreak{}\_the\allowbreak{}\_runtime\allowbreak{}\_model\allowbreak{}\_…}
+  und \code{Differ\allowbreak{}\_rejects\allowbreak{}\_the\allowbreak{}\_runtime\allowbreak{}\_model\allowbreak{}\_…}.
+\end{failure}
+
 \section{Der SQL-Generator}
 
 Auch den \code{IMigrations\allowbreak{}Sql\allowbreak{}Generator} gibt es nur einmal. Das

@@ -382,6 +382,8 @@ public class CurrentTenantTranslator : IMethodCallTranslator
         var text = _typeMappingSource.FindMapping(typeof(string))!;
         var boolean = _typeMappingSource.FindMapping(typeof(bool))!;
 
+        // Both functions return NULL although no argument is NULL:
+        // no argument propagates nullability (see the failure case below)
         var currentSetting = _sql.Function(
             "current_setting",
             [
@@ -389,14 +391,14 @@ public class CurrentTenantTranslator : IMethodCallTranslator
                 _sql.Constant(true, boolean),
             ],
             nullable: true,
-            argumentsPropagateNullability: [true, false],
+            argumentsPropagateNullability: [false, false],
             typeof(string), text);
 
         var nullIfEmpty = _sql.Function(
             "nullif",
             [currentSetting, _sql.Constant(string.Empty, text)],
             nullable: true,
-            argumentsPropagateNullability: [true, false],
+            argumentsPropagateNullability: [false, false],
             typeof(string), text);
 
         return _sql.Convert(nullIfEmpty, typeof(TenantId), TenantIdTypeMapping.Default);
@@ -408,7 +410,7 @@ This turns \code{o.\allowbreak{}Tenant\allowbreak{}Id ==
 EF.\allowbreak{}Functions.\allowbreak{}Current\allowbreak{}Tenant(\allowbreak{})} into:
 
 \begin{sourcecode}[Generated SQL (\allowbreak{}excerpt)]{sql}
-WHERE o."TenantId" = CAST(nullif(current_setting('app.tenant_id', TRUE), '') AS uuid)
+WHERE o."TenantId" = nullif(current_setting('app.tenant_id', TRUE), '')::uuid
 \end{sourcecode}
 
 \begin{datatable}{H{0.60}H{1.40}}
@@ -423,17 +425,54 @@ WHERE o."TenantId" = CAST(nullif(current_setting('app.tenant_id', TRUE), '') AS 
   \code{nullable} & Can the result be NULL? EF uses this to optimize \code{IS NULL} checks.
   Wrong values lead to wrong results. \\
   \tablerule
-  \code{arguments\allowbreak{}Propagate\allowbreak{}Nullability} & Is the result NULL when
-  this argument is NULL? For \code{nullif(\allowbreak{}x,\allowbreak{} '')}: yes for x, no
-  for the empty string. \\
+  \code{arguments\allowbreak{}Propagate\allowbreak{}Nullability} & “The result is NULL
+  exactly when this argument is NULL.” If there are such arguments, EF derives the
+  nullability from them alone. Functions that produce NULL themselves (\code{nullif},
+  \code{current\_\allowbreak{}setting(\allowbreak{}…,\allowbreak{} true)}) therefore use
+  \code{false} everywhere; \code{reverse(\allowbreak{}x)} or \code{upper(\allowbreak{}x)}
+  use \code{true}. \\
   \tablerule
   Type mappings & Every SQL expression needs a mapping. It determines literals, parameters
-  and casts. \code{Convert} with the TenantId mapping produces
-  \code{CAST(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{} AS uuid)}. \\
+  and casts. \code{Convert} with the TenantId mapping produces a cast that Npgsql writes as
+  \code{::\allowbreak{}uuid}. \\
   \tablerule
   \code{Constant(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})} & Constants
   become literals via the mapping and are escaped correctly, including the setting name. \\
 \end{datatable}
+
+The nullability details are the most treacherous part of a translator, because a mistake
+only shows in certain queries:
+
+\begin{sourcecode}[Translator (\allowbreak{}WRONG)]{csharp}
+var nullIfEmpty = _sql.Function("nullif", [currentSetting, empty],
+    nullable: true,                                   // right: can be NULL ...
+    argumentsPropagateNullability: [true, false],     // ... but this overrides it for EF
+    typeof(string), text);
+\end{sourcecode}
+
+\begin{failure}[What happens if a translator declares the wrong nullability?]
+  \textbf{Observable.}
+  \code{EF.\allowbreak{}Functions.\allowbreak{}Current\allowbreak{}Tenant(\allowbreak{}) == null}
+  becomes \code{WHERE FALSE}, although it would be true without a tenant, and
+  \code{o.\allowbreak{}Tenant\allowbreak{}Id != Current\allowbreak{}Tenant(\allowbreak{})}
+  loses the NULL handling of C\# semantics. Ordinary comparisons with \code{==} stay right,
+  which is why the mistake goes unnoticed for a long time. Up to edition~1.0 the sample
+  contained exactly this mistake.
+
+  \textbf{Cause.} If a function has propagating arguments, EF's nullability processor
+  determines its nullability from these alone. If they are not nullable (a constant, a
+  required column), the function counts as never NULL, whatever \code{nullable} says.
+
+  \textbf{Solution.} An argument propagates only if “the argument is NULL” is the
+  \emph{only} thing that makes the result NULL. Functions that produce NULL themselves mark
+  no argument.
+
+  \textbf{Test:}
+  \code{Query\allowbreak{}Translation\allowbreak{}Tests.\allowbreak{}Current\allowbreak{}Tenant\allowbreak{}\_can\allowbreak{}\_be\allowbreak{}\_null\allowbreak{}\_…}
+  and
+  \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Nullable\allowbreak{}\_function\allowbreak{}\_…}
+  with both variants.
+\end{failure}
 
 \section{A member translator}
 
@@ -547,15 +586,40 @@ attribute. A single plugin thus also covers the PostgreSQL-specific functions fr
 chapters~\ref{ch:custom-sql-expression-nodes} and \ref{ch:aggregate-translators} and every
 future provider package, without the core having to know these classes.
 
-\begin{important}[When the plugin is needed]
-  Whether a custom EF.Functions method needs this plugin depends on whether it has arguments
-  referencing data.
-  \code{EF.\allowbreak{}Functions.\allowbreak{}Soundex(\allowbreak{}c.\allowbreak{}Name)} is
-  harmless because \code{c.\allowbreak{}Name} points to a column. Methods without arguments
-  or only with constants (\code{Current\allowbreak{}Tenant(\allowbreak{})},
-  \code{Random(\allowbreak{})}, \code{Server\allowbreak{}Time(\allowbreak{})}) always need
-  it. Without it, the exception comes from the method body, which is hard to diagnose.
-\end{important}
+Whether a custom EF.Functions method needs this plugin depends on whether it has arguments
+referencing data.
+\code{EF.\allowbreak{}Functions.\allowbreak{}Soundex(\allowbreak{}c.\allowbreak{}Name)} is
+harmless because \code{c.\allowbreak{}Name} points to a column. Methods without arguments or
+only with constants (\code{Current\allowbreak{}Tenant(\allowbreak{})},
+\code{Random(\allowbreak{})}, \code{Server\allowbreak{}Time(\allowbreak{})}) always need it:
+
+\begin{sourcecode}[Custom function class (\allowbreak{}WRONG)]{csharp}
+public static class ShopDbFunctionsExtensions          // without [TenancyDbFunctions]
+{
+    public static DateTime ServerTime(this DbFunctions _)
+        => throw new InvalidOperationException("Only in LINQ queries.");
+}
+\end{sourcecode}
+
+\begin{failure}[What happens if the evaluatable filter is missing?]
+  \textbf{Observable.} Every query with the function throws
+  \code{Invalid\allowbreak{}Operation\allowbreak{}Exception}: “An exception was thrown
+  while attempting to evaluate a LINQ query parameter expression”, with the message from the
+  method body inside. It looks as if the method were called outside of LINQ, although the
+  translator is registered and correct.
+
+  \textbf{Cause.} The funcletizer runs before any translator and evaluates expressions
+  without data reference in .NET. EF only knows exceptions for its own class
+  \code{Db\allowbreak{}Functions\allowbreak{}Extensions}.
+
+  \textbf{Solution.} An
+  \code{IEvaluatable\allowbreak{}Expression\allowbreak{}Filter\allowbreak{}Plugin}, in the
+  sample through the attribute on the function class.
+
+  \textbf{Test:}
+  \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Function\allowbreak{}\_without\allowbreak{}\_data\allowbreak{}\_reference\allowbreak{}\_…},
+  with and without the attribute.
+\end{failure}
 
 % ------------------------------------------------------------
 \chapter{Further query extension points}\label{ch:further-query-extension-points}

@@ -65,11 +65,14 @@ public class CurrentTenantTranslator : IMethodCallTranslator
 
         // current_setting(name, missing_ok => true): NULL instead of an error if not set.
         // The setting name is emitted as an SQL literal (escaped correctly).
+        // Both functions return NULL although no argument is NULL, so no argument propagates
+        // nullability: if any did, EF would derive the result's nullability from the arguments
+        // alone and treat it as never NULL (CurrentTenant() == null would become FALSE).
         var currentSetting = _sql.Function(
             "current_setting",
             [_sql.Constant(_options.Settings.SettingName, text), _sql.Constant(true, boolean)],
             nullable: true,
-            argumentsPropagateNullability: [true, false],
+            argumentsPropagateNullability: [false, false],
             typeof(string),
             text);
 
@@ -79,7 +82,7 @@ public class CurrentTenantTranslator : IMethodCallTranslator
             "nullif",
             [currentSetting, _sql.Constant(string.Empty, text)],
             nullable: true,
-            argumentsPropagateNullability: [true, false],
+            argumentsPropagateNullability: [false, false],
             typeof(string),
             text);
 

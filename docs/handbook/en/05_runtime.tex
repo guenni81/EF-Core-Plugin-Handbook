@@ -134,12 +134,36 @@ public class TenantSaveChangesInterceptor : SaveChangesInterceptor
 }
 \end{sourcecode}
 
-\begin{important}[Synchronous and asynchronous]
-  Always implement \textbf{both} variants, synchronous and asynchronous. Depending on
-  \code{Save\allowbreak{}Changes} or \code{Save\allowbreak{}Changes\allowbreak{}Async}, EF
-  calls only one of them. An interceptor that only overrides the asynchronous method has no
-  effect on synchronous calls, without anyone noticing.
-\end{important}
+Anyone who only works with asynchronous code easily overrides only one variant:
+
+\begin{sourcecode}[Interceptor (\allowbreak{}WRONG)]{csharp}
+public class TenantSaveChangesInterceptor : SaveChangesInterceptor
+{
+    public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+        DbContextEventData eventData, InterceptionResult<int> result,
+        CancellationToken cancellationToken = default) { /* apply the tenant */ }
+
+    // SavingChanges is missing
+}
+\end{sourcecode}
+
+\begin{failure}[What happens if only the asynchronous variant is implemented?]
+  \textbf{Observable.} With \code{Save\allowbreak{}Changes\allowbreak{}Async} everything
+  works. A synchronous \code{Save\allowbreak{}Changes}, for example in a console tool or an
+  older code path, saves without a tenant; RLS rejects the row with \code{WITH CHECK}, a
+  plugin without database protection silently writes it wrongly.
+
+  \textbf{Cause.} Depending on the call, EF calls exactly one variant. The base class
+  \code{Save\allowbreak{}Changes\allowbreak{}Interceptor} implements the other one as an
+  empty method, so there is no error. The same applies to connection and command
+  interceptors.
+
+  \textbf{Solution.} Always override both variants and call the same logic, like
+  \code{Apply\allowbreak{}Tenant} in the sample.
+
+  \textbf{Test:}
+  \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Interceptor\allowbreak{}\_with\allowbreak{}\_only\allowbreak{}\_the\allowbreak{}\_async\allowbreak{}\_variant\allowbreak{}\_…}.
+\end{failure}
 
 The logic lives in an \code{internal} method \code{Apply\allowbreak{}Tenant}. Tests can call
 it directly through \code{Internals\allowbreak{}Visible\allowbreak{}To} without needing a

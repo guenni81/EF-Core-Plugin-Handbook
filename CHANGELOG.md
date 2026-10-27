@@ -45,8 +45,20 @@ version of EF Core (10.x = EF Core 10).
   plugins, integration through public logic, and a coexistence checklist before
   publishing. `CompositionMatrixTests` reproduces every rule and conflict.
 
+- Handbook (both editions): "What happens if ...?" failure cases at the mechanisms they
+  belong to (incomplete hash, wrong lifetime of a plugin interface, convention bypassing the
+  configuration source, convention running too early, wrong nullability, missing
+  evaluatable filter, async-only interceptor, runtime instead of design-time model, scoped
+  state with pooling), in a new `failure` box; existing warnings on the same topics were
+  turned into failure cases instead of being repeated. `FailureCaseTests` verifies every
+  case against EF Core 10.
+
 ### Fixed
 
+- `EF.Functions.CurrentTenant()` (PostgreSQL) declared its arguments as propagating
+  nullability, so EF treated the function as never NULL: `CurrentTenant() == null` became
+  `WHERE FALSE` and `TenantId != CurrentTenant()` lost its NULL handling. The handbook's
+  rule for `argumentsPropagateNullability` was wrong in the same way and is corrected.
 - The handbook said EF only warns after 20 internal service providers; by default it throws.
 - The old query pipeline diagram placed the NULL optimization in postprocessing and the
   query interceptor in preprocessing; the materialization chapter said the value converter

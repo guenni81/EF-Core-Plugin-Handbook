@@ -64,7 +64,7 @@ The chapter files only use the commands from `handbook.sty`:
 \begin{sourcecode}[Query/CurrentTenantTranslator.cs]{csharp}
 ...                                            % csharp, sql, xml or text
 \end{sourcecode}
-\begin{tip}[Optional title] ... \end{tip}      % also: important, note
+\begin{tip}[Optional title] ... \end{tip}      % also: important, note, failure
 \begin{datatable}{H{0.8}H{1.2}}                % relative widths, sum = number of columns
   \textbf{Head} & \textbf{Head} \\ \tablehead
   Cell & Cell \\ \tablerule

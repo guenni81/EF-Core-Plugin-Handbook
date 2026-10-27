@@ -44,7 +44,8 @@ public sealed record TenancySettings
 \section{Immutabilität}
 
 EF vergleicht und cached Options. Eine Extension darf sich nach dem Hinzufügen deshalb nie
-mehr ändern; jede Änderung erzeugt eine Kopie. Das Muster aus EF Core selbst: ein
+mehr ändern; jede Änderung erzeugt eine Kopie. Was sonst passiert, zeigt Fehlerfall~4 in
+Kapitel~\ref{ch:state-lifetimes-and-thread-safety}: Neue Contexts arbeiten still mit dem alten Wert weiter. Das Muster aus EF Core selbst: ein
 geschützter Kopierkonstruktor und eine virtuelle \code{Clone}-Methode, damit abgeleitete
 Extensions ihren eigenen Typ klonen.
 
@@ -129,9 +130,40 @@ Bei diesen beiden Methoden gibt es zwei klassische Fehler mit gegensätzlichen F
   Context entsteht ein neuer interner Provider samt Modell. Speicher und Startzeit
   explodieren; ab dem 21. Provider bricht EF standardmäßig mit
   \code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}
-  ab.
+  ab (Fehlerfall~2 in Kapitel~\ref{ch:state-lifetimes-and-thread-safety}).
   \\
 \end{datatable}
+
+Der erste Fehler entsteht typischerweise, wenn ein Plugin ohne Einstellungen später eine
+bekommt und die Info-Klasse aus der ersten Version stehen bleibt:
+
+\begin{sourcecode}[Info-Klasse (\allowbreak{}FALSCH)]{csharp}
+// Aus der ersten Version ohne Einstellungen; SettingName kam später dazu
+public override int GetServiceProviderHashCode() => 0;
+
+public override bool ShouldUseSameServiceProvider(DbContextOptionsExtensionInfo other)
+    => other is ExtensionInfo;
+\end{sourcecode}
+
+\begin{failure}[Was passiert, wenn der Hash eine Einstellung vergisst?]
+  \textbf{Beobachtbar.} Ein Context mit \code{app.\allowbreak{}b} läuft auf dem Provider,
+  den EF für \code{app.\allowbreak{}a} gebaut hat: Singletons und Modell tragen den Wert der
+  ersten Konfiguration. Es gibt weder Fehler noch Warnung, und Tests mit nur einer
+  Konfiguration sehen nichts.
+
+  \textbf{Ursache.} Hash und Vergleich sind der Schlüssel des Provider-Caches. Sagen beide
+  „gleich“, verwendet EF den gecachten Provider; \code{ISingleton\allowbreak{}Options}
+  wird nicht neu initialisiert, und \code{Validate} läuft im Normalfall nicht
+  (Kapitel~\ref{ch:state-lifetimes-and-thread-safety}).
+
+  \textbf{Lösung.} Alle modellrelevanten Einstellungen in Hash und Vergleich aufnehmen, am
+  einfachsten als Record wie \code{Tenancy\allowbreak{}Settings}.
+
+  \textbf{Test:}
+  \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Setting\allowbreak{}\_missing\allowbreak{}\_from\allowbreak{}\_the\allowbreak{}\_hash\allowbreak{}\_…};
+  die Gegenprobe ist
+  \code{Options\allowbreak{}Tests.\allowbreak{}Different\allowbreak{}\_settings\allowbreak{}\_produce\allowbreak{}\_different\allowbreak{}\_models\allowbreak{}\_…}.
+\end{failure}
 
 \begin{important}[Die Faustregel für den Hash]
   In den Hash gehört genau das, was \textbf{beeinflusst, welche Dienste registriert werden
@@ -224,6 +256,31 @@ public virtual void ApplyServices(IServiceCollection services)
   das spätere \code{Try\allowbreak{}Add} des Providers greift nicht mehr. Läuft es danach,
   ersetzt \code{Replace} den Provider-Dienst. Beide Reihenfolgen führen zum selben Ergebnis.
 \end{note}
+
+Wer den Builder umgeht, wählt die Lebensdauer selbst, und die naheliegende Wahl ist falsch:
+
+\begin{sourcecode}[Apply\allowbreak{}Services (\allowbreak{}FALSCH)]{csharp}
+public void ApplyServices(IServiceCollection services)
+    => services.AddSingleton<IMethodCallTranslatorPlugin, ReverseTranslatorPlugin>();
+\end{sourcecode}
+
+\begin{failure}[Was passiert, wenn ein Plugin-Interface die falsche Lebensdauer bekommt?]
+  \textbf{Beobachtbar.} Registrierung und Modellbau laufen durch. Erst die erste Abfrage,
+  die die Funktion verwendet, bricht ab, mit
+  \code{Argument\allowbreak{}Null\allowbreak{}Exception}: „Value cannot be null.
+  (Parameter 'provider')“. Die Meldung nennt weder das Plugin noch die Lebensdauer.
+
+  \textbf{Ursache.} EF erwartet Translator-Plugins als Scoped. Als Singleton entsteht das
+  Plugin im Root-Scope des internen Providers, wo sich die Scoped-Abhängigkeit
+  \code{ISql\allowbreak{}Expression\allowbreak{}Factory} nicht auflösen lässt. Der interne
+  Provider prüft Lebensdauern nicht (Kapitel~\ref{ch:state-lifetimes-and-thread-safety}).
+
+  \textbf{Lösung.} EF-Dienste und Plugin-Interfaces immer über den Services-Builder
+  registrieren; \code{Try\allowbreak{}Add} übernimmt die Lebensdauer aus EFs Tabelle.
+
+  \textbf{Test:}
+  \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Plugin\allowbreak{}\_interface\allowbreak{}\_registered\allowbreak{}\_as\allowbreak{}\_singleton\allowbreak{}\_…}.
+\end{failure}
 
 \section{Singleton-Options}
 
@@ -838,11 +895,12 @@ Arten, Contexts zu erzeugen, verschieben sie:
   (Kapitel~\ref{ch:row-level-security-in-production}) \\
 \end{datatable}
 
-\section{Fünf Fehlerfälle}
+\section{Sechs Fehlerfälle}
 
 Jeder der folgenden Fälle ist im Beispiel als Test nachgestellt, die falsche Variante neben
 der richtigen (\code{State\allowbreak{}And\allowbreak{}Lifetime\allowbreak{}Tests},
-Fall~5 in \code{Materialization\allowbreak{}Tests}).
+Fall~5 in \code{Materialization\allowbreak{}Tests}, Fall~6 in
+\code{Failure\allowbreak{}Case\allowbreak{}Tests}).
 
 \begin{datatable}{H{0.70}H{0.75}H{0.85}H{0.70}}
   \textbf{Fall} & \textbf{Ursache} & \textbf{Beobachtbar} & \textbf{Lösung} \\
@@ -874,6 +932,12 @@ Fall~5 in \code{Materialization\allowbreak{}Tests}).
   Context des ersten Aufrufs & Fehlalarme für andere Mandanten, verdeckte Lecks, Race
   Conditions; eine Instanz pro Context erzeugt einen Provider pro Context & Daten pro Aufruf
   über den Context holen (Kapitel~\ref{ch:materialization-from-rows-to-objects}) \\
+  \tablerule
+  6. Scoped-Zustand bei Pooling & Ein Scoped-Plugin-Dienst sammelt Daten „pro Anfrage“, etwa
+  Zähler oder Puffer & Mit Pooling sieht die nächste Anfrage die Daten der vorigen, weil
+  Context und Scope wiederverwendet werden & Dienst zusätzlich als
+  \code{IResettable\allowbreak{}Service} registrieren und in \code{Reset\allowbreak{}State}
+  zurücksetzen \\
 \end{datatable}
 
 Fall~3 ist der tückischste, weil er ohne jede Warnung beginnt. Im App-Container meldet

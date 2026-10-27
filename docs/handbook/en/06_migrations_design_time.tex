@@ -98,6 +98,33 @@ migrationBuilder.AlterTable(name: "Orders")
     .OldAnnotation("Acme:Rls:Policy:tenant_isolation", "{...old...}");
 \end{sourcecode}
 
+Because the annotation provider only passes the annotations on for \code{design\allowbreak{}Time},
+they are missing from one model: the runtime model that \code{context.\allowbreak{}Model}
+returns.
+
+\begin{sourcecode}[Startup check of a plugin (\allowbreak{}WRONG)]{csharp}
+// Does every isolated table have RLS? Read from the runtime model
+var table = context.Model.GetRelationalModel().FindTable("Orders", null);
+var enabled = table?[RlsAnnotationNames.Enabled];          // always null
+\end{sourcecode}
+
+\begin{failure}[What happens if plugin code reads the runtime model instead of the design-time model?]
+  \textbf{Observable.} Code that reads the plugin's schema annotations from the relational
+  runtime model finds none: a check reports nothing, a self-generated script contains no
+  policies. EF protects the differ itself: \code{Get\allowbreak{}Differences} with the
+  runtime model fails with a hint to \code{IDesign\allowbreak{}Time\allowbreak{}Model}.
+
+  \textbf{Cause.} The runtime model is lean. The annotation provider passes annotations for
+  tables on only at design time, so that they do not burden the run time.
+
+  \textbf{Solution.} For everything related to the schema, use
+  \code{context.\allowbreak{}Get\allowbreak{}Service<\allowbreak{}IDesign\allowbreak{}Time\allowbreak{}Model>(\allowbreak{}).\allowbreak{}Model}.
+
+  \textbf{Test:}
+  \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Table\allowbreak{}\_annotations\allowbreak{}\_of\allowbreak{}\_the\allowbreak{}\_runtime\allowbreak{}\_model\allowbreak{}\_…}
+  and \code{Differ\allowbreak{}\_rejects\allowbreak{}\_the\allowbreak{}\_runtime\allowbreak{}\_model\allowbreak{}\_…}.
+\end{failure}
+
 \section{The SQL generator}
 
 There is also only one \code{IMigrations\allowbreak{}Sql\allowbreak{}Generator}. The plugin
