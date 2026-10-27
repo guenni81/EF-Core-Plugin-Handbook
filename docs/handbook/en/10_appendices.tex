@@ -254,6 +254,9 @@ and the registrations of \code{Add\allowbreak{}Entity\allowbreak{}Framework\allo
   \code{samples/\allowbreak{}Shop\allowbreak{}Api} & ASP.NET Core sample (minimal API) & \ref{ch:using-the-plugin-in-asp}
   \\
   \tablerule
+  \code{.\allowbreak{}github/\allowbreak{}workflows/\allowbreak{}compatibility.\allowbreak{}yml}
+  & Weekly against the newest stable 10.0.x patches & \ref{ch:versioning-and-compatibility} \\
+  \tablerule
   \code{.\allowbreak{}github/\allowbreak{}workflows/\allowbreak{}ci.\allowbreak{}yml} &
   Build, tests, handbook & \ref{ch:ci-and-api-stability} \\
   \tablerule
@@ -274,6 +277,9 @@ and the registrations of \code{Add\allowbreak{}Entity\allowbreak{}Framework\allo
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}cs}
   & The book's “What happens if …?” cases, the wrong variant next to the right one & – \\
+  \tablerule
+  \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Service\allowbreak{}Registration\allowbreak{}Tests.\allowbreak{}cs}
+  & Lifetime and cardinality of every registration against EF's service table & \ref{ch:versioning-and-compatibility} \\
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}State\allowbreak{}And\allowbreak{}Lifetime\allowbreak{}Tests.\allowbreak{}cs}
   & Failure cases for state and lifetimes, the wrong variant next to the right one & \ref{ch:state-lifetimes-and-thread-safety} \\

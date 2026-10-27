@@ -13,6 +13,9 @@
          chapter "Custom SQL expression nodes") -->
     <NoWarn>$(NoWarn);EF9100</NoWarn>
     <Deterministic>true</Deterministic>
+    <!-- Public API analyzer (src projects): a changed public API breaks the build instead of
+         ending up as one of many warnings (chapter "CI and API stability") -->
+    <WarningsAsErrors>$(WarningsAsErrors);RS0016;RS0017</WarningsAsErrors>
   </PropertyGroup>
 
   <!-- NuGet metadata for all packable projects (IsPackable=true in the src projects) -->

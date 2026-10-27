@@ -53,8 +53,30 @@ version of EF Core (10.x = EF Core 10).
   turned into failure cases instead of being repeated. `FailureCaseTests` verifies every
   case against EF Core 10.
 
+- Handbook (both editions): chapter "Versioning and compatibility" gets an upgrade
+  playbook for the next EF Core major version: failure classes and the tests of the sample
+  that detect them, a 16-step workflow with commands (compiler error classification, EF1001
+  inventory), CI channels for patches and previews, and an upgrade checklist.
+- `compatibility.yml`: weekly workflow that tests against the newest stable EF Core and
+  provider 10.0.x patches (`-p:EFCoreVersion=10.0.*`); stable packages only.
+- `ServiceRegistrationTests` (both provider packages): every registered EF service uses the
+  lifetime and cardinality of EF's service table.
+- `PublicAPI.Shipped.txt` / `PublicAPI.Unshipped.txt` contain the public API (10.0.0 shipped,
+  `VerifyMaterializedTenants` unshipped); RS0016 and RS0017 are errors.
+
+### Changed
+
+- `Directory.Packages.props`: the EF Core range lives in the `EFCoreVersion` property;
+  `Microsoft.Extensions.DependencyInjection` follows it, and the unit tests take Roslyn from
+  `Microsoft.EntityFrameworkCore.Design` instead of pinning their own version. Pinned
+  companion packages made the test and sample projects fail to restore with newer EF
+  patches.
+
 ### Fixed
 
+- Trimming/AOT warnings that only showed in full builds: `AddAcmeTenancy<T>` now annotates
+  its type parameter (IL2087); the query filter of the isolation convention suppresses IL3050
+  with a justification (conventions do not run with the compiled model NativeAOT requires).
 - The handbook's rule for `argumentsPropagateNullability` was wrong: a function with
   propagating arguments gets its nullability from those arguments alone, so functions that
   produce NULL themselves must not mark any argument. `CurrentTenantTranslator` now states

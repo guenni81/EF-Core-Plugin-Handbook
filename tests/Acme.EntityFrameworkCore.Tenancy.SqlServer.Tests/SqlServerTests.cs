@@ -1,4 +1,5 @@
 using Acme.EntityFrameworkCore.Tenancy.Interceptors;
+using Acme.EntityFrameworkCore.Tenancy.SqlServer.Infrastructure;
 using Acme.EntityFrameworkCore.Tenancy.SqlServer.Metadata;
 using Acme.EntityFrameworkCore.Tenancy.SqlServer.Runtime;
 using Acme.EntityFrameworkCore.Tenancy.SqlServer.Storage;
@@ -93,6 +94,35 @@ public class SqlServerUnitTests
 
         Assert.IsType<SqlServerTenantIdTypeMapping>(
             ctx.GetService<IRelationalTypeMappingSource>().FindMapping(typeof(TenantId)));
+    }
+
+    [Fact]
+    public void Every_registered_ef_service_uses_the_lifetime_and_cardinality_of_efs_table()
+    {
+        // Upgrade guard, as for the PostgreSQL package (chapter "Versioning and compatibility")
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        new SqlServerTenancyOptionsExtension()
+            .WithSettings(SqlServerTenancySettings.Default with { VerifyMaterializedTenants = true })
+            .ApplyServices(services);
+        var table = new Dictionary<Type, ServiceCharacteristics>();
+        foreach (var (type, characteristics) in EntityFrameworkServicesBuilder.CoreServices
+                     .Concat(EntityFrameworkRelationalServicesBuilder.RelationalServices))
+            table[type] = characteristics;
+
+        var compared = 0;
+        foreach (var group in services.GroupBy(d => d.ServiceType))
+        {
+            if (!table.TryGetValue(group.Key, out var expected))
+                continue;
+
+            compared++;
+            Assert.All(group, d => Assert.True(d.Lifetime == expected.Lifetime,
+                $"{group.Key.Name}: registered as {d.Lifetime}, EF expects {expected.Lifetime}"));
+            if (!expected.MultipleRegistrations)
+                Assert.True(group.Count() == 1, $"{group.Key.Name} is a single service");
+        }
+
+        Assert.True(compared >= 6, $"Only {compared} EF services compared");
     }
 
     [Fact]

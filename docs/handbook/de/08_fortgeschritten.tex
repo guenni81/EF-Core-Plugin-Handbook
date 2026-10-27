@@ -734,13 +734,13 @@ jobs:
       - run: latexmk EF-Core-Plugin-Handbuch.tex
 \end{sourcecode}
 
-Das Beispiel baut bewusst nur gegen stabile Versionen (.NET 10, EF Core 10). Ein
-zusätzlicher Build gegen die nächste EF-Vorabversion, wie ihn
-Kapitel~\ref{ch:versioning-and-compatibility} empfiehlt, zeigt Brüche in internen APIs
-früher. Er braucht aber auch das passende Vorab-SDK von .NET, weil jede EF-Core-Hauptversion
-nur für die gleichnamige .NET-Version erscheint (EF Core 11 nur für \code{net11.\allowbreak{}0}).
-Wer ihn einrichtet, betreibt ihn am besten als eigenen Job mit
-\code{continue-on-\allowbreak{}error}, damit er die reguläre CI nicht blockiert.
+Das Beispiel baut nur gegen stabile Versionen (.NET 10, EF Core 10). Ein zweiter Workflow,
+\code{compatibility.\allowbreak{}yml}, läuft wöchentlich und testet gegen die neuesten
+stabilen 10.0.x-Patches, denn die reguläre CI baut gegen den Anfang des Versionsbereichs.
+Einen Kanal für die nächste EF-Major-Version mit Previews und RCs beschreibt
+Kapitel~\ref{ch:versioning-and-compatibility} als Skizze; er braucht das passende Vorab-SDK, weil jede
+EF-Core-Hauptversion nur für die gleichnamige .NET-Version erscheint (EF Core 11 nur für
+\code{net11.\allowbreak{}0}).
 
 \section{Öffentliche API absichern}
 
@@ -755,7 +755,19 @@ Abweichung. Jede API-Änderung wird so im Pull Request als Diff sichtbar.
 
 \begin{note}[Einrichtung]
   Beim ersten Build meldet der Analyzer jede öffentliche API als RS0016, weil die Dateien
-  leer sind. Per Code-Fix „Add all items … to the public API“ werden sie gefüllt. Beim
-  Release wandert der Inhalt von Unshipped nach Shipped; ab dann ist das Entfernen einer
+  leer sind. Der Code-Fix „Add all items … to the public API“ füllt sie, auf der
+  Kommandozeile mit
+  \code{dotnet format analyzers -{}-diagnostics RS0016 -{}-severity warn}. Beim Release
+  wandert der Inhalt von Unshipped nach Shipped; ab dann ist das Entfernen einer
   ausgelieferten API ein sichtbarer Breaking Change.
 \end{note}
+
+\begin{important}[Warnungen reichen nicht]
+  Solange RS0016 und RS0017 nur Warnungen sind, gehen sie in der Build-Ausgabe unter. Im
+  Beispiel blieben die Dateien so bis Ausgabe~1.0 leer: 178 Warnungen bei einem vollständigen
+  Build, keine bei inkrementellen, und niemand bemerkte es.
+  \code{Directory.\allowbreak{}Build.\allowbreak{}props} macht beide deshalb zu Fehlern
+  (\code{Warnings\allowbreak{}As\allowbreak{}Errors}); eine neue öffentliche API muss jetzt
+  in \code{Public\allowbreak{}API.\allowbreak{}Unshipped.\allowbreak{}txt} eingetragen
+  werden, sonst bricht der Build.
+\end{important}

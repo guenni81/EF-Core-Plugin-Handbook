@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Acme.EntityFrameworkCore.Tenancy;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -17,7 +18,8 @@ public static class TenancyServiceCollectionExtensions
     /// determine the tenant anew on every access (e.g. via IHttpContextAccessor).
     /// </param>
     /// <returns>The same service collection, for chaining.</returns>
-    public static IServiceCollection AddAcmeTenancy<TTenantProvider>(
+    public static IServiceCollection AddAcmeTenancy<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TTenantProvider>(
         this IServiceCollection services,
         ServiceLifetime lifetime = ServiceLifetime.Scoped)
         where TTenantProvider : class, ITenantProvider

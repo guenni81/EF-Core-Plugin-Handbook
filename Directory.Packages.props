@@ -1,18 +1,26 @@
 <Project>
-  <!-- Pinned to one major version (internal APIs change between majors) -->
+  <!-- Pinned to one major version (internal APIs change between majors). NuGet resolves a
+       range to its lowest version, so the regular build runs against 10.0.0. The compatibility
+       workflow sets EFCoreVersion=10.0.* to test the newest stable patches of the range
+       (chapter "Versioning and compatibility"). -->
+  <PropertyGroup>
+    <EFCoreVersion Condition="'$(EFCoreVersion)' == ''">[10.0.0,11.0.0)</EFCoreVersion>
+    <CentralPackageFloatingVersionsEnabled>true</CentralPackageFloatingVersionsEnabled>
+  </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="[10.0.0,11.0.0)" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="[10.0.0,11.0.0)" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0" />
-    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="[10.0.0,11.0.0)" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="[10.0.0,11.0.0)" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="$(EFCoreVersion)" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="$(EFCoreVersion)" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="$(EFCoreVersion)" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="$(EFCoreVersion)" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="$(EFCoreVersion)" />
   </ItemGroup>
 
   <!-- Tooling and test dependencies, independent of the EF version -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="3.3.4" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+    <!-- Released together with EF Core (10.0.x); follows the EF version so that newer EF
+         patches do not cause a downgrade -->
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="$(EFCoreVersion)" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />

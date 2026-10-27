@@ -1,0 +1,39 @@
+name: Compatibility
+
+# Tests the plugin against the newest stable patches inside its version range. NuGet resolves
+# a version range to the lowest version that satisfies all dependencies, so the regular CI
+# builds against (almost) 10.0.0, while applications get whatever newer 10.0.x patch they
+# reference. Stable packages only: previews of the next EF Core major version do not belong
+# here (chapter "Versioning and compatibility").
+on:
+  schedule:
+    - cron: "0 4 * * 1"          # Mondays, 04:00 UTC
+  workflow_dispatch:
+
+jobs:
+  latest-patches:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # EFCoreVersion (Directory.Packages.props) controls EF Core, the providers and the
+      # packages released with them; 10.0.* floats to the newest stable 10.0.x patch
+      - name: Build against the newest EF Core 10.0.x patches
+        run: dotnet build -c Release -p:EFCoreVersion=10.0.*
+
+      - name: Show the resolved EF Core and provider versions
+        run: >
+          dotnet list src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL package
+          && dotnet list src/Acme.EntityFrameworkCore.Tenancy.SqlServer package
+
+      - name: Unit tests (no database)
+        run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Tests -c Release --no-build
+
+      - name: Integration tests (PostgreSQL)
+        run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests -c Release --no-build
+
+      - name: SQL Server tests
+        run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests -c Release --no-build

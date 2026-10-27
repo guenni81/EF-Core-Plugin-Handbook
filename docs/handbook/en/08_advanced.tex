@@ -717,13 +717,13 @@ jobs:
       - run: latexmk EF-Core-Plugin-Handbook.tex
 \end{sourcecode}
 
-The sample deliberately builds against stable versions only (.NET 10, EF Core 10). An
-additional build against the next EF prerelease, as recommended in
-chapter~\ref{ch:versioning-and-compatibility}, reveals breaks in internal APIs earlier. It
-also needs the matching .NET prerelease SDK, though, because every EF Core major version
-only ships for the .NET version of the same number (EF Core 11 only for
-\code{net11.\allowbreak{}0}). If you set one up, run it as a separate job with
-\code{continue-on-\allowbreak{}error} so that it does not block the regular CI.
+The sample builds against stable versions only (.NET 10, EF Core 10). A second workflow,
+\code{compatibility.\allowbreak{}yml}, runs weekly and tests against the newest stable 10.0.x
+patches, because the regular CI builds against the beginning of the version range.
+Chapter~\ref{ch:versioning-and-compatibility} sketches a channel for the next EF major version with previews and
+RCs; it needs the matching .NET prerelease SDK, because every EF Core major version only
+ships for the .NET version of the same number (EF Core 11 only for
+\code{net11.\allowbreak{}0}).
 
 \section{Protecting the public API}
 
@@ -738,7 +738,18 @@ deviation. Every API change thus becomes visible as a diff in the pull request.
 
 \begin{note}[Setup]
   On the first build, the analyzer reports every public API as RS0016 because the files are
-  empty. The code fix “Add all items … to the public API” fills them. At release time, the
-  content moves from Unshipped to Shipped; from then on, removing a shipped API is a visible
-  breaking change.
+  empty. The code fix “Add all items … to the public API” fills them, on the command line with
+  \code{dotnet format analyzers -{}-diagnostics RS0016 -{}-severity warn}. At release time,
+  the content moves from Unshipped to Shipped; from then on, removing a shipped API is a
+  visible breaking change.
 \end{note}
+
+\begin{important}[Warnings are not enough]
+  As long as RS0016 and RS0017 are only warnings, they get lost in the build output. In the
+  sample, the files thus stayed empty up to edition~1.0: 178 warnings in a full build, none
+  in incremental ones, and nobody noticed.
+  \code{Directory.\allowbreak{}Build.\allowbreak{}props} therefore turns both into errors
+  (\code{Warnings\allowbreak{}As\allowbreak{}Errors}); a new public API now has to be entered
+  in \code{Public\allowbreak{}API.\allowbreak{}Unshipped.\allowbreak{}txt}, otherwise the
+  build breaks.
+\end{important}

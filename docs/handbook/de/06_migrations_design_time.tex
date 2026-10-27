@@ -509,6 +509,13 @@ JSON-Serialisierung der Policies verwendet einen Source-Generator statt Reflecti
 internal partial class RlsJsonContext : JsonSerializerContext;
 \end{sourcecode}
 
+Wo Dynamik unvermeidbar ist, wird die Warnung mit Begründung unterdrückt statt übergangen. Die
+Isolations-Convention baut den Query-Filter als Expression Tree, was dynamischen Code
+braucht. Conventions laufen aber nur beim Modellbau, und NativeAOT setzt ein Compiled Model
+voraus, in dem sie nicht mehr laufen; die Unterdrückung nennt genau diesen Grund. Die
+Warnungen erscheinen nur bei einem vollständigen Build zuverlässig, inkrementelle Builds
+verschweigen sie (Upgrade-Playbook in Kapitel~\ref{ch:versioning-and-compatibility}).
+
 \begin{note}
   Conventions, Snapshots und Migrations laufen nur zur Design-Zeit oder beim Modellbau; mit
   Compiled Model und vorkompilierten Abfragen fallen sie zur Laufzeit weg. Für AOT kritisch

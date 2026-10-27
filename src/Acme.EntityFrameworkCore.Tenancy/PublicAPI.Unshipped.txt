@@ -1,1 +1,4 @@
 #nullable enable
+Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantMaterializationInterceptor
+Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantMaterializationInterceptor.TenantMaterializationInterceptor() -> void
+virtual Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantMaterializationInterceptor.CreatingInstance(Microsoft.EntityFrameworkCore.Diagnostics.MaterializationInterceptionData materializationData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<object!> result) -> Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<object!>

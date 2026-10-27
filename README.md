@@ -225,7 +225,9 @@ the very top of `Up()`.
 Package versions follow EF Core's major version (10.x = EF Core 10). The plugin uses some
 internal EF Core and Npgsql APIs (namespaces `*.Internal`, warning EF1001); these places
 are commented in the code. The code is built and tested against EF Core 10.0 and
-Npgsql 10.0.
+Npgsql 10.0; a weekly [compatibility workflow](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/.github/workflows/compatibility.yml)
+also tests the newest stable 10.0.x patches. Upgrading to the next EF Core major version
+follows the upgrade playbook in chapter "Versioning and compatibility".
 
 ## Contributing
 

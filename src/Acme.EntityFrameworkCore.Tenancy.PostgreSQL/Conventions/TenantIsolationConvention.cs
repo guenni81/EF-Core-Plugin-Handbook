@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using System.Reflection;
 using Acme.EntityFrameworkCore.Tenancy.Diagnostics;
@@ -165,6 +166,10 @@ public class TenantIsolationConvention : IModelFinalizingConvention
     /// <summary>Adds the named query filter comparing the tenant property with the current tenant.</summary>
     /// <param name="entityType">The root entity type.</param>
     /// <param name="property">The tenant property.</param>
+    [UnconditionalSuppressMessage("AOT", "IL3050",
+        Justification = "Conventions only run while the model is built. NativeAOT requires a "
+                        + "compiled model, in which conventions do not run (chapter "
+                        + "\"Compiled models, trimming and NativeAOT\").")]
     protected virtual void ApplyQueryFilter(IConventionEntityType entityType, IConventionProperty property)
     {
         // e => EF.Property<TenantId>(e, "TenantId") == EF.Functions.CurrentTenant()

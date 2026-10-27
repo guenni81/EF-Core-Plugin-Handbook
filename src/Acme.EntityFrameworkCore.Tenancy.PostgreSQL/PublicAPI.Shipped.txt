@@ -1,1 +1,222 @@
 #nullable enable
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Builders.PolicyBuilder
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Builders.PolicyBuilder.For(Microsoft.EntityFrameworkCore.PolicyCommand command) -> Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Builders.PolicyBuilder!
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Builders.PolicyBuilder.Restrictive() -> Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Builders.PolicyBuilder!
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Builders.PolicyBuilder.To(params string![]! roles) -> Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Builders.PolicyBuilder!
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Builders.PolicyBuilder.Using(string! sql) -> Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Builders.PolicyBuilder!
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Builders.PolicyBuilder.WithCheck(string! sql) -> Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Builders.PolicyBuilder!
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Conventions.NoTenantIsolationAttributeConvention
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Conventions.NoTenantIsolationAttributeConvention.NoTenantIsolationAttributeConvention(Microsoft.EntityFrameworkCore.Metadata.Conventions.Infrastructure.ProviderConventionSetBuilderDependencies! dependencies) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Conventions.TenancyConventionSetPlugin
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Conventions.TenancyConventionSetPlugin.TenancyConventionSetPlugin(Microsoft.EntityFrameworkCore.Metadata.Conventions.Infrastructure.ProviderConventionSetBuilderDependencies! dependencies, Microsoft.EntityFrameworkCore.Infrastructure.IDbContextOptions! options, Microsoft.EntityFrameworkCore.Storage.ISqlGenerationHelper! sqlGenerationHelper, Acme.EntityFrameworkCore.Tenancy.Diagnostics.TenancyLoggingDefinitions! loggingDefinitions) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Conventions.TenancyModelValidationConvention
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Conventions.TenancyModelValidationConvention.TenancyModelValidationConvention(Microsoft.EntityFrameworkCore.Diagnostics.IDiagnosticsLogger<Microsoft.EntityFrameworkCore.DbLoggerCategory.Model!>! logger, Acme.EntityFrameworkCore.Tenancy.Diagnostics.TenancyLoggingDefinitions! loggingDefinitions) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Conventions.TenantIsolationConvention
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Conventions.TenantIsolationConvention.TenantIsolationConvention(Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings! settings, Microsoft.EntityFrameworkCore.Storage.ISqlGenerationHelper! sqlGenerationHelper, Microsoft.EntityFrameworkCore.Diagnostics.IDiagnosticsLogger<Microsoft.EntityFrameworkCore.DbLoggerCategory.Model!>! logger, Acme.EntityFrameworkCore.Tenancy.Diagnostics.TenancyLoggingDefinitions! loggingDefinitions) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Design.Internal.TenancyAnnotationCodeGenerator
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Design.Internal.TenancyAnnotationCodeGenerator.TenancyAnnotationCodeGenerator(Microsoft.EntityFrameworkCore.Design.AnnotationCodeGeneratorDependencies! dependencies) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Design.Internal.TenancyCSharpRuntimeAnnotationCodeGenerator
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Design.Internal.TenancyCSharpRuntimeAnnotationCodeGenerator.TenancyCSharpRuntimeAnnotationCodeGenerator(Microsoft.EntityFrameworkCore.Design.Internal.CSharpRuntimeAnnotationCodeGeneratorDependencies! dependencies, Microsoft.EntityFrameworkCore.Design.Internal.RelationalCSharpRuntimeAnnotationCodeGeneratorDependencies! relationalDependencies) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Design.TenancyDesignTimeServices
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Design.TenancyDesignTimeServices.ConfigureDesignTimeServices(Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Design.TenancyDesignTimeServices.TenancyDesignTimeServices() -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.ITenancySingletonOptions
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.ITenancySingletonOptions.Settings.get -> Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings!
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder.TenancyOptionsBuilder(Microsoft.EntityFrameworkCore.DbContextOptionsBuilder! optionsBuilder) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsExtension
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsExtension.TenancyOptionsExtension() -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsExtension.TenancyOptionsExtension(Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsExtension! copyFrom) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings.ApplyQueryFilter.get -> bool
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings.ApplyQueryFilter.init -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings.CreateTenantIndex.get -> bool
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings.CreateTenantIndex.init -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings.ForceRowLevelSecurity.get -> bool
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings.ForceRowLevelSecurity.init -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings.PolicyName.get -> string!
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings.PolicyName.init -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings.SettingName.get -> string!
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings.SettingName.init -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySingletonOptions
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySingletonOptions.Settings.get -> Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings!
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySingletonOptions.TenancySingletonOptions() -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.Internal.TenancyAnnotationProvider
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.Internal.TenancyAnnotationProvider.TenancyAnnotationProvider(Microsoft.EntityFrameworkCore.Metadata.RelationalAnnotationProviderDependencies! dependencies) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsAnnotatableExtensions
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsAnnotationNames
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsPolicy
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsPolicy.Command.get -> Microsoft.EntityFrameworkCore.PolicyCommand
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsPolicy.Command.init -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsPolicy.Name.get -> string!
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsPolicy.Name.init -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsPolicy.Permissive.get -> bool
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsPolicy.Permissive.init -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsPolicy.RlsPolicy(string! Name, Microsoft.EntityFrameworkCore.PolicyCommand Command, bool Permissive, string![]? Roles, string? Using, string? WithCheck) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsPolicy.Roles.get -> string![]?
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsPolicy.Roles.init -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsPolicy.Serialize() -> string!
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsPolicy.Using.get -> string?
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsPolicy.Using.init -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsPolicy.WithCheck.get -> string?
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsPolicy.WithCheck.init -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Internal.TenancyMigrationsSqlGenerator
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Internal.TenancyMigrationsSqlGenerator.TenancyMigrationsSqlGenerator(Microsoft.EntityFrameworkCore.Migrations.MigrationsSqlGeneratorDependencies! dependencies, Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure.Internal.INpgsqlSingletonOptions! npgsqlSingletonOptions) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations.CreateApplicationRoleOperation
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations.CreateApplicationRoleOperation.CanLogin.get -> bool
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations.CreateApplicationRoleOperation.CanLogin.init -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations.CreateApplicationRoleOperation.CreateApplicationRoleOperation() -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations.CreateApplicationRoleOperation.Name.get -> string!
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations.CreateApplicationRoleOperation.Name.init -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations.DropApplicationRoleOperation
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations.DropApplicationRoleOperation.DropApplicationRoleOperation() -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations.DropApplicationRoleOperation.Name.get -> string!
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations.DropApplicationRoleOperation.Name.init -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations.GrantTablePrivilegesOperation
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations.GrantTablePrivilegesOperation.GrantTablePrivilegesOperation() -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations.GrantTablePrivilegesOperation.Role.get -> string!
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations.GrantTablePrivilegesOperation.Role.init -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations.GrantTablePrivilegesOperation.Schema.get -> string!
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations.GrantTablePrivilegesOperation.Schema.init -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.CurrentTenantTranslator
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.CurrentTenantTranslator.CurrentTenantTranslator(Microsoft.EntityFrameworkCore.Query.ISqlExpressionFactory! sql, Microsoft.EntityFrameworkCore.Storage.IRelationalTypeMappingSource! typeMappingSource, Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.ITenancySingletonOptions! options) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.DistinctFromTranslator
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.DistinctFromTranslator.DistinctFromTranslator(Microsoft.EntityFrameworkCore.Query.ISqlExpressionFactory! sql, Microsoft.EntityFrameworkCore.Storage.IRelationalTypeMappingSource! typeMappingSource) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.EveryAggregateTranslator
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.EveryAggregateTranslator.EveryAggregateTranslator(Microsoft.EntityFrameworkCore.Query.ISqlExpressionFactory! sql, Microsoft.EntityFrameworkCore.Storage.IRelationalTypeMappingSource! typeMappingSource) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Expressions.DistinctFromExpression
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Expressions.DistinctFromExpression.DistinctFromExpression(Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlExpression! left, Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlExpression! right, bool negated, Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping? typeMapping) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal.TenancyNpgsqlParameterBasedSqlProcessor
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal.TenancyNpgsqlParameterBasedSqlProcessor.TenancyNpgsqlParameterBasedSqlProcessor(Microsoft.EntityFrameworkCore.Query.RelationalParameterBasedSqlProcessorDependencies! dependencies, Microsoft.EntityFrameworkCore.Query.RelationalParameterBasedSqlProcessorParameters! parameters) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal.TenancyNpgsqlParameterBasedSqlProcessorFactory
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal.TenancyNpgsqlParameterBasedSqlProcessorFactory.TenancyNpgsqlParameterBasedSqlProcessorFactory(Microsoft.EntityFrameworkCore.Query.RelationalParameterBasedSqlProcessorDependencies! dependencies) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal.TenancyNpgsqlQuerySqlGenerator
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal.TenancyNpgsqlQuerySqlGenerator.TenancyNpgsqlQuerySqlGenerator(Microsoft.EntityFrameworkCore.Query.QuerySqlGeneratorDependencies! dependencies, Microsoft.EntityFrameworkCore.Storage.IRelationalTypeMappingSource! typeMappingSource, bool reverseNullOrderingEnabled, System.Version! postgresVersion) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal.TenancyNpgsqlQuerySqlGeneratorFactory
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal.TenancyNpgsqlQuerySqlGeneratorFactory.TenancyNpgsqlQuerySqlGeneratorFactory(Microsoft.EntityFrameworkCore.Query.QuerySqlGeneratorDependencies! dependencies, Microsoft.EntityFrameworkCore.Storage.IRelationalTypeMappingSource! typeMappingSource, Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure.Internal.INpgsqlSingletonOptions! npgsqlOptions) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal.TenancyNpgsqlSqlNullabilityProcessor
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal.TenancyNpgsqlSqlNullabilityProcessor.TenancyNpgsqlSqlNullabilityProcessor(Microsoft.EntityFrameworkCore.Query.RelationalParameterBasedSqlProcessorDependencies! dependencies, Microsoft.EntityFrameworkCore.Query.RelationalParameterBasedSqlProcessorParameters! parameters) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.TenancyAggregateMethodCallTranslatorPlugin
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.TenancyAggregateMethodCallTranslatorPlugin.TenancyAggregateMethodCallTranslatorPlugin(Microsoft.EntityFrameworkCore.Query.ISqlExpressionFactory! sql, Microsoft.EntityFrameworkCore.Storage.IRelationalTypeMappingSource! typeMappingSource) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.TenancyMemberTranslatorPlugin
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.TenancyMemberTranslatorPlugin.TenancyMemberTranslatorPlugin(Microsoft.EntityFrameworkCore.Query.ISqlExpressionFactory! sql) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.TenancyMethodCallTranslatorPlugin
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.TenancyMethodCallTranslatorPlugin.TenancyMethodCallTranslatorPlugin(Microsoft.EntityFrameworkCore.Query.ISqlExpressionFactory! sql, Microsoft.EntityFrameworkCore.Storage.IRelationalTypeMappingSource! typeMappingSource, Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.ITenancySingletonOptions! options) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.TenantIdMemberTranslator
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.TenantIdMemberTranslator.TenantIdMemberTranslator(Microsoft.EntityFrameworkCore.Query.ISqlExpressionFactory! sql) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Runtime.TenantConnectionInterceptor
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Runtime.TenantConnectionInterceptor.TenantConnectionInterceptor(Acme.EntityFrameworkCore.Tenancy.ITenantProvider! tenants) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Scaffolding.TenancyDatabaseModelFactory
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Scaffolding.TenancyDatabaseModelFactory.TenancyDatabaseModelFactory(Microsoft.EntityFrameworkCore.Diagnostics.IDiagnosticsLogger<Microsoft.EntityFrameworkCore.DbLoggerCategory.Scaffolding!>! logger) -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Storage.TenancyTypeMappingSourcePlugin
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Storage.TenancyTypeMappingSourcePlugin.TenancyTypeMappingSourcePlugin() -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Storage.TenantIdTypeMapping
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Storage.TenantIdTypeMapping.TenantIdTypeMapping() -> void
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Storage.TenantIdTypeMapping.TenantIdTypeMapping(Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping.RelationalTypeMappingParameters parameters) -> void
+const Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsAnnotationNames.Enabled = "Acme:Rls:Enabled" -> string!
+const Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsAnnotationNames.Forced = "Acme:Rls:Forced" -> string!
+const Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsAnnotationNames.PolicyPrefix = "Acme:Rls:Policy:" -> string!
+const Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsAnnotationNames.Prefix = "Acme:Rls:" -> string!
+const Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsAnnotationNames.QueryFilterKey = "Acme.Tenancy" -> string!
+Microsoft.EntityFrameworkCore.Migrations.TenancyMigrationBuilderExtensions
+Microsoft.EntityFrameworkCore.PolicyCommand
+Microsoft.EntityFrameworkCore.PolicyCommand.All = 0 -> Microsoft.EntityFrameworkCore.PolicyCommand
+Microsoft.EntityFrameworkCore.PolicyCommand.Delete = 4 -> Microsoft.EntityFrameworkCore.PolicyCommand
+Microsoft.EntityFrameworkCore.PolicyCommand.Insert = 2 -> Microsoft.EntityFrameworkCore.PolicyCommand
+Microsoft.EntityFrameworkCore.PolicyCommand.Select = 1 -> Microsoft.EntityFrameworkCore.PolicyCommand
+Microsoft.EntityFrameworkCore.PolicyCommand.Update = 3 -> Microsoft.EntityFrameworkCore.PolicyCommand
+Microsoft.EntityFrameworkCore.RlsEntityTypeBuilderExtensions
+Microsoft.EntityFrameworkCore.TenancyDbContextOptionsBuilderExtensions
+Microsoft.EntityFrameworkCore.TenancyPgDbFunctionsExtensions
+override Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Conventions.NoTenantIsolationAttributeConvention.ProcessEntityTypeAdded(Microsoft.EntityFrameworkCore.Metadata.Builders.IConventionEntityTypeBuilder! entityTypeBuilder, Acme.EntityFrameworkCore.Tenancy.NoTenantIsolationAttribute! attribute, Microsoft.EntityFrameworkCore.Metadata.Conventions.IConventionContext<Microsoft.EntityFrameworkCore.Metadata.Builders.IConventionEntityTypeBuilder!>! context) -> void
+override Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Design.Internal.TenancyAnnotationCodeGenerator.GenerateFluentApiCalls(Microsoft.EntityFrameworkCore.Metadata.IEntityType! entityType, System.Collections.Generic.IDictionary<string!, Microsoft.EntityFrameworkCore.Infrastructure.IAnnotation!>! annotations) -> System.Collections.Generic.IReadOnlyList<Microsoft.EntityFrameworkCore.Design.MethodCallCodeFragment!>!
+override Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Design.Internal.TenancyCSharpRuntimeAnnotationCodeGenerator.Generate(Microsoft.EntityFrameworkCore.Metadata.IEntityType! entityType, Microsoft.EntityFrameworkCore.Design.Internal.CSharpRuntimeAnnotationCodeGeneratorParameters! parameters) -> void
+override Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Design.Internal.TenancyCSharpRuntimeAnnotationCodeGenerator.Generate(Microsoft.EntityFrameworkCore.Metadata.ITable! table, Microsoft.EntityFrameworkCore.Design.Internal.CSharpRuntimeAnnotationCodeGeneratorParameters! parameters) -> void
+override Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.Internal.TenancyAnnotationProvider.For(Microsoft.EntityFrameworkCore.Metadata.ITable! table, bool designTime) -> System.Collections.Generic.IEnumerable<Microsoft.EntityFrameworkCore.Infrastructure.IAnnotation!>!
+override Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Internal.TenancyMigrationsSqlGenerator.Generate(Microsoft.EntityFrameworkCore.Migrations.Operations.AlterTableOperation! operation, Microsoft.EntityFrameworkCore.Metadata.IModel? model, Microsoft.EntityFrameworkCore.Migrations.MigrationCommandListBuilder! builder) -> void
+override Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Internal.TenancyMigrationsSqlGenerator.Generate(Microsoft.EntityFrameworkCore.Migrations.Operations.CreateTableOperation! operation, Microsoft.EntityFrameworkCore.Metadata.IModel? model, Microsoft.EntityFrameworkCore.Migrations.MigrationCommandListBuilder! builder, bool terminate = true) -> void
+override Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Internal.TenancyMigrationsSqlGenerator.Generate(Microsoft.EntityFrameworkCore.Migrations.Operations.MigrationOperation! operation, Microsoft.EntityFrameworkCore.Metadata.IModel? model, Microsoft.EntityFrameworkCore.Migrations.MigrationCommandListBuilder! builder) -> void
+override Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Expressions.DistinctFromExpression.Equals(object? obj) -> bool
+override Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Expressions.DistinctFromExpression.GetHashCode() -> int
+override Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Expressions.DistinctFromExpression.Print(Microsoft.EntityFrameworkCore.Query.ExpressionPrinter! expressionPrinter) -> void
+override Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Expressions.DistinctFromExpression.Quote() -> System.Linq.Expressions.Expression!
+override Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Expressions.DistinctFromExpression.VisitChildren(System.Linq.Expressions.ExpressionVisitor! visitor) -> System.Linq.Expressions.Expression!
+override Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal.TenancyNpgsqlParameterBasedSqlProcessor.ProcessSqlNullability(System.Linq.Expressions.Expression! selectExpression, Microsoft.EntityFrameworkCore.Query.ParametersCacheDecorator! parametersDecorator) -> System.Linq.Expressions.Expression!
+override Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal.TenancyNpgsqlQuerySqlGenerator.VisitExtension(System.Linq.Expressions.Expression! extensionExpression) -> System.Linq.Expressions.Expression!
+override Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal.TenancyNpgsqlSqlNullabilityProcessor.VisitCustomSqlExpression(Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlExpression! sqlExpression, bool allowOptimizedExpansion, out bool nullable) -> Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlExpression!
+override Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Runtime.TenantConnectionInterceptor.CreateSessionCommand(System.Data.Common.DbConnection! connection, Microsoft.EntityFrameworkCore.DbContext? context, Acme.EntityFrameworkCore.Tenancy.TenantId? tenant) -> System.Data.Common.DbCommand!
+override Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Scaffolding.TenancyDatabaseModelFactory.Create(System.Data.Common.DbConnection! dbConnection, Microsoft.EntityFrameworkCore.Scaffolding.DatabaseModelFactoryOptions! options) -> Microsoft.EntityFrameworkCore.Scaffolding.Metadata.DatabaseModel!
+override Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Storage.TenantIdTypeMapping.Clone(Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping.RelationalTypeMappingParameters parameters) -> Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping!
+override Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Storage.TenantIdTypeMapping.GenerateNonNullSqlLiteral(object! value) -> string!
+static Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings.Default.get -> Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings!
+static Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsAnnotatableExtensions.GetRlsPolicies(this Microsoft.EntityFrameworkCore.Infrastructure.IReadOnlyAnnotatable! annotatable) -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>!
+static Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsAnnotatableExtensions.HasRlsConfiguration(this Microsoft.EntityFrameworkCore.Infrastructure.IReadOnlyAnnotatable! annotatable) -> bool
+static Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsAnnotatableExtensions.IsRlsEnabled(this Microsoft.EntityFrameworkCore.Infrastructure.IReadOnlyAnnotatable! annotatable) -> bool
+static Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsAnnotatableExtensions.IsRlsForced(this Microsoft.EntityFrameworkCore.Infrastructure.IReadOnlyAnnotatable! annotatable) -> bool
+static Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsAnnotatableExtensions.IsRlsOptedOut(this Microsoft.EntityFrameworkCore.Infrastructure.IReadOnlyAnnotatable! annotatable) -> bool
+static Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsPolicy.Deserialize(string! json) -> Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsPolicy!
+static Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Storage.TenantIdTypeMapping.Default.get -> Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Storage.TenantIdTypeMapping!
+static Microsoft.EntityFrameworkCore.Migrations.TenancyMigrationBuilderExtensions.CreateApplicationRole(this Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder! migrationBuilder, string! name, bool canLogin = false) -> Microsoft.EntityFrameworkCore.Migrations.Operations.Builders.OperationBuilder<Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations.CreateApplicationRoleOperation!>!
+static Microsoft.EntityFrameworkCore.Migrations.TenancyMigrationBuilderExtensions.DropApplicationRole(this Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder! migrationBuilder, string! name) -> Microsoft.EntityFrameworkCore.Migrations.Operations.Builders.OperationBuilder<Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations.DropApplicationRoleOperation!>!
+static Microsoft.EntityFrameworkCore.Migrations.TenancyMigrationBuilderExtensions.GrantTablePrivileges(this Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder! migrationBuilder, string! role, string! schema = "public") -> Microsoft.EntityFrameworkCore.Migrations.Operations.Builders.OperationBuilder<Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations.GrantTablePrivilegesOperation!>!
+static Microsoft.EntityFrameworkCore.RlsEntityTypeBuilderExtensions.HasNoRowLevelSecurity(this Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder! builder) -> Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder!
+static Microsoft.EntityFrameworkCore.RlsEntityTypeBuilderExtensions.HasNoRowLevelSecurity<TEntity>(this Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<TEntity!>! builder) -> Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<TEntity!>!
+static Microsoft.EntityFrameworkCore.RlsEntityTypeBuilderExtensions.HasPolicy(this Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder! builder, string! name, System.Action<Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Builders.PolicyBuilder!>! configure) -> Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder!
+static Microsoft.EntityFrameworkCore.RlsEntityTypeBuilderExtensions.HasPolicy<TEntity>(this Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<TEntity!>! builder, string! name, System.Action<Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Builders.PolicyBuilder!>! configure) -> Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<TEntity!>!
+static Microsoft.EntityFrameworkCore.RlsEntityTypeBuilderExtensions.HasRowLevelSecurity(this Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder! builder, bool force = false) -> Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder!
+static Microsoft.EntityFrameworkCore.RlsEntityTypeBuilderExtensions.HasRowLevelSecurity(this Microsoft.EntityFrameworkCore.Metadata.Builders.IConventionEntityTypeBuilder! builder, bool enabled, bool fromDataAnnotation = false) -> Microsoft.EntityFrameworkCore.Metadata.Builders.IConventionEntityTypeBuilder?
+static Microsoft.EntityFrameworkCore.RlsEntityTypeBuilderExtensions.HasRowLevelSecurity<TEntity>(this Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<TEntity!>! builder, bool force = false) -> Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<TEntity!>!
+static Microsoft.EntityFrameworkCore.TenancyDbContextOptionsBuilderExtensions.UseAcmeTenancy(this Microsoft.EntityFrameworkCore.DbContextOptionsBuilder! optionsBuilder, System.Action<Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder!>? configure = null) -> Microsoft.EntityFrameworkCore.DbContextOptionsBuilder!
+static Microsoft.EntityFrameworkCore.TenancyDbContextOptionsBuilderExtensions.UseAcmeTenancy(this Microsoft.EntityFrameworkCore.DbContextOptionsBuilder! optionsBuilder, System.IServiceProvider! applicationServices, System.Action<Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder!>? configure = null) -> Microsoft.EntityFrameworkCore.DbContextOptionsBuilder!
+static Microsoft.EntityFrameworkCore.TenancyDbContextOptionsBuilderExtensions.UseAcmeTenancy<TContext>(this Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<TContext!>! optionsBuilder, System.Action<Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder!>? configure = null) -> Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<TContext!>!
+static Microsoft.EntityFrameworkCore.TenancyDbContextOptionsBuilderExtensions.UseAcmeTenancy<TContext>(this Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<TContext!>! optionsBuilder, System.IServiceProvider! applicationServices, System.Action<Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder!>? configure = null) -> Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<TContext!>!
+static Microsoft.EntityFrameworkCore.TenancyPgDbFunctionsExtensions.Every(this Microsoft.EntityFrameworkCore.DbFunctions! _, System.Collections.Generic.IEnumerable<bool>! values) -> bool
+static Microsoft.EntityFrameworkCore.TenancyPgDbFunctionsExtensions.IsDistinctFrom<T>(this Microsoft.EntityFrameworkCore.DbFunctions! _, T a, T b) -> bool
+static Microsoft.EntityFrameworkCore.TenancyPgDbFunctionsExtensions.IsNotDistinctFrom<T>(this Microsoft.EntityFrameworkCore.DbFunctions! _, T a, T b) -> bool
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Conventions.TenancyConventionSetPlugin.ModifyConventions(Microsoft.EntityFrameworkCore.Metadata.Conventions.ConventionSet! conventionSet) -> Microsoft.EntityFrameworkCore.Metadata.Conventions.ConventionSet!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Conventions.TenancyModelValidationConvention.ProcessModelFinalized(Microsoft.EntityFrameworkCore.Metadata.IModel! model) -> Microsoft.EntityFrameworkCore.Metadata.IModel!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Conventions.TenantIsolationConvention.ApplyQueryFilter(Microsoft.EntityFrameworkCore.Metadata.IConventionEntityType! entityType, Microsoft.EntityFrameworkCore.Metadata.IConventionProperty! property) -> void
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Conventions.TenantIsolationConvention.ApplyRowLevelSecurity(Microsoft.EntityFrameworkCore.Metadata.IConventionEntityType! entityType, Microsoft.EntityFrameworkCore.Metadata.IConventionProperty! property, Microsoft.EntityFrameworkCore.Metadata.StoreObjectIdentifier table) -> void
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Conventions.TenantIsolationConvention.EnsureTenantIndex(Microsoft.EntityFrameworkCore.Metadata.IConventionEntityType! entityType, Microsoft.EntityFrameworkCore.Metadata.IConventionProperty! property) -> void
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Conventions.TenantIsolationConvention.ProcessModelFinalizing(Microsoft.EntityFrameworkCore.Metadata.Builders.IConventionModelBuilder! modelBuilder, Microsoft.EntityFrameworkCore.Metadata.Conventions.IConventionContext<Microsoft.EntityFrameworkCore.Metadata.Builders.IConventionModelBuilder!>! context) -> void
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder.ApplyQueryFilter(bool apply = true) -> Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder.CreateTenantIndex(bool create = true) -> Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder.ForceRowLevelSecurity(bool force = true) -> Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder.OptionsBuilder.get -> Microsoft.EntityFrameworkCore.DbContextOptionsBuilder!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder.UsePolicyName(string! policyName) -> Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder.UseSettingName(string! settingName) -> Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder.With(System.Func<Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings!, Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings!>! change) -> Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsExtension.ApplyServices(Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> void
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsExtension.Clone() -> Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsExtension!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsExtension.Info.get -> Microsoft.EntityFrameworkCore.Infrastructure.DbContextOptionsExtensionInfo!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsExtension.Settings.get -> Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsExtension.Validate(Microsoft.EntityFrameworkCore.Infrastructure.IDbContextOptions! options) -> void
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsExtension.WithSettings(Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings! settings) -> Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsExtension!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySingletonOptions.Initialize(Microsoft.EntityFrameworkCore.Infrastructure.IDbContextOptions! options) -> void
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySingletonOptions.Validate(Microsoft.EntityFrameworkCore.Infrastructure.IDbContextOptions! options) -> void
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Internal.TenancyMigrationsSqlGenerator.CreatePolicySql(string! delimitedTable, Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.RlsPolicy! policy) -> string!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Internal.TenancyMigrationsSqlGenerator.Delimit(string! identifier) -> string!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Internal.TenancyMigrationsSqlGenerator.Delimit(string! name, string? schema) -> string!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Internal.TenancyMigrationsSqlGenerator.Generate(Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations.CreateApplicationRoleOperation! operation, Microsoft.EntityFrameworkCore.Migrations.MigrationCommandListBuilder! builder) -> void
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Internal.TenancyMigrationsSqlGenerator.Generate(Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations.DropApplicationRoleOperation! operation, Microsoft.EntityFrameworkCore.Migrations.MigrationCommandListBuilder! builder) -> void
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Internal.TenancyMigrationsSqlGenerator.Generate(Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations.GrantTablePrivilegesOperation! operation, Microsoft.EntityFrameworkCore.Migrations.MigrationCommandListBuilder! builder) -> void
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Internal.TenancyMigrationsSqlGenerator.GenerateRowLevelSecurity(string! tableName, string? schema, Microsoft.EntityFrameworkCore.Infrastructure.IReadOnlyAnnotatable? previous, Microsoft.EntityFrameworkCore.Infrastructure.IReadOnlyAnnotatable! current, Microsoft.EntityFrameworkCore.Migrations.MigrationCommandListBuilder! builder) -> void
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Internal.TenancyMigrationsSqlGenerator.Literal(string! value) -> string!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Internal.TenancyMigrationsSqlGenerator.Statement(Microsoft.EntityFrameworkCore.Migrations.MigrationCommandListBuilder! builder, string! sql) -> void
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.CurrentTenantTranslator.Translate(Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlExpression? instance, System.Reflection.MethodInfo! method, System.Collections.Generic.IReadOnlyList<Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlExpression!>! arguments, Microsoft.EntityFrameworkCore.Diagnostics.IDiagnosticsLogger<Microsoft.EntityFrameworkCore.DbLoggerCategory.Query!>! logger) -> Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlExpression?
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.DistinctFromTranslator.Translate(Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlExpression? instance, System.Reflection.MethodInfo! method, System.Collections.Generic.IReadOnlyList<Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlExpression!>! arguments, Microsoft.EntityFrameworkCore.Diagnostics.IDiagnosticsLogger<Microsoft.EntityFrameworkCore.DbLoggerCategory.Query!>! logger) -> Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlExpression?
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.EveryAggregateTranslator.Translate(System.Reflection.MethodInfo! method, Microsoft.EntityFrameworkCore.Query.EnumerableExpression! source, System.Collections.Generic.IReadOnlyList<Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlExpression!>! arguments, Microsoft.EntityFrameworkCore.Diagnostics.IDiagnosticsLogger<Microsoft.EntityFrameworkCore.DbLoggerCategory.Query!>! logger) -> Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlExpression?
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Expressions.DistinctFromExpression.IsNegated.get -> bool
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Expressions.DistinctFromExpression.Left.get -> Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlExpression!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Expressions.DistinctFromExpression.Right.get -> Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlExpression!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Expressions.DistinctFromExpression.Update(Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlExpression! left, Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlExpression! right) -> Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Expressions.DistinctFromExpression!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal.TenancyNpgsqlParameterBasedSqlProcessorFactory.Create(Microsoft.EntityFrameworkCore.Query.RelationalParameterBasedSqlProcessorParameters! parameters) -> Microsoft.EntityFrameworkCore.Query.RelationalParameterBasedSqlProcessor!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal.TenancyNpgsqlQuerySqlGenerator.VisitDistinctFrom(Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Expressions.DistinctFromExpression! expression) -> System.Linq.Expressions.Expression!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal.TenancyNpgsqlQuerySqlGeneratorFactory.Create() -> Microsoft.EntityFrameworkCore.Query.QuerySqlGenerator!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.TenancyAggregateMethodCallTranslatorPlugin.Translators.get -> System.Collections.Generic.IEnumerable<Microsoft.EntityFrameworkCore.Query.IAggregateMethodCallTranslator!>!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.TenancyMemberTranslatorPlugin.Translators.get -> System.Collections.Generic.IEnumerable<Microsoft.EntityFrameworkCore.Query.IMemberTranslator!>!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.TenancyMethodCallTranslatorPlugin.Translators.get -> System.Collections.Generic.IEnumerable<Microsoft.EntityFrameworkCore.Query.IMethodCallTranslator!>!
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.TenantIdMemberTranslator.Translate(Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlExpression? instance, System.Reflection.MemberInfo! member, System.Type! returnType, Microsoft.EntityFrameworkCore.Diagnostics.IDiagnosticsLogger<Microsoft.EntityFrameworkCore.DbLoggerCategory.Query!>! logger) -> Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlExpression?
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Scaffolding.TenancyDatabaseModelFactory.ReadPolicies(System.Data.Common.DbConnection! connection, Microsoft.EntityFrameworkCore.Scaffolding.Metadata.DatabaseModel! model) -> void
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Scaffolding.TenancyDatabaseModelFactory.ReadRowLevelSecurity(System.Data.Common.DbConnection! connection, Microsoft.EntityFrameworkCore.Scaffolding.Metadata.DatabaseModel! model) -> void
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Storage.TenancyTypeMappingSourcePlugin.FindMapping(in Microsoft.EntityFrameworkCore.Storage.RelationalTypeMappingInfo mappingInfo) -> Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping?

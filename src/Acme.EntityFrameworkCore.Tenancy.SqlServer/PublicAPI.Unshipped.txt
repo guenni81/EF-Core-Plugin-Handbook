@@ -1,1 +1,4 @@
 #nullable enable
+Acme.EntityFrameworkCore.Tenancy.SqlServer.Infrastructure.SqlServerTenancySettings.VerifyMaterializedTenants.get -> bool
+Acme.EntityFrameworkCore.Tenancy.SqlServer.Infrastructure.SqlServerTenancySettings.VerifyMaterializedTenants.init -> void
+static Microsoft.EntityFrameworkCore.SqlServerTenancyOptionsBuilderExtensions.VerifyMaterializedTenants(this Microsoft.EntityFrameworkCore.Infrastructure.SqlServerDbContextOptionsBuilder! sqlServerOptionsBuilder, bool verify = true) -> Microsoft.EntityFrameworkCore.Infrastructure.SqlServerDbContextOptionsBuilder!

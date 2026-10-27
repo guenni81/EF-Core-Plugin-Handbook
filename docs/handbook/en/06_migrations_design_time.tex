@@ -500,6 +500,13 @@ serialization of the policies uses a source generator instead of reflection:
 internal partial class RlsJsonContext : JsonSerializerContext;
 \end{sourcecode}
 
+Where dynamic code is unavoidable, the warning is suppressed with a justification instead of
+being ignored. The isolation convention builds the query filter as an expression tree, which
+needs dynamic code. Conventions only run while the model is built, however, and NativeAOT
+requires a compiled model, in which they no longer run; the suppression states exactly this
+reason. The warnings only show reliably in a full build; incremental builds keep quiet about
+them (upgrade playbook in chapter~\ref{ch:versioning-and-compatibility}).
+
 \begin{note}
   Conventions, snapshots and migrations only run at design time or during model building;
   with a compiled model and precompiled queries they disappear at run time. For AOT, the
