@@ -429,7 +429,8 @@ it should therefore be idempotent.
 the SDK. It contains the startup project including the plugin assemblies; custom operations
 and the plugin's SQL generator therefore take effect there too. It is important that the
 design-time factory or host uses the same plugin options as the application, otherwise SQL
-for a different model is produced.
+for a different model is produced. Page~\pageref{sec:deployment} shows how the bundle fits
+into a pipeline with separate roles.
 
 % ------------------------------------------------------------
 \chapter{Row Level Security in production}\label{ch:row-level-security-in-production}
@@ -797,6 +798,8 @@ The previous chapters assume a new database. Usually, however, there already are
 data, a running application and users who keep working during the change. This chapter shows the
 way from a table without a tenant column to RLS, and after that operation under retries and lost
 connections. All steps are executable in \code{Operations\allowbreak{}Tests} against PostgreSQL.
+The chapter closes with deployment: migrations in the pipeline with separate roles, and changes
+without downtime.
 
 \section{From a table without a tenant to RLS}
 
@@ -915,6 +918,157 @@ read-only session key (section “The threat model”). \code{Operations\allowbr
 the transaction inside the strategy; the cases of open connections are in
 \code{Connection\allowbreak{}Lifetime\allowbreak{}Tests}.
 
+
+\section{Deployment: pipeline, roles and zero downtime}\label{sec:deployment}
+
+The samples create the database in development with \code{Development\allowbreak{}Database}.
+In production, every schema change belongs in a pipeline that strictly separates two roles:
+
+\begin{itemize}
+  \item \textbf{\code{shop\_\allowbreak{}owner}} owns schema, tables and policies and runs the
+    migrations.
+  \item \textbf{\code{shop\_\allowbreak{}app}} is the application's role: only
+    \code{SELECT}, \code{INSERT}, \code{UPDATE}, \code{DELETE}, always under the policies.
+\end{itemize}
+
+The application therefore never calls
+\code{db.\allowbreak{}Database.\allowbreak{}Migrate(\allowbreak{})} on startup. Its role would
+need DDL rights for that, and whoever may alter a table may also run
+\code{DISABLE ROW LEVEL SECURITY} or drop the policy. \code{FORCE} binds the owner to the policy
+but does not protect the policy from the owner. A hole in the application, such as an SQL
+injection, would then no longer be contained by the database. Operations add to that: in a
+rolling deployment several instances start at once, and a failed migration should stop the
+rollout, not keep the instances in a restart loop.
+
+\subsection*{Once: the roles}
+
+Before the first pipeline runs, the database administrators create the roles. That is not a
+migration, because migrations already run as the owner. The script is in the repository:
+
+% source: docs/deployment/setup-roles.sql
+\begin{sourcecode}[docs/\allowbreak{}deployment/\allowbreak{}setup-\allowbreak{}roles.\allowbreak{}sql]{postgresql}
+CREATE ROLE shop_owner LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD :'owner_password';
+CREATE ROLE shop_app LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD :'app_password';
+CREATE DATABASE shop OWNER shop_owner;
+
+...
+GRANT USAGE ON SCHEMA public TO shop_app;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE shop_owner IN SCHEMA public
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO shop_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE shop_owner IN SCHEMA public
+    GRANT USAGE, SELECT ON SEQUENCES TO shop_app;
+\end{sourcecode}
+
+The elision is \code{\textbackslash{}connect shop}: from there on, the script runs in the new
+database. The \code{DEFAULT PRIVILEGES} matter: every table that a later migration creates as
+\code{shop\_\allowbreak{}owner} is usable by \code{shop\_\allowbreak{}app} right away. Without
+them, the new application version fails with \code{permission denied}, although migration and
+policy are correct. The plugin's \code{Grant\allowbreak{}Table\allowbreak{}Privileges}
+operation also sets default privileges, but only for the role that runs it; the script sets
+them independently of that.
+
+\subsection*{The pipeline}
+
+\begin{flowdiagram}
+  \flowstep{Build and test}{One commit, one build: tests, bundle and application are produced
+  together}
+  \flowstep{Migration bundle}{\code{dotnet ef migrations bundle}, self-contained; plus the
+  idempotent script for review}
+  \flowstep{Approval}{GitHub environment \code{production}: approval and secrets only for the
+  following jobs}
+  \flowstep{Bundle as shop\_owner}{Applies pending migrations in transactions; the only job
+  with the owner connection}
+  \flowstep{Rolling deployment}{Only after a successful migration; the application connects as
+  \code{shop\_\allowbreak{}app}}
+  \flowstep{Contract (later)}{A follow-up migration cleans up when no old instance is running
+  any more}
+\end{flowdiagram}
+
+The template \code{docs/\allowbreak{}deployment/\allowbreak{}migrations-\allowbreak{}deploy.\allowbreak{}yml}
+implements this with three jobs. It is not active in the repository; an application copies it
+to \code{.github/\allowbreak{}workflows} and replaces the deploy step with its platform's:
+
+% source: docs/deployment/migrations-deploy.yml
+\begin{sourcecode}[docs/\allowbreak{}deployment/\allowbreak{}migrations-\allowbreak{}deploy.\allowbreak{}yml (\allowbreak{}shortened)]{text}
+jobs:
+  build:
+    steps:
+      ...
+      - name: Migration bundle
+        run: >
+          dotnet ef migrations bundle --project "$APP_PROJECT" --context "$DB_CONTEXT"
+          --configuration Release --self-contained -r linux-x64 -o artifacts/efbundle
+      ...
+      - run: dotnet publish "$APP_PROJECT" -c Release -o artifacts/app
+
+  migrate:
+    needs: build
+    environment: production
+    steps:
+      ...
+      - name: Apply pending migrations as shop_owner
+        env:
+          OWNER_CONNECTION: ${{ secrets.SHOP_OWNER_CONNECTION_STRING }}
+        run: |
+          chmod +x artifacts/efbundle            # artifacts lose the executable bit
+          artifacts/efbundle --connection "$OWNER_CONNECTION"
+
+  deploy:
+    needs: migrate
+    environment: production
+    ...
+\end{sourcecode}
+
+The bundle contains the startup project with the plugin; for its options, what section
+“Migration bundles” in chapter~\ref{ch:advanced-migrations} says applies.
+\code{--connection} overrides the design-time factory's connection, and a second run applies
+nothing. Only the \code{migrate} job knows the owner connection string; the application's is
+given to the hosting platform, not to the pipeline.
+
+The consumer test (\code{eng/\allowbreak{}consumer-\allowbreak{}test/\allowbreak{}run.\allowbreak{}sh
+--nativeaot}) runs exactly this sequence against PostgreSQL in Docker: it runs
+\code{setup-\allowbreak{}roles.\allowbreak{}sql} unchanged, builds the bundle from the generated
+migration, applies it twice as \code{shop\_\allowbreak{}owner} (the second run changes
+nothing), checks that \code{shop\_\allowbreak{}app} may not alter the table
+(\code{must be owner}), and starts the application as \code{shop\_\allowbreak{}app}, which sees
+only its tenant's rows.
+
+\subsection*{Zero downtime under RLS: expand and contract}
+
+In a rolling or blue-green deployment, the migration runs before the new version, and for a
+while old and new instances work against the same schema. Every migration must therefore work
+with the previous version of the application. The expand-and-contract pattern splits a change
+into three phases for that, like the conversion in section~“From a table without a tenant to
+RLS”:
+
+\begin{datatable}{H{0.70}H{1.15}H{1.15}}
+  \textbf{Phase} & \textbf{Schema} & \textbf{What to watch under RLS} \\
+  \tablehead
+  1 Expand & New columns nullable or with a default, new tables, new indexes; nothing is
+  removed or renamed. & New tables with \code{ITenant\allowbreak{}Owned} get their policy right
+  away; the old version does not use them. If a policy has to change, a second one is added
+  that allows the new form. \\
+  \tablerule
+  2 Roll out & Unchanged. The new version writes to the new columns, old instances drain. &
+  Both versions set the same tenant; the policies must admit the rows of both versions. \\
+  \tablerule
+  3 Contract & Follow-up migration: drop old columns, set \code{NOT NULL}, remove temporary
+  policies. & Only when no old instance is running; before that a guard as in section~“From a
+  table without a tenant to RLS”. \\
+\end{datatable}
+
+For policies, a PostgreSQL property applies: several \code{PERMISSIVE} policies of a table are
+combined with \code{OR}. An additional policy thus widens what is visible and serves as the
+transition in phase~1; removing it in phase~3 is the contraction. Each of these policies must
+separate tenants on its own, otherwise the transition opens the table. Because DDL is
+transactional in PostgreSQL, replacing a policy within one migration leaves no moment without a
+policy.
+
+Rolling back the application is possible without a database change until phase~3, because the
+schema still supports the old version. After that it needs the Down of the follow-up migration,
+and dropped columns do not come back with it. A Down therefore does not belong in the pipeline;
+an error after phase~3 is fixed forward with a new migration.
 
 % ------------------------------------------------------------
 \chapter{Plugin performance}\label{ch:plugin-performance}

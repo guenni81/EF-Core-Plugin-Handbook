@@ -1,0 +1,86 @@
+# Deployment template for an application that uses the plugin with PostgreSQL (handbook,
+# chapter "Retrofitting and operating multi-tenancy", section "Deployment"). Not active in
+# this repository: copy it to .github/workflows/ of the application and adjust the env block
+# and the deploy step. The roles come from docs/deployment/setup-roles.sql.
+#
+# Secrets, stored in the GitHub environment "production" (approval required there):
+#   SHOP_OWNER_CONNECTION_STRING  shop_owner, only for the migration job
+#   The application's connection string (shop_app) belongs to the hosting platform, not here.
+
+name: Deploy
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  APP_PROJECT: src/Shop.Api/Shop.Api.csproj    # the startup project with the migrations
+  DB_CONTEXT: ShopContext
+
+jobs:
+  # 1. Build once: tests, the migration bundle and the application from the same commit
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet tool restore                 # dotnet-ef from .config/dotnet-tools.json
+      - run: dotnet test -c Release
+
+      # Self-contained: the migration job needs no SDK and no runtime
+      - name: Migration bundle
+        run: >
+          dotnet ef migrations bundle --project "$APP_PROJECT" --context "$DB_CONTEXT"
+          --configuration Release --self-contained -r linux-x64 -o artifacts/efbundle
+      # For the review and the audit trail: the SQL that may run
+      - name: Idempotent script
+        run: >
+          dotnet ef migrations script --idempotent --project "$APP_PROJECT"
+          --context "$DB_CONTEXT" -o artifacts/migrations.sql
+      - run: dotnet publish "$APP_PROJECT" -c Release -o artifacts/app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: artifacts/
+
+  # 2. DDL as the owner; the only job that sees the owner connection string
+  migrate:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: artifacts
+      - name: Apply pending migrations as shop_owner
+        env:
+          OWNER_CONNECTION: ${{ secrets.SHOP_OWNER_CONNECTION_STRING }}
+        run: |
+          chmod +x artifacts/efbundle            # artifacts lose the executable bit
+          artifacts/efbundle --connection "$OWNER_CONNECTION"
+
+  # 3. Only after a successful migration: roll out the application, which connects as shop_app
+  deploy:
+    needs: migrate
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: artifacts
+      - name: Rolling deployment
+        run: |
+          # Replace with the platform's rolling deployment of artifacts/app, for example
+          # az webapp deploy, kubectl set image or a container registry push. The platform
+          # supplies ConnectionStrings__Shop (shop_app); the app never calls Migrate().
+          echo "Deployment step not configured" >&2
+          exit 1

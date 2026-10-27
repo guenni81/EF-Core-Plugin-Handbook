@@ -9,6 +9,13 @@ version is given by the dependency range and the compatibility table in the READ
 
 ### Added
 
+- Deployment template in `docs/deployment`: `setup-roles.sql` (one-time roles `shop_owner` and
+  `shop_app`, default privileges for tables of later migrations) and `migrations-deploy.yml`
+  (GitHub Actions, not active here: build, migration bundle, bundle as the owner, then the
+  rolling deployment). The NativeAOT consumer test now runs this sequence against PostgreSQL:
+  the script unchanged, the bundle twice as the owner, DDL refused for the application role,
+  the application as `shop_app`. Handbook: new section "Deployment: pipeline, roles and zero
+  downtime" (no `Migrate()` on startup, expand and contract under RLS, flow diagram).
 - `UseTransactionPooling()` (PostgreSQL options builder) with the new
   `PostgreSqlTransactionSessionInterceptor` for PgBouncer in transaction mode: together with
   `UseAcmeTenancy(applicationServices)` the tenant is set per transaction with

@@ -436,7 +436,8 @@ nicht zurückgerollt; er sollte deshalb idempotent sein.
 anwendet. Sie enthält das Startprojekt samt Plugin-Assemblies; eigene Operationen und der
 SQL-Generator des Plugins wirken also auch dort. Wichtig ist, dass die Design-Time-Factory
 oder der Host dieselben Plugin-Optionen verwendet wie die Anwendung, sonst entsteht SQL für
-ein anderes Modell.
+ein anderes Modell. Wie das Bundle mit getrennten Rollen in eine Pipeline gehört, zeigt
+Seite~\pageref{sec:deployment}.
 
 % ------------------------------------------------------------
 \chapter{Row Level Security in Produktion}\label{ch:row-level-security-in-production}
@@ -822,7 +823,8 @@ Die bisherigen Kapitel gehen von einer neuen Datenbank aus. Meist gibt es aber s
 mit Daten, eine laufende Anwendung und Nutzer, die während der Umstellung weiterarbeiten. Dieses
 Kapitel zeigt den Weg von einer Tabelle ohne Mandantenspalte zu RLS und danach den Betrieb unter
 Retries und Verbindungsabbrüchen. Alle Schritte stehen ausführbar in
-\code{Operations\allowbreak{}Tests} gegen PostgreSQL.
+\code{Operations\allowbreak{}Tests} gegen PostgreSQL. Den Abschluss bildet das Deployment:
+Migrationen in der Pipeline mit getrennten Rollen und Änderungen ohne Ausfallzeit.
 
 \section{Von der Tabelle ohne Mandant zu RLS}
 
@@ -947,6 +949,160 @@ ein schreibgeschützter Session-Schlüssel (Abschnitt „Das Bedrohungsmodell“
 Strategie; die Fälle offener Verbindungen stehen in
 \code{Connection\allowbreak{}Lifetime\allowbreak{}Tests}.
 
+
+\section{Deployment: Pipeline, Rollen und Zero-Downtime}\label{sec:deployment}
+
+Die Beispiele legen die Datenbank in der Entwicklung mit
+\code{Development\allowbreak{}Database} an. In Produktion gehört jede Schemaänderung in eine
+Pipeline, die zwei Rollen strikt trennt:
+
+\begin{itemize}
+  \item \textbf{\code{shop\_\allowbreak{}owner}} besitzt Schema, Tabellen und Policies und führt
+    die Migrationen aus.
+  \item \textbf{\code{shop\_\allowbreak{}app}} ist die Rolle der Anwendung: nur
+    \code{SELECT}, \code{INSERT}, \code{UPDATE}, \code{DELETE}, immer unter den Policies.
+\end{itemize}
+
+Die Anwendung ruft deshalb niemals
+\code{db.\allowbreak{}Database.\allowbreak{}Migrate(\allowbreak{})} beim Start auf. Dafür
+bräuchte ihre Rolle DDL-Rechte, und wer eine Tabelle ändern darf, darf auch
+\code{DISABLE ROW LEVEL SECURITY} ausführen oder die Policy löschen. \code{FORCE} bindet den
+Eigentümer an die Policy, schützt sie aber nicht vor ihm. Eine Lücke in der Anwendung, etwa
+eine SQL-Injection, wäre dann nicht mehr durch die Datenbank begrenzt. Hinzu kommt der Betrieb:
+Bei einem Rolling Deployment starten mehrere Instanzen gleichzeitig, und eine fehlgeschlagene
+Migration soll die Auslieferung stoppen, nicht die Instanzen in einer Neustartschleife halten.
+
+\subsection*{Einmalig: die Rollen}
+
+Bevor die erste Pipeline läuft, legt die Datenbankadministration die Rollen an. Das ist keine
+Migration, denn Migrationen laufen bereits als Eigentümer. Das Skript liegt im Repository:
+
+% source: docs/deployment/setup-roles.sql
+\begin{sourcecode}[docs/\allowbreak{}deployment/\allowbreak{}setup-\allowbreak{}roles.\allowbreak{}sql]{postgresql}
+CREATE ROLE shop_owner LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD :'owner_password';
+CREATE ROLE shop_app LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD :'app_password';
+CREATE DATABASE shop OWNER shop_owner;
+
+...
+GRANT USAGE ON SCHEMA public TO shop_app;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE shop_owner IN SCHEMA public
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO shop_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE shop_owner IN SCHEMA public
+    GRANT USAGE, SELECT ON SEQUENCES TO shop_app;
+\end{sourcecode}
+
+Die Auslassung ist \code{\textbackslash{}connect shop}: Ab dort läuft das Skript in der neuen
+Datenbank. Wichtig sind die \code{DEFAULT PRIVILEGES}: Jede Tabelle, die eine spätere Migration als
+\code{shop\_\allowbreak{}owner} anlegt, ist für \code{shop\_\allowbreak{}app} sofort nutzbar.
+Ohne sie scheitert die neue Anwendungsversion mit \code{permission denied}, obwohl Migration und
+Policy stimmen. Die Operation \code{Grant\allowbreak{}Table\allowbreak{}Privileges} des Plugins
+setzt ebenfalls Default Privileges, aber nur für die Rolle, die sie ausführt; das Skript
+legt sie unabhängig davon fest.
+
+\subsection*{Die Pipeline}
+
+\begin{flowdiagram}
+  \flowstep{Build und Test}{Ein Commit, ein Build: Tests, Bundle und Anwendung entstehen
+  gemeinsam}
+  \flowstep{Migrations-Bundle}{\code{dotnet ef migrations bundle}, eigenständig lauffähig;
+  dazu das idempotente Skript zur Durchsicht}
+  \flowstep{Freigabe}{GitHub-Environment \code{production}: Freigabe und Secrets nur für die
+  folgenden Jobs}
+  \flowstep{Bundle als shop\_owner}{Wendet ausstehende Migrationen in Transaktionen an; der
+  einzige Job mit der Owner-Verbindung}
+  \flowstep{Rolling Deployment}{Erst nach erfolgreicher Migration; die Anwendung verbindet
+  sich als \code{shop\_\allowbreak{}app}}
+  \flowstep{Contract (später)}{Eine Folgemigration räumt auf, wenn keine alte Instanz mehr
+  läuft}
+\end{flowdiagram}
+
+Die Vorlage \code{docs/\allowbreak{}deployment/\allowbreak{}migrations-\allowbreak{}deploy.\allowbreak{}yml}
+setzt das mit drei Jobs um. Sie ist im Repository nicht aktiv; eine Anwendung kopiert sie
+nach \code{.github/\allowbreak{}workflows} und ersetzt den Deploy-Schritt durch den ihrer
+Plattform:
+
+% source: docs/deployment/migrations-deploy.yml
+\begin{sourcecode}[docs/\allowbreak{}deployment/\allowbreak{}migrations-\allowbreak{}deploy.\allowbreak{}yml (\allowbreak{}gekürzt)]{text}
+jobs:
+  build:
+    steps:
+      ...
+      - name: Migration bundle
+        run: >
+          dotnet ef migrations bundle --project "$APP_PROJECT" --context "$DB_CONTEXT"
+          --configuration Release --self-contained -r linux-x64 -o artifacts/efbundle
+      ...
+      - run: dotnet publish "$APP_PROJECT" -c Release -o artifacts/app
+
+  migrate:
+    needs: build
+    environment: production
+    steps:
+      ...
+      - name: Apply pending migrations as shop_owner
+        env:
+          OWNER_CONNECTION: ${{ secrets.SHOP_OWNER_CONNECTION_STRING }}
+        run: |
+          chmod +x artifacts/efbundle            # artifacts lose the executable bit
+          artifacts/efbundle --connection "$OWNER_CONNECTION"
+
+  deploy:
+    needs: migrate
+    environment: production
+    ...
+\end{sourcecode}
+
+Das Bundle enthält das Startprojekt mit dem Plugin; für dessen Optionen gilt, was
+Abschnitt „Migration Bundles“ in Kapitel~\ref{ch:advanced-migrations} sagt.
+\code{--connection} überschreibt die Verbindung der Design-Time-Factory, und ein zweiter Lauf
+wendet nichts an. Der Owner-Verbindungsstring ist nur dem Job \code{migrate} bekannt; den der
+Anwendung erhält die Hosting-Plattform, nicht die Pipeline.
+
+Der Consumer-Test (\code{eng/\allowbreak{}consumer-\allowbreak{}test/\allowbreak{}run.\allowbreak{}sh
+--nativeaot}) spielt genau diesen Ablauf gegen PostgreSQL in Docker durch: Er führt
+\code{setup-\allowbreak{}roles.\allowbreak{}sql} unverändert aus, baut das Bundle aus der
+erzeugten Migration, wendet es als \code{shop\_\allowbreak{}owner} zweimal an (der zweite Lauf
+ändert nichts), prüft, dass \code{shop\_\allowbreak{}app} die Tabelle nicht ändern darf
+(\code{must be owner}), und startet die Anwendung als \code{shop\_\allowbreak{}app}, die nur
+die Zeilen ihres Mandanten sieht.
+
+\subsection*{Zero-Downtime unter RLS: Erweitern und Zusammenziehen}
+
+Bei einem Rolling oder Blue-Green Deployment läuft die Migration vor der neuen Version, und
+eine Zeit lang arbeiten alte und neue Instanzen gegen dasselbe Schema. Jede Migration muss
+deshalb mit der Vorgängerversion der Anwendung funktionieren. Das Muster Expand and Contract
+teilt eine Änderung dafür in drei Phasen, wie schon die Umstellung in
+Abschnitt~„Von der Tabelle ohne Mandant zu RLS“:
+
+\begin{datatable}{H{0.70}H{1.15}H{1.15}}
+  \textbf{Phase} & \textbf{Schema} & \textbf{Unter RLS beachten} \\
+  \tablehead
+  1 Erweitern & Neue Spalten nullable oder mit Default, neue Tabellen, neue Indizes; nichts
+  wird entfernt oder umbenannt. & Neue Tabellen mit \code{ITenant\allowbreak{}Owned} bekommen
+  ihre Policy sofort; die alte Version benutzt sie nicht. Muss eine Policy sich ändern, kommt
+  eine zweite hinzu, die die neue Form erlaubt. \\
+  \tablerule
+  2 Ausrollen & Unverändert. Die neue Version schreibt in die neuen Spalten, alte Instanzen
+  laufen aus. & Beide Versionen setzen denselben Mandanten; die Policies müssen die Zeilen
+  beider Versionen zulassen. \\
+  \tablerule
+  3 Zusammenziehen & Folgemigration: alte Spalten löschen, \code{NOT NULL} setzen, temporäre
+  Policies entfernen. & Erst wenn keine alte Instanz mehr läuft; vorher ein Wächter wie in
+  Abschnitt~„Von der Tabelle ohne Mandant zu RLS“. \\
+\end{datatable}
+
+Für Policies gilt eine Eigenheit von PostgreSQL: Mehrere \code{PERMISSIVE}-Policies einer
+Tabelle werden mit \code{OR} verknüpft. Eine zusätzliche Policy erweitert also, was sichtbar
+ist, und eignet sich als Übergang in Phase~1; ihr Entfernen in Phase~3 ist das
+Zusammenziehen. Jede dieser Policies muss für sich mandantentrennend sein, sonst öffnet der
+Übergang die Tabelle. Weil DDL in PostgreSQL transaktional ist, gibt es beim Ersetzen einer
+Policy innerhalb einer Migration keinen Moment ohne Policy.
+
+Ein Rollback der Anwendung ist bis Phase~3 ohne Datenbankänderung möglich, weil das Schema die
+alte Version noch trägt. Danach braucht er das Down der Folgemigration, und gelöschte Spalten
+kommen damit nicht zurück. Ein Down gehört deshalb nicht in die Pipeline; ein Fehler nach
+Phase~3 wird mit einer neuen Migration vorwärts behoben.
 
 % ------------------------------------------------------------
 \chapter{Performance von Plugins}\label{ch:plugin-performance}

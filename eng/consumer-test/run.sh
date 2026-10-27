@@ -130,13 +130,26 @@ if [ "$NATIVEAOT" = 1 ]; then
     fi
     echo "ok   no trim or AOT analysis warnings from the Acme assemblies"
     until docker exec "$container" pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
-    psql() { docker exec -i "$container" psql -U postgres -v ON_ERROR_STOP=1 -q "$@"; }
-    psql < "$WORK/pg.sql"
-    psql -c "CREATE ROLE app LOGIN PASSWORD 'app' NOSUPERUSER NOBYPASSRLS;
-             GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app;
-             GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO app;"
+    psql() { docker exec -i "$container" psql -v ON_ERROR_STOP=1 -q "$@"; }
     port="$(docker port "$container" 5432/tcp | head -1 | sed 's/.*://')"
-    "$WORK/aot/out/Aot" "Host=127.0.0.1;Port=$port;Username=app;Password=app;Database=postgres"
+
+    step "Deployment as in docs/deployment: roles, bundle as shop_owner, app as shop_app"
+    psql -U postgres -v owner_password=owner -v app_password=app \
+        < "$ROOT/docs/deployment/setup-roles.sql"
+    (cd "$APP" && dotnet tool run dotnet-ef migrations bundle --context PgContext \
+        --self-contained -r linux-x64 -o "$WORK/efbundle" --force >/dev/null)
+    owner="Host=127.0.0.1;Port=$port;Username=shop_owner;Password=owner;Database=shop"
+    "$WORK/efbundle" --connection "$owner" >/dev/null
+    "$WORK/efbundle" --connection "$owner" | tee "$WORK/bundle.log" >/dev/null
+    contains "$WORK/bundle.log" "No migrations were applied"
+    echo "ok   bundle applied as the owner; a second run applies nothing"
+    if psql -U shop_app -d shop -c 'ALTER TABLE "Orders" DISABLE ROW LEVEL SECURITY' \
+        2> "$WORK/ddl.log"; then
+        fail "the application role can change the table"
+    fi
+    contains "$WORK/ddl.log" 'must be owner of table Orders'
+    echo "ok   the application role cannot run DDL"
+    "$WORK/aot/out/Aot" "Host=127.0.0.1;Port=$port;Username=shop_app;Password=app;Database=shop"
 fi
 
 step "All checks passed"
