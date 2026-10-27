@@ -891,6 +891,10 @@ options.UseNpgsql(connectionString)
 \begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Materialization\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}core package,\allowbreak{} shortened, simplified)]{csharp}
 public class TenantMaterializationInterceptor : IMaterializationInterceptor
 {
+    // Provider per context instance, held weakly: goes away with the context
+    private static readonly ConditionalWeakTable<DbContext, ITenantProvider> Providers =
+        new();
+
     public virtual InterceptionResult<object> CreatingInstance(
         MaterializationInterceptionData materializationData,
         InterceptionResult<object> result)
@@ -908,8 +912,8 @@ public class TenantMaterializationInterceptor : IMaterializationInterceptor
         if (entityType.GetTenantPropertyName() is not { } propertyName)
             return;
 
-        // Looked up for every row instead of being remembered: this instance is shared by all
-        // contexts, and every context can have a different tenant
+        // The tenant is read for every row: this instance is shared by all contexts, every
+        // context can have a different tenant, and a pooled context changes it between leases
         var current = FindTenantProvider(context).CurrentTenantId;
         var value = (TenantId)readValue(propertyName)!;
 
@@ -917,8 +921,10 @@ public class TenantMaterializationInterceptor : IMaterializationInterceptor
             throw new TenancyException("... Row level security did not take effect ...");
     }
 
-    // FindTenantProvider: through the context's interceptors (like ApplyTenantSession) to
-    // the ITenantProvider carried by this context's SaveChanges interceptor
+    // Once per context through its interceptors (like ApplyTenantSession) to the
+    // ITenantProvider of the SaveChanges interceptor, from the table afterwards
+    internal static ITenantProvider FindTenantProvider(DbContext context)
+        => Providers.GetValue(context, LookUpTenantProvider);
 }
 \end{sourcecode}
 
@@ -944,8 +950,8 @@ if (Settings.VerifyMaterializedTenants)
   (chapter~\ref{ch:property-level-fluent-api-and}). No guessing at run time. \\
   \tablerule
   Tenant per call & Through the context to this context's
-  \code{ITenant\allowbreak{}Provider}. Costs one lookup and one comparison per entity; that
-  is why the check is optional. \\
+  \code{ITenant\allowbreak{}Provider}; the provider is cached per context, the tenant is read
+  and compared per entity. That still costs per row, which is why the check is optional. \\
   \tablerule
   No tenant & Without a tenant, RLS returns no rows. If one arrives anyway, RLS is not in
   effect and the check fires. \\
@@ -1002,6 +1008,20 @@ condition, because all threads write the same field.
   the application or in a scoped service the interceptor reaches through the context
   (chapter~\ref{ch:state-lifetimes-and-thread-safety}).
 \end{tip}
+
+The right optimization does not remember the tenant but the way to it. Finding the
+\code{ITenant\allowbreak{}Provider} for every row through
+\code{Get\allowbreak{}Service<\allowbreak{}IDb\allowbreak{}Context\allowbreak{}Options>}, the
+extension and a LINQ search in the interceptors costs the same thing a thousand times for a
+thousand rows. The sample therefore keeps the provider in a static
+\code{Conditional\allowbreak{}Weak\allowbreak{}Table<\allowbreak{}Db\allowbreak{}Context,
+ITenant\allowbreak{}Provider>}. It holds its keys weakly: a context that is released disappears
+together with its entry, without the interceptor learning about it. With pooling the entry stays
+correct across leases, because a context keeps its options and therefore its interceptors for
+its whole life; the tenant itself is still read on every row. If the lookup fails, the table
+stores nothing, and the configuration error stays visible on every call.
+\code{Materialization\allowbreak{}Tests} checks repeated rows in one context, contexts with
+different tenants and a pooled context across two leases.
 
 \section{Limits}
 

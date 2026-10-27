@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Acme.EntityFrameworkCore.Tenancy.Metadata;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -28,6 +29,11 @@ namespace Acme.EntityFrameworkCore.Tenancy.Interceptors;
 /// </remarks>
 public class TenantMaterializationInterceptor : IMaterializationInterceptor
 {
+    // The tenant provider of each context instance, looked up once instead of for every row.
+    // The table holds its keys weakly: a disposed context is collected together with its entry.
+    // A pooled context keeps its options and therefore its interceptors for its whole life, so
+    // the cached provider stays correct across leases; the tenant itself is read on every row.
+    private static readonly ConditionalWeakTable<DbContext, ITenantProvider> Providers = new();
     /// <summary>
     /// Checks the tenant before the instance is created. The value is read from the query
     /// result, so a foreign row never becomes an object, and shadow properties work as well.
@@ -51,8 +57,8 @@ public class TenantMaterializationInterceptor : IMaterializationInterceptor
         if (entityType.GetTenantPropertyName() is not { } propertyName)
             return;
 
-        // Looked up for every row instead of being remembered: this instance is shared by all
-        // contexts, and every context can have a different tenant
+        // The tenant is read for every row: this instance is shared by all contexts, every
+        // context can have a different tenant, and a pooled context changes it between leases
         var current = FindTenantProvider(context).CurrentTenantId;
         var value = (TenantId)readValue(propertyName)!;
 
@@ -65,7 +71,12 @@ public class TenantMaterializationInterceptor : IMaterializationInterceptor
                 + "outside of EF).");
     }
 
-    private static ITenantProvider FindTenantProvider(DbContext context)
+    // Internal so that unit tests can check the cache
+    internal static ITenantProvider FindTenantProvider(DbContext context)
+        // GetValue does not cache when the lookup throws: a misconfigured context fails again
+        => Providers.GetValue(context, LookUpTenantProvider);
+
+    private static ITenantProvider LookUpTenantProvider(DbContext context)
         // The interceptors added with AddInterceptors live in the core options extension;
         // the SaveChanges interceptor carries the tenant provider of this context
         => context.GetService<IDbContextOptions>()

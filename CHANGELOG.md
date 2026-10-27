@@ -7,6 +7,12 @@ version is given by the dependency range and the compatibility table in the READ
 
 ## [Unreleased]
 
+### Changed
+
+- `TenantMaterializationInterceptor` looks up the tenant provider once per context instance
+  (`ConditionalWeakTable`, keys held weakly) instead of on every materialized row; the tenant
+  itself is still read on every row, also across leases of a pooled context.
+
 ## [1.1.0] - 2026-10-27
 
 Packages 1.1.0, handbook edition 1.1. Package versions now equal the handbook edition; the

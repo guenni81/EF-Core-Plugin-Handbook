@@ -907,6 +907,10 @@ options.UseNpgsql(connectionString)
 \begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Materialization\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}Kernpaket,\allowbreak{} gekürzt, vereinfacht)]{csharp}
 public class TenantMaterializationInterceptor : IMaterializationInterceptor
 {
+    // Provider pro Context-Instanz, schwach gehalten: entfällt mit dem Context
+    private static readonly ConditionalWeakTable<DbContext, ITenantProvider> Providers =
+        new();
+
     public virtual InterceptionResult<object> CreatingInstance(
         MaterializationInterceptionData materializationData,
         InterceptionResult<object> result)
@@ -924,7 +928,8 @@ public class TenantMaterializationInterceptor : IMaterializationInterceptor
         if (entityType.GetTenantPropertyName() is not { } propertyName)
             return;
 
-        // Bei jeder Zeile nachschlagen, nie merken: Diese Instanz teilen sich alle Contexts
+        // Der Mandant wird bei jeder Zeile gelesen, nie gemerkt: Alle Contexts teilen sich
+        // diese Instanz, und ein Context aus dem Pool wechselt ihn zwischen den Ausleihen
         var current = FindTenantProvider(context).CurrentTenantId;
         var value = (TenantId)readValue(propertyName)!;
 
@@ -932,8 +937,10 @@ public class TenantMaterializationInterceptor : IMaterializationInterceptor
             throw new TenancyException("... Row level security did not take effect ...");
     }
 
-    // FindTenantProvider: über die Interceptors des Contexts (wie ApplyTenantSession) zum
-    // ITenantProvider, den der SaveChanges-Interceptor dieses Contexts trägt
+    // Einmal pro Context über seine Interceptors (wie ApplyTenantSession) zum
+    // ITenantProvider des SaveChanges-Interceptors, danach aus der Tabelle
+    internal static ITenantProvider FindTenantProvider(DbContext context)
+        => Providers.GetValue(context, LookUpTenantProvider);
 }
 \end{sourcecode}
 
@@ -959,8 +966,8 @@ if (Settings.VerifyMaterializedTenants)
   (Kapitel~\ref{ch:property-level-fluent-api-and}). Kein Raten zur Laufzeit. \\
   \tablerule
   Mandant pro Aufruf & Über den Context zum \code{ITenant\allowbreak{}Provider} dieses
-  Contexts. Kostet pro Entität ein Nachschlagen und einen Vergleich; deshalb ist die Prüfung
-  optional. \\
+  Contexts; der Provider ist pro Context gecacht, der Mandant wird pro Entität gelesen und
+  verglichen. Das kostet trotzdem pro Zeile, deshalb ist die Prüfung optional. \\
   \tablerule
   Kein Mandant & Ohne Mandanten liefert RLS keine Zeilen. Kommt trotzdem eine, wirkt RLS
   nicht, und die Prüfung schlägt an. \\
@@ -1018,6 +1025,21 @@ es. Unter Last kommt eine Race Condition hinzu, denn alle Threads schreiben dass
   Anwendung oder in einen Scoped-Dienst, den der Interceptor über den Context erreicht
   (Kapitel~\ref{ch:state-lifetimes-and-thread-safety}).
 \end{tip}
+
+Die richtige Optimierung merkt sich nicht den Mandanten, sondern den Weg zu ihm. Den
+\code{ITenant\allowbreak{}Provider} pro Zeile über
+\code{Get\allowbreak{}Service<\allowbreak{}IDb\allowbreak{}Context\allowbreak{}Options>},
+die Extension und eine LINQ-Suche in den Interceptors zu finden, kostet bei tausend Zeilen
+tausendmal dasselbe. Das Beispiel legt den Provider deshalb in einer statischen
+\code{Conditional\allowbreak{}Weak\allowbreak{}Table<\allowbreak{}Db\allowbreak{}Context,
+ITenant\allowbreak{}Provider>} ab. Sie hält ihre Schlüssel schwach: Ein Context, der
+freigegeben wird, verschwindet samt Eintrag, ohne dass der Interceptor davon erfährt. Mit
+Pooling bleibt der Eintrag über die Ausleihen hinweg richtig, weil ein Context seine Options
+und damit seine Interceptors sein Leben lang behält; der Mandant selbst wird weiterhin bei
+jeder Zeile gelesen. Scheitert das Nachschlagen, speichert die Tabelle nichts, und der
+Konfigurationsfehler bleibt bei jedem Aufruf sichtbar.
+\code{Materialization\allowbreak{}Tests} prüft wiederholte Zeilen in einem Context,
+Contexts mit verschiedenen Mandanten und einen gepoolten Context über zwei Ausleihen.
 
 \section{Grenzen}
 

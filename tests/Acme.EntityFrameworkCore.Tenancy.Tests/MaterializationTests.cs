@@ -115,6 +115,90 @@ public class MaterializationTests
         Assert.Contains("UseAcmeTenancy(applicationServices)", ex.Message);
     }
 
+    [Fact]
+    public void Provider_is_looked_up_once_per_context_but_the_tenant_on_every_row()
+    {
+        var tenants = new MutableTenant { CurrentTenantId = TenantId.New() };
+        using var ctx = CreateContext(tenants);
+        var order = ctx.Model.FindEntityType(typeof(Order))!;
+
+        Assert.Same(tenants, TenantMaterializationInterceptor.FindTenantProvider(ctx));
+        Assert.Same(TenantMaterializationInterceptor.FindTenantProvider(ctx),
+            TenantMaterializationInterceptor.FindTenantProvider(ctx));
+
+        // Many rows in a row, and a tenant that changes in between: the cached provider is
+        // asked again every time
+        for (var i = 0; i < 1000; i++)
+            TenantMaterializationInterceptor.Verify(ctx, order, _ => tenants.CurrentTenantId);
+        var previous = tenants.CurrentTenantId;
+        tenants.CurrentTenantId = TenantId.New();
+        Assert.Throws<TenancyException>(() =>
+            TenantMaterializationInterceptor.Verify(ctx, order, _ => previous));
+    }
+
+    [Fact]
+    public void Contexts_with_different_tenants_get_their_own_provider()
+    {
+        TenantId a = TenantId.New(), b = TenantId.New();
+        using var first = CreateContext(new FixedTenant { CurrentTenantId = a });
+        using var second = CreateContext(new FixedTenant { CurrentTenantId = b });
+        var order = first.Model.FindEntityType(typeof(Order))!;
+
+        TenantMaterializationInterceptor.Verify(first, order, _ => a);
+        TenantMaterializationInterceptor.Verify(second, order, _ => b);
+        Assert.Throws<TenancyException>(() => TenantMaterializationInterceptor.Verify(first, order, _ => b));
+        Assert.Throws<TenancyException>(() => TenantMaterializationInterceptor.Verify(second, order, _ => a));
+    }
+
+    [Fact]
+    public void Pooled_context_checks_the_tenant_of_each_lease()
+    {
+        var options = new DbContextOptionsBuilder<PooledContext>()
+            .UseNpgsql("Host=localhost;Database=unused")
+            .UseAcmeTenancy(t => t.VerifyMaterializedTenants())
+            .AddInterceptors(new TenantSaveChangesInterceptor(new AmbientTenantProvider()))
+            .Options;
+        var factory = new PooledDbContextFactory<PooledContext>(options);
+        TenantId a = TenantId.New(), b = TenantId.New();
+
+        PooledContext firstLease;
+        using (AmbientTenantProvider.Use(a))
+        using (var ctx = factory.CreateDbContext())
+        {
+            firstLease = ctx;
+            TenantMaterializationInterceptor.Verify(ctx, ctx.Model.FindEntityType(typeof(Order))!, _ => a);
+        }
+
+        using (AmbientTenantProvider.Use(b))
+        using (var ctx = factory.CreateDbContext())
+        {
+            Assert.Same(firstLease, ctx);                     // the same instance, reset
+            var order = ctx.Model.FindEntityType(typeof(Order))!;
+            TenantMaterializationInterceptor.Verify(ctx, order, _ => b);
+            Assert.Throws<TenancyException>(() => TenantMaterializationInterceptor.Verify(ctx, order, _ => a));
+        }
+    }
+
+    [Fact]
+    public void Failed_lookup_is_not_cached()
+    {
+        using var ctx = Contexts.Create(tenancy: t => t.VerifyMaterializedTenants());
+
+        Assert.Throws<TenancyException>(() => TenantMaterializationInterceptor.FindTenantProvider(ctx));
+        Assert.Throws<TenancyException>(() => TenantMaterializationInterceptor.FindTenantProvider(ctx));
+    }
+
+    private sealed class MutableTenant : ITenantProvider
+    {
+        public TenantId? CurrentTenantId { get; set; }
+    }
+
+    /// <summary>Context type for pooling: only the options constructor.</summary>
+    private sealed class PooledContext(DbContextOptions<PooledContext> options) : DbContext(options)
+    {
+        public DbSet<Order> Orders => Set<Order>();
+    }
+
     private static void TenancyCheck(DbContext context, Type clrType)
         => TenantMaterializationInterceptor.Verify(
             context, context.Model.FindEntityType(clrType)!, _ => TenantId.New());
