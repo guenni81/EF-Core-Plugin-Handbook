@@ -817,7 +817,7 @@ Three decisions are built into this:
     plugin's predicate function and that binds exactly this table is dropped. Policies of
     others and tables without RLS stay untouched, and policies under an earlier name are
     found all the same.
-  \item \textbf{Schema-qualified names.} Up to 10.0 the policy was called
+  \item \textbf{Schema-qualified names.} Up to 1.0 the policy was called
     \code{tenant\_\allowbreak{}Table}, so tables with the same name in two schemas collided.
     New policies are called \code{tenant\_\allowbreak{}Schema\_\allowbreak{}Table}. Existing
     installations keep the old name until the table is touched the next time; then the
@@ -843,14 +843,14 @@ else's policy on a table without RLS.
 
 \code{session\allowbreak{}Key} and \code{policy\allowbreak{}Schema} are options, but they act
 in two places: at run time in the session interceptor, which sets the key, and in the database in
-the predicate function, which reads it. Up to 10.0 the generator read both values from the
+the predicate function, which reads it. Up to 1.0 the generator read both values from the
 \emph{current} options and created the function only if it was missing. Switching from
 \code{TenantId} to \code{NewTenant} therefore produced no migration. The interceptor then set the
 new key, the function kept reading the old one, and no tenant saw any rows. Worse still: run
 again, for example for a new test database, an old migration would have created objects with the
 new values.
 
-Since 10.1 the package separates the two roles. The convention writes key and schema into the
+Since 1.1 the package separates the two roles. The convention writes key and schema into the
 model as the model annotations
 \code{Acme:\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Rls:\allowbreak{}Session\allowbreak{}Key}
 and \code{Acme:\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Rls:\allowbreak{}Policy\allowbreak{}Schema},
@@ -869,11 +869,11 @@ way every migration stays with the state it was generated from.
   all protected tables, drop the old function, create the function with the new values,
   recreate the policies. The Down path does the same in reverse. \\
   \tablerule
-  First migration of a context, or the first after the upgrade from 10.0 (old value unknown) &
+  First migration of a context, or the first after the upgrade from 1.0 (old value unknown) &
   Nothing is dropped. An existing function must read the key that the model names, otherwise the
   migration stops with \code{THROW 50000}. \\
   \tablerule
-  Down to a snapshot before 10.1 & Function and policies stay as they are. \\
+  Down to a snapshot before 1.1 & Function and policies stay as they are. \\
 \end{datatable}
 
 The third row is a deliberate limit. Without a recorded old value there is no proof that an
@@ -894,7 +894,7 @@ predicate. The migration therefore belongs before the new app version.
 \code{Sql\allowbreak{}Server\allowbreak{}Session\allowbreak{}Settings\allowbreak{}Tests} checks
 without a database the annotations, the snapshot, the empty diff, the detected change and the
 historical migration. Against a real SQL Server it checks changing key and schema with Up and
-Down, the upgrade of a 10.0 installation and the second context.
+Down, the upgrade of a 1.0 installation and the second context.
 
 \section{Run time: same flow, different command}
 

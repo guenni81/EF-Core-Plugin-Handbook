@@ -209,13 +209,18 @@ public async Task Database_rejects_rows_of_other_tenant()
 % ------------------------------------------------------------
 \chapter{Versioning and compatibility}\label{ch:versioning-and-compatibility}
 
-\section{Align versions with EF Core}
+\section{Package version and supported EF version}
 
-The plugin's major version follows EF Core's: version 10.x for EF Core 10. Users immediately
-see which combination fits, and the plugin can adopt breaking changes with every EF major
-version. Dependencies are limited to this major version. A property keeps the range in one
-place so that CI can override it for the patch channel (section “Patches and previews in
-CI”):
+The sample versions plugin and handbook together: the package version equals the book
+edition, packages 1.1.0 belong to edition~1.1. That way every code excerpt belongs to exactly
+one package state. Which EF version a state supports is therefore not part of the version
+number but of the packages' dependency range and the compatibility table in the README: plugin
+1.x supports EF Core~10. Moving to a new EF major version is a breaking change for users and
+gets a new major version, 2.0 for EF Core~11, together with a new book edition. Many plugins
+tie their major version to EF Core's instead (10.x for EF Core~10); that shows the matching
+combination in the number. Both ways work as long as the dependencies are limited to one EF
+major version. A property keeps the range in one place so that CI can override it for the
+patch channel (section “Patches and previews in CI”):
 
 \begin{sourcecode}[Directory.\allowbreak{}Packages.\allowbreak{}props (\allowbreak{}excerpt)]{xml}
 <PropertyGroup>
@@ -367,12 +372,12 @@ line is frozen in a release branch; it keeps getting patches for its EF version 
 \code{main} moves to the new one.
 
 \begin{sourcecode}[Step~1: branch and versions]{text}
-git switch -c release/10.x main && git push -u origin release/10.x
+git switch -c release/1.x main && git push -u origin release/1.x
 git switch main
 
 global.json               "version": "11.0.100"
 Directory.Build.props     <TargetFramework>net11.0</TargetFramework>
-                          <VersionPrefix>11.0.0</VersionPrefix>
+                          <VersionPrefix>2.0.0</VersionPrefix>
 Directory.Packages.props  <EFCoreVersion ...>[11.0.0,12.0.0)</EFCoreVersion>
 \end{sourcecode}
 
@@ -447,7 +452,7 @@ framework.
   15 & Compare benchmarks & The same benchmark on both lines; compare ratio and allocations,
   not absolute times & Benchmark project \\
   \tablerule
-  16 & Document breaking changes & CHANGELOG, compatibility table (plugin~11.x for
+  16 & Document breaking changes & CHANGELOG, compatibility table (plugin~2.x for
   EF~Core~11), notes for users, support period of the old line & \code{CHANGELOG.\allowbreak{}md} \\
 \end{datatable}
 
@@ -614,7 +619,7 @@ Package Management):
 <PropertyGroup>
   <PackageLicenseExpression>MIT</PackageLicenseExpression>
   <PackageReadmeFile>README.md</PackageReadmeFile>
-  <VersionPrefix>10.0.0</VersionPrefix>
+  <VersionPrefix>1.1.0</VersionPrefix>       <!-- = book edition -->
   <IncludeSymbols>true</IncludeSymbols>
   <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   <PublishRepositoryUrl>true</PublishRepositoryUrl>      <!-- SourceLink -->

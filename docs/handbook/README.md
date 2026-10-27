@@ -83,9 +83,10 @@ The chapter files only use the commands from `handbook.sty`:
 ## Editing rules
 
 * **Edition.** The book has its own version, `\handbookversion` in `handbook.sty` (currently
-  1.0). It is independent of the package versions (10.x = EF Core 10) and appears on the
-  title page and in the page header. Raise it when a changed edition is published: the
-  minor version for corrections and additions, the major version for a revised book.
+  1.1). The package versions equal it (`VersionPrefix` in `Directory.Build.props`, 1.1.0),
+  so raise both together; it appears on the title page and in the page header. The minor
+  version for corrections and additions, the major version for a revised book or a new EF
+  Core major version.
 
 * **Keep both editions in sync.** Both editions share the same structure and the same
   labels; the file names differ by language. Any change to the content belongs in both

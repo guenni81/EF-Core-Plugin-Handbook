@@ -179,7 +179,7 @@ public class SqlServerUnitTests
 
         var sql = Contexts.Sql(ctx, [new DropTableOperation { Name = "Orders" }]);
 
-        // Found by the table it is bound to, so the pre-10.1 name tenant_Orders is covered too
+        // Found by the table it is bound to, so the pre-1.1 name tenant_Orders is covered too
         Assert.Contains("s.target_object_id = OBJECT_ID(N'[dbo].[Orders]')", sql[0]);
         Assert.Contains("EXEC(N'DROP SECURITY POLICY ' + @policy)", sql[0]);
         Assert.Contains("DROP TABLE", sql[1]);

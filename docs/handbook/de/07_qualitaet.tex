@@ -208,13 +208,19 @@ public async Task Database_rejects_rows_of_other_tenant()
 % ------------------------------------------------------------
 \chapter{Versionierung und Kompatibilität}\label{ch:versioning-and-compatibility}
 
-\section{Versionen an EF Core ausrichten}
+\section{Paketversion und unterstützte EF-Version}
 
-Die Major-Version des Plugins folgt der von EF Core: Version 10.x für EF Core 10. Nutzer
-erkennen sofort, welche Kombination passt, und das Plugin kann mit jeder EF-Major-Version
-Breaking Changes übernehmen. Die Abhängigkeiten werden auf diese Major-Version begrenzt. Eine
-Eigenschaft hält den Bereich an einer Stelle, damit die CI ihn für den Patch-Kanal
-überschreiben kann (Abschnitt „Patches und Previews in der CI“):
+Das Beispiel versioniert Plugin und Handbuch gemeinsam: Die Paketversion entspricht der
+Buchausgabe, Pakete 1.1.0 gehören zu Ausgabe~1.1. So gehört jeder Codeauszug zu genau einem
+Paketstand. Welche EF-Version ein Stand unterstützt, steht deshalb nicht in der Versionsnummer,
+sondern im Abhängigkeitsbereich der Pakete und in der Kompatibilitätstabelle der README: Plugin
+1.x unterstützt EF Core~10. Der Wechsel auf eine neue EF-Major-Version ist für Anwender ein
+Breaking Change und bekommt eine neue Major-Version, 2.0 für EF Core~11, zusammen mit einer
+neuen Buchausgabe. Viele Plugins koppeln die Major-Version stattdessen an EF Core (10.x für EF
+Core~10); das macht die passende Kombination an der Nummer sichtbar. Beide Wege funktionieren,
+solange die Abhängigkeiten auf eine EF-Major-Version begrenzt sind. Eine Eigenschaft hält den
+Bereich an einer Stelle, damit die CI ihn für den Patch-Kanal überschreiben kann (Abschnitt
+„Patches und Previews in der CI“):
 
 \begin{sourcecode}[Directory.\allowbreak{}Packages.\allowbreak{}props (\allowbreak{}Auszug)]{xml}
 <PropertyGroup>
@@ -368,12 +374,12 @@ bisherige Linie in einem Release-Zweig eingefroren; sie bekommt weiter Patches f
 EF-Version, während \code{main} auf die neue wechselt.
 
 \begin{sourcecode}[Schritt~1: Zweig und Versionen]{text}
-git switch -c release/10.x main && git push -u origin release/10.x
+git switch -c release/1.x main && git push -u origin release/1.x
 git switch main
 
 global.json               "version": "11.0.100"
 Directory.Build.props     <TargetFramework>net11.0</TargetFramework>
-                          <VersionPrefix>11.0.0</VersionPrefix>
+                          <VersionPrefix>2.0.0</VersionPrefix>
 Directory.Packages.props  <EFCoreVersion ...>[11.0.0,12.0.0)</EFCoreVersion>
 \end{sourcecode}
 
@@ -446,7 +452,7 @@ Target-Framework ließe sich nicht einmal wiederherstellen.
   15 & Benchmarks vergleichen & Dasselbe Benchmark auf beiden Linien; Verhältnis und
   Allokationen vergleichen, nicht absolute Zeiten & Benchmark-Projekt \\
   \tablerule
-  16 & Breaking Changes dokumentieren & CHANGELOG, Kompatibilitätstabelle (Plugin~11.x zu
+  16 & Breaking Changes dokumentieren & CHANGELOG, Kompatibilitätstabelle (Plugin~2.x zu
   EF~Core~11), Hinweise für Anwender, Supportdauer der alten Linie & \code{CHANGELOG.\allowbreak{}md} \\
 \end{datatable}
 
@@ -617,7 +623,7 @@ Package Management):
 <PropertyGroup>
   <PackageLicenseExpression>MIT</PackageLicenseExpression>
   <PackageReadmeFile>README.md</PackageReadmeFile>
-  <VersionPrefix>10.0.0</VersionPrefix>
+  <VersionPrefix>1.1.0</VersionPrefix>       <!-- = Buchausgabe -->
   <IncludeSymbols>true</IncludeSymbols>
   <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   <PublishRepositoryUrl>true</PublishRepositoryUrl>      <!-- SourceLink -->

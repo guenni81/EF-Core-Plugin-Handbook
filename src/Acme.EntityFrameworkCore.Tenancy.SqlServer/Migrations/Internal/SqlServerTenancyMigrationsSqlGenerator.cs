@@ -50,7 +50,7 @@ public class SqlServerTenancyMigrationsSqlGenerator : SqlServerMigrationsSqlGene
     /// <summary>
     /// The settings for the migration being generated: session key and policy schema as recorded
     /// in its target model; the current options only for models that do not record them (before
-    /// 10.1, or without tenant tables).
+    /// 1.1, or without tenant tables).
     /// </summary>
     protected virtual SqlServerTenancySettings Settings
     {
@@ -169,7 +169,7 @@ public class SqlServerTenancyMigrationsSqlGenerator : SqlServerMigrationsSqlGene
                     oldPolicySchema = database.OldDatabase[SqlServerRlsAnnotationNames.PolicySchema] as string;
                     break;
                 case AlterDatabaseOperation database when SettingsRecordedFirst(database):
-                    // First migration of this context, or the first after an upgrade from 10.0: an
+                    // First migration of this context, or the first after an upgrade from 1.0: an
                     // existing function is of unknown origin and must already fit
                     verifySettings = true;
                     break;
@@ -206,7 +206,7 @@ public class SqlServerTenancyMigrationsSqlGenerator : SqlServerMigrationsSqlGene
         foreach (var table in affected)
             result.Add(new DropTenantPolicyOperation { Table = table.Name, Schema = table.Schema });
 
-        // Without a recorded old schema (snapshot before 10.1) the function can only be found in
+        // Without a recorded old schema (snapshot before 1.1) the function can only be found in
         // the schema that is configured now
         if (settingsChanged)
             result.Add(new DropTenantPredicateOperation { Schema = oldPolicySchema ?? Settings.PolicySchema });
@@ -364,14 +364,14 @@ public class SqlServerTenancyMigrationsSqlGenerator : SqlServerMigrationsSqlGene
     /// <summary>Drops the table's security policy if it exists (legacy name only).</summary>
     /// <param name="table">The table name.</param>
     /// <param name="builder">The command builder.</param>
-    [Obsolete("Drops only the pre-10.1 policy name. Use DropPolicy(table, schema, builder), which "
+    [Obsolete("Drops only the pre-1.1 policy name. Use DropPolicy(table, schema, builder), which "
               + "finds the plugin's policy by the table it is bound to.")]
     protected virtual void DropPolicy(string table, MigrationCommandListBuilder builder)
         => DropPolicy(table, "dbo", builder);
 
     /// <summary>
     /// Drops the policy of this plugin that is bound to the table, whatever its name: the
-    /// pre-10.1 name <c>tenant_Table</c> as well as <c>tenant_schema_Table</c>. Policies of
+    /// pre-1.1 name <c>tenant_Table</c> as well as <c>tenant_schema_Table</c>. Policies of
     /// others, and tables without one, stay untouched.
     /// </summary>
     /// <param name="table">The table name.</param>
@@ -394,7 +394,7 @@ public class SqlServerTenancyMigrationsSqlGenerator : SqlServerMigrationsSqlGene
     /// <summary>Name of the shared predicate function in the policy schema.</summary>
     protected virtual string PredicateFunctionName => "fn_tenant_predicate";
 
-    /// <summary>Delimited pre-10.1 policy name <c>[policy schema].[tenant_Table]</c>.</summary>
+    /// <summary>Delimited pre-1.1 policy name <c>[policy schema].[tenant_Table]</c>.</summary>
     /// <param name="table">The table name.</param>
     /// <returns>The delimited, schema-qualified policy name.</returns>
     [Obsolete("Tables with the same name in different schemas collide. Use PolicyName(table, schema).")]
@@ -449,7 +449,7 @@ public class SqlServerTenancyMigrationsSqlGenerator : SqlServerMigrationsSqlGene
            && operation.OldDatabase[SqlServerRlsAnnotationNames.PolicySchema] is string oldPolicySchema
            && (oldSessionKey != sessionKey || oldPolicySchema != policySchema);
 
-    // Recorded now, unknown before (first migration, or snapshot before 10.1). Without values in
+    // Recorded now, unknown before (first migration, or snapshot before 1.1). Without values in
     // the target (Down to such a snapshot) the database keeps what it has.
     private static bool SettingsRecordedFirst(AlterDatabaseOperation operation)
         => operation[SqlServerRlsAnnotationNames.SessionKey] is string

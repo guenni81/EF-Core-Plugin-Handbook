@@ -15,7 +15,7 @@ namespace Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests;
 internal static class Snapshots
 {
     /// <summary>
-    /// The model as a snapshot of version 10.0 records it: tenant column on the entity type, but no
+    /// The model as a snapshot of version 1.0 records it: tenant column on the entity type, but no
     /// session key and no policy schema on the model.
     /// </summary>
     public static IModel Legacy(DbContext context)
@@ -98,7 +98,7 @@ public class SqlServerSessionSettingsModelTests
     }
 
     [Fact]
-    public void Snapshot_before_10_1_only_verifies_the_existing_function()
+    public void Snapshot_before_1_1_only_verifies_the_existing_function()
     {
         using var context = MappingContext.Create(Versions.V1);
         var legacy = Snapshots.Legacy(context);
@@ -116,7 +116,7 @@ public class SqlServerSessionSettingsModelTests
     }
 
     [Fact]
-    public void Down_to_a_snapshot_before_10_1_leaves_function_and_policies_alone()
+    public void Down_to_a_snapshot_before_1_1_leaves_function_and_policies_alone()
     {
         using var context = MappingContext.Create(Versions.V1);
         var legacy = Snapshots.Legacy(context);
@@ -229,12 +229,12 @@ public class SqlServerSessionSettingsTests : IClassFixture<SqlServerFixture>
     }
 
     [Fact]
-    public async Task Installation_from_10_0_is_upgraded_and_then_changes_its_session_key()
+    public async Task Installation_from_1_0_is_upgraded_and_then_changes_its_session_key()
     {
         var (owner, app) = await SqlServerMigrationTests.CreateDatabaseAsync(_fixture);
         await using (var context = MappingContext.Create(Versions.V1))
         {
-            // The database as version 10.0 left it: function with "TenantId", policy tenant_Invoice
+            // The database as version 1.0 left it: function with "TenantId", policy tenant_Invoice
             await MigrateAsync(owner, null, MappingContext.Create(Versions.V1));
             await using var connection = new SqlConnection(owner);
             await connection.OpenAsync();

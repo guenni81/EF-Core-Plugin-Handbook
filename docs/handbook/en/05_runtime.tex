@@ -180,7 +180,7 @@ Three things look alike when saving and mean different things:
   \item \textbf{The tracking flag.} \code{Db\allowbreak{}Context.\allowbreak{}Update} and
     \code{Attach} of an untracked entity set \code{Is\allowbreak{}Modified} for \emph{every}
     property, the tenant property included. Original and current value are the same: the value
-    the entity brings along. Up to 10.0 the interceptor already rejected this flag as a change of
+    the entity brings along. Up to 1.0 the interceptor already rejected this flag as a change of
     tenant, and an ordinary update from an API failed.
   \item \textbf{The actual change of value.} A row is only reassigned when the value differs from
     the original value. The interceptor rejects that, even when the new value is the active

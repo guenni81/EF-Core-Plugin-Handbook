@@ -339,12 +339,12 @@ public class SqlServerMigrationTests : IClassFixture<SqlServerFixture>
     }
 
     [Fact]
-    public async Task Policy_with_the_pre_10_1_name_is_found_and_replaced()
+    public async Task Policy_with_the_pre_1_1_name_is_found_and_replaced()
     {
         var (owner, app) = await CreateDatabaseAsync();
         await MigrateAsync(owner, null, Versions.V1);
 
-        // An installation from 10.0: same policy, name without the schema
+        // An installation from 1.0: same policy, name without the schema
         await using (var connection = new SqlConnection(owner))
         {
             await connection.OpenAsync();

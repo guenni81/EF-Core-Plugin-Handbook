@@ -828,7 +828,7 @@ Drei Entscheidungen stecken darin:
     Policy, deren Prädikat die Predicate-Funktion des Plugins verwendet und die genau diese
     Tabelle bindet. Fremde Policies und Tabellen ohne RLS bleiben unberührt, und Policies
     unter einem früheren Namen werden trotzdem gefunden.
-  \item \textbf{Schemaqualifizierte Namen.} Bis 10.0 hieß die Policy
+  \item \textbf{Schemaqualifizierte Namen.} Bis 1.0 hieß die Policy
     \code{tenant\_\allowbreak{}Tabelle}, sodass gleichnamige Tabellen in zwei Schemas
     kollidierten. Neue Policies heißen \code{tenant\_\allowbreak{}Schema\_\allowbreak{}Tabelle}.
     Bestehende Installationen behalten den alten Namen, bis die Tabelle das nächste Mal
@@ -854,14 +854,14 @@ Policy unter dem alten Namen und die fremde Policy einer Tabelle ohne RLS.
 
 \code{session\allowbreak{}Key} und \code{policy\allowbreak{}Schema} sind Options, wirken aber
 an zwei Stellen: zur Laufzeit im Session-Interceptor, der den Schlüssel setzt, und in der
-Datenbank in der Predicate-Funktion, die ihn liest. Bis 10.0 las der Generator beide Werte aus
+Datenbank in der Predicate-Funktion, die ihn liest. Bis 1.0 las der Generator beide Werte aus
 den \emph{aktuellen} Options und legte die Funktion nur an, wenn sie fehlte. Ein Wechsel von
 \code{TenantId} auf \code{NewTenant} erzeugte deshalb keine Migration. Der Interceptor setzte
 danach den neuen Schlüssel, die Funktion las weiter den alten, und kein Mandant sah mehr Zeilen.
 Schlimmer noch: Eine alte Migration hätte beim erneuten Ausführen, etwa für eine neue
 Testdatenbank, Objekte mit den neuen Werten erzeugt.
 
-Seit 10.1 trennt das Paket die beiden Rollen. Die Convention schreibt Schlüssel und Schema als
+Seit 1.1 trennt das Paket die beiden Rollen. Die Convention schreibt Schlüssel und Schema als
 Modell-Annotationen \code{Acme:\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Rls:\allowbreak{}Session\allowbreak{}Key}
 und \code{Acme:\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Rls:\allowbreak{}Policy\allowbreak{}Schema}
 ins Modell und damit in den Snapshot. Der Annotation-Provider gibt sie an das relationale Modell
@@ -880,11 +880,11 @@ mit dem sie erzeugt wurde.
   geschützten Tabellen entfernen, alte Funktion löschen, Funktion mit den neuen Werten anlegen,
   Policies neu anlegen. Der Down-Weg macht dasselbe rückwärts. \\
   \tablerule
-  Erste Migration eines Contexts oder erste nach dem Upgrade von 10.0 (alter Wert unbekannt) &
+  Erste Migration eines Contexts oder erste nach dem Upgrade von 1.0 (alter Wert unbekannt) &
   Nichts wird gelöscht. Eine vorhandene Funktion muss den Schlüssel lesen, den das Modell nennt,
   sonst bricht die Migration mit \code{THROW 50000} ab. \\
   \tablerule
-  Down auf einen Snapshot vor 10.1 & Funktion und Policies bleiben, wie sie sind. \\
+  Down auf einen Snapshot vor 1.1 & Funktion und Policies bleiben, wie sie sind. \\
 \end{datatable}
 
 Die dritte Zeile ist eine bewusste Grenze. Ohne festgehaltenen alten Wert lässt sich nicht
@@ -906,7 +906,7 @@ und Schreibversuche scheitern am BLOCK-Prädikat. Die Migration gehört deshalb 
 App-Version. \code{Sql\allowbreak{}Server\allowbreak{}Session\allowbreak{}Settings\allowbreak{}Tests}
 prüft ohne Datenbank die Annotationen, den Snapshot, den leeren Diff, die erkannte Änderung und
 die historische Migration. Gegen einen echten SQL Server prüft es den Wechsel von Schlüssel und
-Schema mit Up und Down, das Upgrade einer 10.0-Installation und den zweiten Context.
+Schema mit Up und Down, das Upgrade einer 1.0-Installation und den zweiten Context.
 
 \section{Laufzeit: derselbe Ablauf, anderer Befehl}
 

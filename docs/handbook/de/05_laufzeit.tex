@@ -181,7 +181,7 @@ Drei Dinge sehen beim Speichern ähnlich aus und bedeuten Verschiedenes:
   \item \textbf{Die Tracking-Markierung.} \code{Db\allowbreak{}Context.\allowbreak{}Update} und
     \code{Attach} einer nicht getrackten Entität setzen \code{Is\allowbreak{}Modified} für
     \emph{jede} Property, auch für die Mandanten-Property. Original- und aktueller Wert sind
-    dabei gleich, nämlich der Wert, den die Entität mitbringt. Bis 10.0 lehnte der Interceptor
+    dabei gleich, nämlich der Wert, den die Entität mitbringt. Bis 1.0 lehnte der Interceptor
     schon diese Markierung als Mandantenwechsel ab, und ein gewöhnliches Update aus einer API
     scheiterte.
   \item \textbf{Der tatsächliche Wertwechsel.} Nur wenn sich der Wert gegenüber dem

@@ -1,14 +1,16 @@
 # Changelog
 
 All notable changes to this project are documented in this file. The format is based on
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow the major
-version of EF Core (10.x = EF Core 10).
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Package versions equal the handbook edition (1.1.0 = edition 1.1); the supported EF Core
+version is given by the dependency range and the compatibility table in the README
+(1.x = EF Core 10).
 
 ## [Unreleased]
 
-## [10.1.0] - 2026-10-27
+## [1.1.0] - 2026-10-27
 
-Packages 10.1.0, handbook edition 1.1.
+Packages 1.1.0, handbook edition 1.1. Package versions now equal the handbook edition; the
+first release, published as packages 10.0.0, corresponds to edition 1.0 (tag `v1.0`).
 
 ### Added
 
@@ -111,7 +113,7 @@ Packages 10.1.0, handbook edition 1.1.
 
 ### Changed
 
-- SQL Server upgrade note: the first migration after upgrading from 10.0 contains an
+- SQL Server upgrade note: the first migration after upgrading from 1.0 contains an
   `AlterDatabaseOperation` that records session key and policy schema and only verifies the
   existing predicate function. Change the session key in a later migration of its own;
   changing it in the same migration is rejected because the old value is not recorded.
@@ -119,7 +121,7 @@ Packages 10.1.0, handbook edition 1.1.
   database fails closed).
 
 - SQL Server: security policies are dropped by the table they bind and the plugin's predicate
-  function instead of by name, so policies created by 10.0 (`tenant_<table>`) are found and
+  function instead of by name, so policies created by 1.0 (`tenant_<table>`) are found and
   replaced with the new name the next time their table changes; policies of others are never
   dropped. `PolicyName(string)` and `DropPolicy(string, builder)` of the migrations SQL
   generator are obsolete.
@@ -223,7 +225,9 @@ Packages 10.1.0, handbook edition 1.1.
 - `TenancyDesignTimeServices` registered `IDatabaseModelFactory` as a singleton although EF
   and Npgsql register it as scoped and it depends on the scoped scaffolding logger.
 
-## [10.0.0]
+## [1.0.0]
+
+Published as packages 10.0.0, when package versions still followed EF Core.
 
 - Initial release: the EF Core Plugin Handbook (English and German) and the reference
   plugin `Acme.EntityFrameworkCore.Tenancy` for EF Core 10 with PostgreSQL and SQL Server.
