@@ -220,3 +220,6 @@ virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.TenantIdMemberTranslat
 virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Scaffolding.TenancyDatabaseModelFactory.ReadPolicies(System.Data.Common.DbConnection! connection, Microsoft.EntityFrameworkCore.Scaffolding.Metadata.DatabaseModel! model) -> void
 virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Scaffolding.TenancyDatabaseModelFactory.ReadRowLevelSecurity(System.Data.Common.DbConnection! connection, Microsoft.EntityFrameworkCore.Scaffolding.Metadata.DatabaseModel! model) -> void
 virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Storage.TenancyTypeMappingSourcePlugin.FindMapping(in Microsoft.EntityFrameworkCore.Storage.RelationalTypeMappingInfo mappingInfo) -> Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping?
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings.VerifyMaterializedTenants.get -> bool
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings.VerifyMaterializedTenants.init -> void
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder.VerifyMaterializedTenants(bool verify = true) -> Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder!

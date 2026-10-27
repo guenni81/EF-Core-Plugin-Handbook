@@ -86,3 +86,11 @@ virtual Acme.EntityFrameworkCore.Tenancy.Diagnostics.TenancyLoggingDefinitions.L
 virtual Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantSessionInterceptor.ApplyToOpenConnection(Microsoft.EntityFrameworkCore.DbContext! context) -> bool
 virtual Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantSessionInterceptor.ApplyToOpenConnectionAsync(Microsoft.EntityFrameworkCore.DbContext! context, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
 virtual Acme.EntityFrameworkCore.Tenancy.Query.TenancyEvaluatableExpressionFilterPlugin.IsEvaluatableExpression(System.Linq.Expressions.Expression! expression) -> bool
+Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantMaterializationInterceptor
+Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantMaterializationInterceptor.TenantMaterializationInterceptor() -> void
+virtual Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantMaterializationInterceptor.CreatingInstance(Microsoft.EntityFrameworkCore.Diagnostics.MaterializationInterceptionData materializationData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<object!> result) -> Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<object!>
+Acme.EntityFrameworkCore.Tenancy.Metadata.TenantTableMappingValidator
+static Acme.EntityFrameworkCore.Tenancy.Metadata.TenantTableMappingValidator.Validate(Microsoft.EntityFrameworkCore.Metadata.IReadOnlyModel! model, System.Func<Microsoft.EntityFrameworkCore.Metadata.IReadOnlyEntityType!, bool>! isOptedOut) -> void
+Acme.EntityFrameworkCore.Tenancy.TenantIdValueComparer
+static Acme.EntityFrameworkCore.Tenancy.TenantIdValueComparer.Instance.get -> Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<Acme.EntityFrameworkCore.Tenancy.TenantId>!
+static Acme.EntityFrameworkCore.Tenancy.TenantIdValueComparer.Provider.get -> Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<System.Guid>!

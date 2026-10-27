@@ -1,4 +1,1 @@
 #nullable enable
-Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings.VerifyMaterializedTenants.get -> bool
-Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings.VerifyMaterializedTenants.init -> void
-virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder.VerifyMaterializedTenants(bool verify = true) -> Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder!

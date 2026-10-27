@@ -6,6 +6,10 @@ version of EF Core (10.x = EF Core 10).
 
 ## [Unreleased]
 
+## [10.1.0] - 2026-10-27
+
+Packages 10.1.0, handbook edition 1.1.
+
 ### Added
 
 - Handbook (both editions): new chapter 4 "Choosing the right extension point", a decision
