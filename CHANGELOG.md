@@ -94,6 +94,17 @@ version of EF Core (10.x = EF Core 10).
   application with precompiled queries and runs it against PostgreSQL in Docker. New CI job
   `consumer`. Handbook (both editions): section "What is actually checked as a consumer".
 
+- Handbook (both editions): two reading paths ("My first plugin", "Reference for advanced
+  readers") with prerequisites, chapters and a checkable result; appendix E with five exercises
+  and solutions, each tied to a test of the sample; appendix F with curated, verified primary
+  sources (documentation and source code at v10.0.0 tags). The checklist names the chapter
+  with the reasoning for every section and covers the new topics; two duplicated passages in
+  chapter "Registering services" now refer to the full explanation.
+- `check_code.py` verifies 59 excerpts bound with `% source:` against their source files
+  (comments and elisions ignored, optional `(strings)`); unbound excerpts of repository files
+  must be marked as simplified. New `check_structure.py`: both editions in sync per chapter,
+  reference targets, datatable widths. Both run in CI.
+
 ### Changed
 
 - SQL Server upgrade note: the first migration after upgrading from 10.0 contains an

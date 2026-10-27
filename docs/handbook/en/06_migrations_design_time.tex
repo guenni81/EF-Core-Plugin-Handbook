@@ -57,6 +57,7 @@ Which annotations a table carries is decided by the
 \code{IRelational\allowbreak{}Annotation\allowbreak{}Provider}. There is one per context,
 and it belongs to the provider; the plugin therefore derives from the Npgsql implementation:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Metadata/Internal/TenancyAnnotationProvider.cs
 \begin{sourcecode}[Metadata/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Annotation\allowbreak{}Provider.\allowbreak{}cs]{csharp}
 public class TenancyAnnotationProvider : NpgsqlAnnotationProvider
 {
@@ -73,7 +74,11 @@ public class TenancyAnnotationProvider : NpgsqlAnnotationProvider
         if (!designTime)          // migrations only: the runtime model stays lean
             yield break;
 
-        var entityType = (IEntityType)table.EntityTypeMappings.First().TypeBase;
+        // TPH/table splitting: the type with RLS configuration, not simply the first
+        var entityType = table.EntityTypeMappings
+            .Select(m => (IEntityType)m.TypeBase)
+            .FirstOrDefault(e => e.HasRlsConfiguration())
+            ?? (IEntityType)table.EntityTypeMappings.First().TypeBase;
         foreach (var annotation in entityType.GetAnnotations())
         {
             if (!annotation.Name.StartsWith(RlsAnnotationNames.Prefix,
@@ -131,6 +136,7 @@ There is also only one \code{IMigrations\allowbreak{}Sql\allowbreak{}Generator}.
 derives from the Npgsql generator and extends \code{Create\allowbreak{}Table} and
 \code{Alter\allowbreak{}Table}:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Migrations/Internal/TenancyMigrationsSqlGenerator.cs (strings)
 \begin{sourcecode}[Migrations/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 protected override void Generate(
     CreateTableOperation operation, IModel? model,
@@ -155,7 +161,7 @@ protected override void Generate(
 }
 \end{sourcecode}
 
-\begin{sourcecode}[Migrations/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
+\begin{sourcecode}[Migrations/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}shortened, simplified)]{csharp}
 protected virtual void GenerateRowLevelSecurity(string tableName, string? schema,
     IReadOnlyAnnotatable? previous, IReadOnlyAnnotatable current,
     MigrationCommandListBuilder builder)
@@ -215,6 +221,7 @@ backfills. For these the plugin offers its own operations. They consist of three
 operation class, an extension method on \code{Migration\allowbreak{}Builder} and the SQL
 generation in the generator.
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Migrations/Operations/TenancyOperations.cs
 \begin{sourcecode}[Migrations/\allowbreak{}Operations/\allowbreak{}Tenancy\allowbreak{}Operations.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 public class CreateApplicationRoleOperation : MigrationOperation
 {
@@ -223,6 +230,7 @@ public class CreateApplicationRoleOperation : MigrationOperation
 }
 \end{sourcecode}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Migrations/Operations/TenancyMigrationBuilderExtensions.cs (strings)
 \begin{sourcecode}[Migrations/\allowbreak{}Operations/\allowbreak{}Tenancy\allowbreak{}Migration\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 namespace Microsoft.EntityFrameworkCore.Migrations;      // always imported in migrations
 
@@ -246,7 +254,7 @@ The generator dispatches operations through the central
 \code{Generate(\allowbreak{}Migration\allowbreak{}Operation,\allowbreak{}
 .\allowbreak{}.\allowbreak{}.\allowbreak{})} method. Unknown types go to the base class:
 
-\begin{sourcecode}[Migrations/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+\begin{sourcecode}[Migrations/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}excerpt, simplified)]{csharp}
 protected override void Generate(
     MigrationOperation operation, IModel? model, MigrationCommandListBuilder builder)
 {
@@ -336,6 +344,7 @@ So that users do not need to configure anything, an assembly attribute points to
 The tooling finds it in every assembly the startup project references. The second argument
 restricts loading to contexts with the matching provider:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Properties/AssemblyInfo.cs
 \begin{sourcecode}[Properties/\allowbreak{}Assembly\allowbreak{}Info.\allowbreak{}cs]{csharp}
 [assembly: DesignTimeServicesReference(
     "Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Design.TenancyDesignTimeServices, "
@@ -343,6 +352,7 @@ restricts loading to contexts with the matching provider:
     "Npgsql.EntityFrameworkCore.PostgreSQL")]
 \end{sourcecode}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Design/TenancyDesignTimeServices.cs
 \begin{sourcecode}[Design/\allowbreak{}Tenancy\allowbreak{}Design\allowbreak{}Time\allowbreak{}Services.\allowbreak{}cs]{csharp}
 public class TenancyDesignTimeServices : IDesignTimeServices
 {
@@ -383,7 +393,7 @@ EF Core 10 writes extension methods in the snapshot as static calls
 avoids ambiguities when several providers or plugins define methods with the same name.
 Tests that check the generated code should expect this form.
 
-\begin{sourcecode}[Design/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+\begin{sourcecode}[Design/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}excerpt, simplified)]{csharp}
 public override IReadOnlyList<MethodCallCodeFragment> GenerateFluentApiCalls(
     IEntityType entityType, IDictionary<string, IAnnotation> annotations)
 {
@@ -495,6 +505,7 @@ All three packages set
 The compiler then reports code that uses reflection without annotations. The JSON
 serialization of the policies uses a source generator instead of reflection:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Metadata/RlsPolicy.cs
 \begin{sourcecode}[Metadata/\allowbreak{}Rls\allowbreak{}Policy.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 [JsonSourceGenerationOptions(UseStringEnumConverter = true)]
 [JsonSerializable(typeof(RlsPolicy))]

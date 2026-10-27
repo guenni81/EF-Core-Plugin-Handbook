@@ -64,6 +64,7 @@ zweites Plugin den Generator oder den Prozessor, fehlt das SQL des Knotens still
 Abfrage wirft. \code{Composition\allowbreak{}Matrix\allowbreak{}Tests} zeigt beides
 (Kapitel~\ref{ch:registering-services}).
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Query/Expressions/DistinctFromExpression.cs
 \begin{sourcecode}[Query/\allowbreak{}Expressions/\allowbreak{}Distinct\allowbreak{}From\allowbreak{}Expression.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
 public class DistinctFromExpression : SqlExpression
 {
@@ -121,6 +122,7 @@ Der Translator erzeugt den Knoten und gleicht dabei die Type Mappings beider Sei
 eine Seite ein Mapping (etwa eine Spalte), bekommt die andere dasselbe. So wird aus einer
 Konstante das passende Literal:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Query/DistinctFromTranslator.cs
 \begin{sourcecode}[Query/\allowbreak{}Distinct\allowbreak{}From\allowbreak{}Translator.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 var definition = method.GetGenericMethodDefinition();
 if (definition != IsNotDistinctFromMethod && definition != IsDistinctFromMethod)
@@ -146,6 +148,7 @@ Knoten gibt er an
 nur die Kinder besucht. Ohne eigenen Override entsteht also kein Fehler, sondern \textbf{SQL
 ohne den Operator}. Das Plugin erbt vom Npgsql-Generator:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Query/Internal/TenancyNpgsqlQuerySqlGenerator.cs
 \begin{sourcecode}[Query/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Npgsql\allowbreak{}Query\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
 public class TenancyNpgsqlQuerySqlGenerator : NpgsqlQuerySqlGenerator
 {
@@ -188,6 +191,7 @@ er NULL werden kann. Unbekannte Knoten landen in
 Basisimplementierung eine Exception wirft. Der Prozessor hängt an einer Kette aus drei
 Klassen, die alle ersetzt werden müssen:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Query/Internal/TenancyNpgsqlSqlNullabilityProcessor.cs
 \begin{sourcecode}[Query/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Npgsql\allowbreak{}Sql\allowbreak{}Nullability\allowbreak{}Processor.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
 public class TenancyNpgsqlSqlNullabilityProcessor : NpgsqlSqlNullabilityProcessor
 {
@@ -223,6 +227,7 @@ public class TenancyNpgsqlParameterBasedSqlProcessor : NpgsqlParameterBasedSqlPr
 //   : IRelationalParameterBasedSqlProcessorFactory
 \end{sourcecode}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Infrastructure/TenancyOptionsExtension.cs
 \begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Apply\allowbreak{}Services (\allowbreak{}Ergänzung)]{csharp}
 // 4) Tiefe Erweiterung: eigener SQL-Ausdrucksknoten
 services.Replace(ServiceDescriptor
@@ -248,6 +253,7 @@ services.Replace(ServiceDescriptor
   \code{Directory.\allowbreak{}Build.\allowbreak{}props}.
 \end{note}
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/DeepQueryTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Deep\allowbreak{}Query\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 [Fact]
 public void IsDistinctFrom_in_projection_passes_nullability_processor()
@@ -294,6 +300,7 @@ Das Beispiel ergänzt
 \code{EF.\allowbreak{}Functions.\allowbreak{}Every(\allowbreak{}values)} für PostgreSQLs
 \code{bool\_\allowbreak{}and}:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Query/EveryAggregateTranslator.cs
 \begin{sourcecode}[Query/\allowbreak{}Every\allowbreak{}Aggregate\allowbreak{}Translator.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 public virtual SqlExpression? Translate(MethodInfo method, EnumerableExpression source,
     IReadOnlyList<SqlExpression> arguments,
@@ -351,6 +358,7 @@ Interface-Implementierung:
 modelBuilder.Entity<Contract>().Property(c => c.Mandant).IsTenantProperty();
 \end{sourcecode}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/Metadata/TenancyPropertyBuilderExtensions.cs
 \begin{sourcecode}[Metadata/\allowbreak{}Tenancy\allowbreak{}Property\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}Kernpaket)]{csharp}
 public static PropertyBuilder IsTenantProperty(
     this PropertyBuilder builder, bool isTenant = true)
@@ -382,7 +390,7 @@ public static IConventionPropertyBuilder? IsTenantProperty(
 Die Methode liegt im Kernpaket, weil sie nur Metadaten setzt. Die Conventions beider
 Provider-Pakete suchen die Mandanten-Property über dieselbe Kernfunktion:
 
-\begin{sourcecode}[Metadata/\allowbreak{}Tenancy\allowbreak{}Entity\allowbreak{}Type\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}Kernpaket,\allowbreak{} gekürzt)]{csharp}
+\begin{sourcecode}[Metadata/\allowbreak{}Tenancy\allowbreak{}Entity\allowbreak{}Type\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}Kernpaket,\allowbreak{} gekürzt, vereinfacht)]{csharp}
 public static IReadOnlyProperty? FindTenantPropertyCandidate(
     this IReadOnlyEntityType entityType)
 {
@@ -443,7 +451,7 @@ Einfache Werte schreibt EF automatisch
 hat deshalb die umgekehrte Aufgabe: Er entfernt die RLS-Annotations, die nur Migrations
 brauchen:
 
-\begin{sourcecode}[Design/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}CSharp\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+\begin{sourcecode}[Design/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}CSharp\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}gekürzt, vereinfacht)]{csharp}
 public class TenancyCSharpRuntimeAnnotationCodeGenerator
     : NpgsqlCSharpRuntimeAnnotationCodeGenerator
 {
@@ -521,6 +529,7 @@ erkennen. Der Weg führt über drei Stationen, von denen das Plugin zwei bereits
   (Kapitel~\ref{ch:design-time-services})}
 \end{flowdiagram}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Scaffolding/TenancyDatabaseModelFactory.cs
 \begin{sourcecode}[Scaffolding/\allowbreak{}Tenancy\allowbreak{}Database\allowbreak{}Model\allowbreak{}Factory.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
 public class TenancyDatabaseModelFactory : NpgsqlDatabaseModelFactory
 {
@@ -574,6 +583,7 @@ Code-Generator ohne weitere Anpassung.
   vereinheitlichen, sonst erzeugt die erste Migration ein DROP/CREATE mit gleichem Inhalt.
 \end{note}
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests/AdvancedTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Advanced\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 [Fact]
 public void Scaffolding_reads_rls_and_policies()
@@ -693,7 +703,7 @@ Plugin pro Datenbank tatsächlich neu lösen muss:
 
 \section{Aktivierung über den Provider-Builder}
 
-\begin{sourcecode}[Anwendung und Infrastructure/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+\begin{sourcecode}[Anwendung und Infrastructure/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}gekürzt, vereinfacht)]{csharp}
 services.AddAcmeTenancy<HttpTenantProvider>();                    // Kernpaket
 services.AddDbContext<ShopContext>((sp, o) => o
     .UseSqlServer(connectionString, sql => sql.UseAcmeTenancy(sp)));
@@ -724,7 +734,7 @@ Die Convention vermerkt für SQL Server nur die Mandantenspalte; das SQL entsteh
 Generator. Die Predicate-Funktion ist für alle Tabellen dieselbe und wird idempotent
 angelegt:
 
-\begin{sourcecode}[Migrations/\allowbreak{}Internal/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tenancy\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+\begin{sourcecode}[Migrations/\allowbreak{}Internal/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tenancy\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}Auszug, vereinfacht)]{csharp}
 protected virtual void CreatePolicy(string table, string? schema, string column,
     MigrationCommandListBuilder builder)
 {
@@ -900,6 +910,7 @@ Schema mit Up und Down, das Upgrade einer 10.0-Installation und den zweiten Cont
 
 \section{Laufzeit: derselbe Ablauf, anderer Befehl}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.SqlServer/Runtime/SqlServerTenantSessionInterceptor.cs
 \begin{sourcecode}[Runtime/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs]{csharp}
 public class SqlServerTenantSessionInterceptor : TenantSessionInterceptor
 {
@@ -932,6 +943,7 @@ Scaffolding fehlen dort. Das ist eine Produktentscheidung, kein technisches Hind
 dieser Kapitel lässt sich mit denselben Mustern auf SQL Server übertragen. Die Liste gehört
 in die Dokumentation des Pakets, damit Nutzer wissen, was sie erwarten können.
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests/SqlServerTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Sql\allowbreak{}Server.\allowbreak{}Tests/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 [Fact]
 public async Task Block_predicate_rejects_rows_of_other_tenant()

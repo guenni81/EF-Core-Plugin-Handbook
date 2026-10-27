@@ -162,7 +162,7 @@ The following table assigns each stage the responsible EF component, the interve
 plugin has there, and the chapter that covers it. The grey labels follow the legend of the
 decision guide in chapter~\ref{ch:choosing-the-right-extension-point}.
 
-\begin{datatable}{H{0.70}H{1.05}H{1.00}H{0.25}}
+\begin{datatable}{H{0.93}H{1.40}H{1.33}H{0.34}}
   \textbf{Stage} & \textbf{Responsible} & \textbf{Intervention} & \textbf{Ch.} \\
   \tablehead
   Funcletizer & \code{Expression\allowbreak{}Tree\allowbreak{}Funcletizer} (internal),
@@ -332,6 +332,7 @@ Database functions without a .NET counterpart are declared as extension methods 
 in case someone calls them outside of LINQ. The declaration lives in the core package, the
 translation in the provider package:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/TenancyDbFunctionsExtensions.cs (strings)
 \begin{sourcecode}[Tenancy\allowbreak{}Db\allowbreak{}Functions\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}core package)]{csharp}
 namespace Microsoft.EntityFrameworkCore;
 
@@ -349,7 +350,7 @@ An \code{IMethod\allowbreak{}Call\allowbreak{}Translator} receives every method 
 not know itself. It checks whether it is responsible and then builds a SQL expression tree
 using \code{ISql\allowbreak{}Expression\allowbreak{}Factory}:
 
-\begin{sourcecode}[Query/\allowbreak{}Current\allowbreak{}Tenant\allowbreak{}Translator.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Query/\allowbreak{}Current\allowbreak{}Tenant\allowbreak{}Translator.\allowbreak{}cs (\allowbreak{}simplified)]{csharp}
 public class CurrentTenantTranslator : IMethodCallTranslator
 {
     private static readonly MethodInfo CurrentTenantMethod =
@@ -483,6 +484,7 @@ For properties and fields there is \code{IMember\allowbreak{}Translator}. The sa
 translates \code{tenant\allowbreak{}Id.\allowbreak{}Is\allowbreak{}Empty}. The constant gets
 the column's type mapping so that the literal comes out in the right format:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Query/TenantIdMemberTranslator.cs
 \begin{sourcecode}[Query/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Member\allowbreak{}Translator.\allowbreak{}cs]{csharp}
 public class TenantIdMemberTranslator : IMemberTranslator
 {
@@ -516,7 +518,7 @@ Translators are not registered directly, but through plugin classes that return 
 plugins are \textbf{scoped} (appendix~\ref{app:A}) and can therefore inject scoped services
 such as \code{ISql\allowbreak{}Expression\allowbreak{}Factory}:
 
-\begin{sourcecode}[Query/\allowbreak{}Tenancy\allowbreak{}Translator\allowbreak{}Plugins.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Query/\allowbreak{}Tenancy\allowbreak{}Translator\allowbreak{}Plugins.\allowbreak{}cs (\allowbreak{}simplified)]{csharp}
 public class TenancyMethodCallTranslatorPlugin : IMethodCallTranslatorPlugin
 {
     public TenancyMethodCallTranslatorPlugin(
@@ -886,7 +888,7 @@ options.UseNpgsql(connectionString)
        .UseAcmeTenancy(sp, tenancy => tenancy.VerifyMaterializedTenants());
 \end{sourcecode}
 
-\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Materialization\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}core package,\allowbreak{} shortened)]{csharp}
+\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Materialization\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}core package,\allowbreak{} shortened, simplified)]{csharp}
 public class TenantMaterializationInterceptor : IMaterializationInterceptor
 {
     public virtual InterceptionResult<object> CreatingInstance(
@@ -920,6 +922,7 @@ public class TenantMaterializationInterceptor : IMaterializationInterceptor
 }
 \end{sourcecode}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Infrastructure/TenancyOptionsExtension.cs
 \begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Apply\allowbreak{}Services (\allowbreak{}addition)]{csharp}
 // Optional materialization check (chapter "Materialization: from rows to objects"). A
 // singleton interceptor belongs in the internal provider: one instance per provider,
@@ -965,6 +968,7 @@ per context like the other interceptors. That fails because of the cache key: ev
 gets an internal provider of its own. The obvious second design shares one instance and
 remembers the tenant on the first call to save the lookup per row:
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests/MaterializationTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Materialization\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}WRONG,\allowbreak{} shortened)]{csharp}
 private sealed class RememberingTenantInterceptor : IMaterializationInterceptor
 {

@@ -47,6 +47,7 @@ Plugin, das seine Garantien nur über SaveChanges durchsetzt, hat hier eine Lüc
 Im Beispiel fängt RLS jeden dieser Wege ab, weil die Datenbank die Regeln selbst durchsetzt.
 Ein Integrationstest beweist das, indem er den Interceptor gezielt umgeht:
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests/AdvancedTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Advanced\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 [Fact]
 public async Task ExecuteUpdate_bypasses_interceptor_but_not_rls()
@@ -83,6 +84,7 @@ EF erzeugt Schlüsselwerte entweder in der Datenbank (Identity, Sequenzen) oder 
 selbst, für eigene Typen wie \code{Tenant\allowbreak{}Id} nicht. Ein Plugin schließt diese
 Lücke mit einem Generator, einer Factory und einer Convention:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/ValueGeneration/TenantIdValueGenerator.cs
 \begin{sourcecode}[Value\allowbreak{}Generation/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Value\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}Kernpaket)]{csharp}
 public class TenantIdValueGenerator : ValueGenerator<TenantId>
 {
@@ -93,6 +95,7 @@ public class TenantIdValueGenerator : ValueGenerator<TenantId>
 }
 \end{sourcecode}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/ValueGeneration/TenantIdValueGeneratorFactory.cs
 \begin{sourcecode}[Value\allowbreak{}Generation/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Value\allowbreak{}Generator\allowbreak{}Factory.\allowbreak{}cs (\allowbreak{}Kernpaket)]{csharp}
 public class TenantIdValueGeneratorFactory : ValueGeneratorFactory
 {
@@ -102,6 +105,7 @@ public class TenantIdValueGeneratorFactory : ValueGeneratorFactory
 }
 \end{sourcecode}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/Conventions/TenantIdKeyValueGenerationConvention.cs
 \begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Key\allowbreak{}Value\allowbreak{}Generation\allowbreak{}Convention.\allowbreak{}cs (\allowbreak{}Kernpaket)]{csharp}
 public virtual void ProcessModelFinalizing(
     IConventionModelBuilder modelBuilder,
@@ -216,6 +220,7 @@ und schreibt EF nicht über Konverter, sondern über den
 (Kapitel~\ref{ch:type-mappings-and-value-converters}). Fehlt er, scheitert der Modellbau.
 Unit- und Integrationstest des Beispiels prüfen beide Seiten:
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/JsonTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Json\allowbreak{}Tests.\allowbreak{}cs]{csharp}
 using var ctx = Contexts.Create(model: m =>
     m.Entity<Shipment>().OwnsOne(s => s.Details, d => d.ToJson()));
@@ -243,7 +248,7 @@ EF baut das Modell einmal pro Context-Typ und cached es
 etwa einem Schema pro Mandant, muss der Cache-Schlüssel diese Daten enthalten. Dafür gibt es
 \code{IModel\allowbreak{}Cache\allowbreak{}Key\allowbreak{}Factory}:
 
-\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Schema\allowbreak{}Per\allowbreak{}Tenant\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Schema\allowbreak{}Per\allowbreak{}Tenant\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}gekürzt, vereinfacht)]{csharp}
 public sealed class SchemaModelCacheKeyFactory : IModelCacheKeyFactory
 {
     public object Create(DbContext context, bool designTime)
@@ -329,6 +334,7 @@ Eigene Operationen, die selbst einen \code{DO \$\$}-Block erzeugen, stecken dann
 funktioniert, weil die Dollar-Quotes verschiedene Tags haben. Solche Annahmen gehören in
 einen Test:
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests/AdvancedTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Advanced\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 var script = db.GetService<IMigrator>()
     .GenerateScript(options: MigrationsSqlGenerationOptions.Idempotent);
@@ -597,6 +603,7 @@ Die Lösung ist, den Mandanten zum Teil jeder Referenz zu machen. Der Prinzipal 
 alternativen Schlüssel aus Mandant und ID, die abhängige Seite einen Fremdschlüssel aus ihrer
 Mandantenspalte und der ID:
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests/RelationshipTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Relationship\allowbreak{}Tests.\allowbreak{}cs › Tenant\allowbreak{}Safe\allowbreak{}Context]{csharp}
 modelBuilder.Entity<Customer>(b =>
 {
@@ -827,6 +834,7 @@ SaveChanges-Interceptor legt seine Liste erst an, wenn er tatsächlich eine mand
 dokumentiert ist. Solche Annahmen sollte man messen, nicht raten. Das Repository enthält ein
 BenchmarkDotNet-Projekt für die SaveChanges-Logik; es läuft ohne Datenbank:
 
+% source: benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/SaveChangesInterceptorBenchmark.cs
 \begin{sourcecode}[benchmarks/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Save\allowbreak{}Changes\allowbreak{}Interceptor\allowbreak{}Benchmark.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
 [MemoryDiagnoser]
 public class SaveChangesInterceptorBenchmark
@@ -897,6 +905,7 @@ Das Beispiel \code{samples/\allowbreak{}Shop\allowbreak{}Api} zeigt den Weg vom 
 eine Web-API. Der Mandant kommt aus dem Claim \code{tenant\_\allowbreak{}id} des
 angemeldeten Benutzers:
 
+% source: samples/ShopApi/HttpTenantProvider.cs
 \begin{sourcecode}[samples/\allowbreak{}Shop\allowbreak{}Api/\allowbreak{}Http\allowbreak{}Tenant\allowbreak{}Provider.\allowbreak{}cs]{csharp}
 public sealed class HttpTenantProvider : ITenantProvider
 {
@@ -923,6 +932,7 @@ public sealed class HttpTenantProvider : ITenantProvider
 }
 \end{sourcecode}
 
+% source: samples/ShopApi/Program.cs
 \begin{sourcecode}[samples/\allowbreak{}Shop\allowbreak{}Api/\allowbreak{}Program.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddAcmeTenancy<HttpTenantProvider>();
@@ -999,6 +1009,7 @@ verarbeitender Mandanten. Der \code{Ambient\allowbreak{}Tenant\allowbreak{}Provi
 Beispiels speichert ihn in einem \code{Async\allowbreak{}Local}, das mit dem asynchronen
 Kontrollfluss mitwandert:
 
+% source: samples/ShopSample/AmbientTenantProvider.cs
 \begin{sourcecode}[samples/\allowbreak{}Shop\allowbreak{}Sample/\allowbreak{}Ambient\allowbreak{}Tenant\allowbreak{}Provider.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
 public sealed class AmbientTenantProvider : ITenantProvider
 {
@@ -1070,9 +1081,26 @@ jobs:
     container: texlive/texlive@sha256:540d…   # TeX Live 2026, per Digest fixiert
     steps:
       # ... checkout ...
-      - run: python3 check_code.py     # scheitert an zu langen Codezeilen
+      - run: python3 check_code.py       # Zeilenlänge, Auszüge gegen die Quellen
+      - run: python3 check_structure.py  # beide Fassungen gleich, Verweise, Tabellen
       - run: latexmk EF-Core-Plugin-Handbuch.tex
+
+  consumer:                            # die Pakete als Verbraucher prüfen
+    steps:
+      - run: eng/consumer-test/run.sh --nativeaot
 \end{sourcecode}
+
+Codeauszüge veralten leise, wenn sich der Code ändert. Deshalb bindet eine Kommentarzeile
+\code{\% source: <Pfad>} direkt vor dem Listing einen Auszug an seine Quelldatei, und
+\code{check\_\allowbreak{}code.\allowbreak{}py} vergleicht beide: Kommentare und
+Auslassungen (\code{...}) zählen nicht, sodass die deutsche Fassung Kommentare übersetzen und
+Auszüge kürzen darf; jede übrige Zeile muss in derselben Reihenfolge in der Quelle stehen,
+Zeilenumbrüche dürfen abweichen. Mit dem Zusatz \code{(strings)} bleiben auch übersetzte
+Meldungen außen vor. Ein Auszug, dessen Titel eine Datei des Repositorys nennt und der nicht
+gebunden ist, muss „vereinfacht“ heißen. \code{check\_\allowbreak{}structure.\allowbreak{}py}
+prüft, dass beide Fassungen pro Kapitel dieselben Abschnitte, Listings, Bindungen, Tabellen und
+Hinweisboxen haben, dass jedes Verweisziel existiert und die Spaltenbreiten jeder Tabelle
+aufgehen.
 
 Das Beispiel baut nur gegen stabile Versionen (.NET 10, EF Core 10). Ein zweiter Workflow,
 \code{compatibility.\allowbreak{}yml}, läuft wöchentlich und testet gegen die neuesten

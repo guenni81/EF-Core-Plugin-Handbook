@@ -167,7 +167,7 @@ den ein Plugin dort hat, und das Kapitel, das ihn behandelt. Die Angaben in grau
 folgen der Legende der Entscheidungshilfe in
 Kapitel~\ref{ch:choosing-the-right-extension-point}.
 
-\begin{datatable}{H{0.70}H{1.05}H{1.00}H{0.25}}
+\begin{datatable}{H{0.93}H{1.40}H{1.33}H{0.34}}
   \textbf{Stufe} & \textbf{Verantwortlich} & \textbf{Eingriff} & \textbf{Kap.} \\
   \tablehead
   Funcletizer & \code{Expression\allowbreak{}Tree\allowbreak{}Funcletizer} (intern), fragt
@@ -336,6 +336,7 @@ Datenbankfunktionen, die keine Entsprechung in .NET haben, werden als Extension-
 eine Exception für den Fall, dass jemand sie außerhalb von LINQ aufruft. Die Deklaration
 liegt im Kernpaket, die Übersetzung im Provider-Paket:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/TenancyDbFunctionsExtensions.cs (strings)
 \begin{sourcecode}[Tenancy\allowbreak{}Db\allowbreak{}Functions\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}Kernpaket)]{csharp}
 namespace Microsoft.EntityFrameworkCore;
 
@@ -353,7 +354,7 @@ Ein \code{IMethod\allowbreak{}Call\allowbreak{}Translator} bekommt jeden Methode
 EF nicht selbst kennt. Er prüft, ob er zuständig ist, und baut dann aus
 \code{ISql\allowbreak{}Expression\allowbreak{}Factory} einen SQL-Ausdrucksbaum:
 
-\begin{sourcecode}[Query/\allowbreak{}Current\allowbreak{}Tenant\allowbreak{}Translator.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Query/\allowbreak{}Current\allowbreak{}Tenant\allowbreak{}Translator.\allowbreak{}cs (\allowbreak{}vereinfacht)]{csharp}
 public class CurrentTenantTranslator : IMethodCallTranslator
 {
     private static readonly MethodInfo CurrentTenantMethod =
@@ -491,6 +492,7 @@ Für Properties und Felder gibt es \code{IMember\allowbreak{}Translator}. Das Be
 übersetzt \code{tenant\allowbreak{}Id.\allowbreak{}Is\allowbreak{}Empty}. Die Konstante
 bekommt das Type Mapping der Spalte, damit das Literal im richtigen Format entsteht:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Query/TenantIdMemberTranslator.cs
 \begin{sourcecode}[Query/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Member\allowbreak{}Translator.\allowbreak{}cs]{csharp}
 public class TenantIdMemberTranslator : IMemberTranslator
 {
@@ -524,7 +526,7 @@ Translators werden nicht direkt registriert, sondern über Plugin-Klassen, die e
 liefern. Die Plugins sind \textbf{Scoped} (Anhang~\ref{app:A}) und können daher
 Scoped-Dienste wie \code{ISql\allowbreak{}Expression\allowbreak{}Factory} injizieren:
 
-\begin{sourcecode}[Query/\allowbreak{}Tenancy\allowbreak{}Translator\allowbreak{}Plugins.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Query/\allowbreak{}Tenancy\allowbreak{}Translator\allowbreak{}Plugins.\allowbreak{}cs (\allowbreak{}vereinfacht)]{csharp}
 public class TenancyMethodCallTranslatorPlugin : IMethodCallTranslatorPlugin
 {
     public TenancyMethodCallTranslatorPlugin(
@@ -902,7 +904,7 @@ options.UseNpgsql(connectionString)
        .UseAcmeTenancy(sp, tenancy => tenancy.VerifyMaterializedTenants());
 \end{sourcecode}
 
-\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Materialization\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}Kernpaket,\allowbreak{} gekürzt)]{csharp}
+\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Materialization\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}Kernpaket,\allowbreak{} gekürzt, vereinfacht)]{csharp}
 public class TenantMaterializationInterceptor : IMaterializationInterceptor
 {
     public virtual InterceptionResult<object> CreatingInstance(
@@ -935,6 +937,7 @@ public class TenantMaterializationInterceptor : IMaterializationInterceptor
 }
 \end{sourcecode}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Infrastructure/TenancyOptionsExtension.cs
 \begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Apply\allowbreak{}Services (\allowbreak{}Ergänzung)]{csharp}
 // Optionale Prüfung beim Laden: ein Singleton-Interceptor im internen Provider, eine
 // Instanz pro Provider. Die Einstellung steht im Settings-Record und damit im Hash.
@@ -981,6 +984,7 @@ Context bekommt einen eigenen internen Provider. Der naheliegende zweite Entwurf
 Instanz und merkt sich den Mandanten beim ersten Aufruf, um das Nachschlagen pro Zeile zu
 sparen:
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests/MaterializationTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Materialization\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}FALSCH,\allowbreak{} gekürzt)]{csharp}
 private sealed class RememberingTenantInterceptor : IMaterializationInterceptor
 {

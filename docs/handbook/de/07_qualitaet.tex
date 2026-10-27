@@ -37,7 +37,7 @@ Tests bauen viele Contexts mit unterschiedlichem
 cached, muss jeder Test einen eigenen Provider bekommen; dafür gibt es
 \code{Enable\allowbreak{}Service\allowbreak{}Provider\allowbreak{}Caching(\allowbreak{}false)}:
 
-\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Test\allowbreak{}Model.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Test\allowbreak{}Model.\allowbreak{}cs (\allowbreak{}gekürzt, vereinfacht)]{csharp}
 public static TestContext Create(
     Action<TenancyOptionsBuilder>? tenancy = null,
     Action<ModelBuilder>? model = null,
@@ -141,6 +141,7 @@ Der wertvollste Test für Design-Time-Code: Snapshot generieren, mit Roslyn komp
 Modell daraus bauen und gegen das Original diffen. Jede Abweichung zwischen Code-Generator
 und Fluent API würde sonst bei jedem Nutzer eine Phantom-Migration erzeugen:
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/SnapshotTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Snapshot\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 [Fact]
 public void Snapshot_roundtrip_produces_no_differences()
@@ -168,6 +169,7 @@ einen Container, legt das Schema mit \code{Ensure\allowbreak{}Created} an (inklu
 Kapitel~\ref{ch:how-migrations-work}), führt die eigenen Migrations-Operationen real aus und
 verbindet die Tests mit einer eingeschränkten Rolle:
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests/PostgresFixture.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Postgres\allowbreak{}Fixture.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 await owner.Database.EnsureCreatedAsync();          // RLS, Policies, Index
 
@@ -181,7 +183,7 @@ await owner.GetService<IMigrationCommandExecutor>().ExecuteNonQueryAsync(
     new MigrationExecutionState(), commitTransaction: true);
 \end{sourcecode}
 
-\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}Auszug, vereinfacht)]{csharp}
 [Fact]
 public async Task Database_rejects_rows_of_other_tenant()
 {
@@ -285,6 +287,7 @@ serialisierte Format gehört deshalb genauso zur öffentlichen API wie die Metho
   EF-Major-Upgrade, wenn Anwender ohnehin mit Migrationen rechnen. \\
 \end{datatable}
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/AnnotationFormatTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Annotation\allowbreak{}Format\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 [Fact]
 public void Serialized_policy_format_is_stable()
@@ -383,7 +386,7 @@ brauchen sie? Im Beispiel verlangt EF Core~11 \code{net11.\allowbreak{}0}, also 
 Target-Framework, SDK und Pakete gemeinsam; ein neues EF-Paket auf dem alten
 Target-Framework ließe sich nicht einmal wiederherstellen.
 
-\begin{datatable}{H{0.18}H{0.95}H{1.32}H{0.55}}
+\begin{datatable}{H{0.24}H{1.27}H{1.76}H{0.73}}
   \textbf{Nr.} & \textbf{Schritt} & \textbf{Vorgehen} & \textbf{Im Beispiel} \\
   \tablehead
   1 & Pakete aktualisieren & Wie oben, dazu Begleitpakete, die mit EF erscheinen
@@ -475,7 +478,7 @@ Die Versionsbereiche lösen nur einen Teil des Problems. NuGet nimmt aus einem B
 gegen den Anfang der Linie, während Anwender neuere Patches bekommen. Die CI des Beispiels
 arbeitet deshalb mit drei Kanälen:
 
-\begin{datatable}{H{0.65}H{0.95}H{0.80}H{0.60}}
+\begin{datatable}{H{0.87}H{1.27}H{1.07}H{0.79}}
   \textbf{Kanal} & \textbf{Auslöser und Pakete} & \textbf{Zweck} & \textbf{Bei Fehler} \\
   \tablehead
   Regulär (\code{ci.\allowbreak{}yml}) & Jeder Push und Pull Request; niedrigste Version des
@@ -618,9 +621,11 @@ welche Einschränkungen bestehen (Pooling) und welche Sicherheitsannahmen gelten
 % ------------------------------------------------------------
 \chapter{Die Checkliste von A bis Z}\label{ch:the-checklist-from-a-to}
 
-Für jedes neue Plugin, in der Reihenfolge der Entwicklung:
+Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst eine Regel zusammen; die Begründung steht in den Kapiteln, die unter jeder Überschrift genannt sind.
 
 \section{Architektur}
+
+\noindent Details: Kapitel~\ref{ch:the-sample-scenario}, \ref{ch:choosing-the-right-extension-point}.
 
 \begin{checklist}
   \item Stufe festlegen: Hilfsmethoden, Modell-Helfer, echtes Plugin oder Provider?
@@ -633,6 +638,8 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung:
 
 \section{Options}
 
+\noindent Details: Kapitel~\ref{ch:the-options-extension}.
+
 \begin{checklist}
   \item Extension immutable mit Kopierkonstruktor und virtuellem Clone.
   \item Alle modellrelevanten Optionen im Hash, nichts, was pro Context variiert.
@@ -643,6 +650,8 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung:
 \end{checklist}
 
 \section{Dienste}
+
+\noindent Details: Kapitel~\ref{ch:registering-services}, \ref{ch:state-lifetimes-and-thread-safety}.
 
 \begin{checklist}
   \item Registrierung über den ServicesBuilder (Lebensdauern aus EFs Tabelle).
@@ -658,6 +667,8 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung:
 
 \section{Modell}
 
+\noindent Details: Kapitel~\ref{ch:annotations-and-fluent-api}, \ref{ch:conventions}, \ref{ch:model-validation}.
+
 \begin{checklist}
   \item Annotations mit Präfix, nur einfache Werte, keine Defaults speichern.
   \item Fluent API nicht-generisch implementieren, generisch delegieren.
@@ -665,18 +676,25 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung:
   \item Conventions bei ModelFinalizing, wenn sie vom fertigen Modell abhängen.
   \item Attribute im Kernpaket, Attribut-Conventions im Provider-Paket.
   \item Validierung als IModelFinalizedConvention: Fehler werfen, Fragwürdiges warnen.
+  \item Tabellenabbildungen gegen die Unterstützungsmatrix prüfen und nicht unterstützte beim
+    Modellbau ablehnen (Seite~\pageref{sec:supported-table-mappings}).
 \end{checklist}
 
 \section{Type Mappings}
+
+\noindent Details: Kapitel~\ref{ch:type-mappings-and-value-converters}.
 
 \begin{checklist}
   \item Geschützter Parameter-Konstruktor und Clone-Überschreibung.
   \item Literal-Erzeugung für Modell- und Provider-Typ.
   \item Öffentliche statische Default-Property, gemeinsame Konverter-Instanz.
+  \item Gemeinsame Value-Comparer-Instanzen, sonst erzeugt EF sie per Reflection (NativeAOT).
   \item JsonValueReaderWriter mit Instance und ConstructorExpression.
 \end{checklist}
 
 \section{Abfragen}
+
+\noindent Details: Kapitel~\ref{ch:the-query-pipeline}, \ref{ch:translating-methods-and-members}.
 
 \begin{checklist}
   \item EF.Functions-Methoden im Kern, Übersetzung im Provider-Paket.
@@ -687,8 +705,12 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung:
 
 \section{Laufzeit}
 
+\noindent Details: Kapitel~\ref{ch:interceptors}, \ref{ch:diagnostics-and-logging}.
+
 \begin{checklist}
   \item Interceptors synchron und asynchron implementieren.
+  \item Tracking-Markierung von tatsächlicher Wertänderung unterscheiden
+    (Seite~\pageref{sec:tracking-flag-versus-value}).
   \item Singleton-Interceptors zustandslos und thread-sicher.
   \item Singleton-Interceptors in ApplyServices registrieren oder als eine geteilte Instanz
     übergeben, nie pro Context neu; Anfragedaten pro Aufruf über den Context holen.
@@ -699,15 +721,21 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung:
 
 \section{Migrations \& Design-Time}
 
+\noindent Details: Kapitel~\ref{ch:how-migrations-work}, \ref{ch:design-time-services}.
+
 \begin{checklist}
   \item Deklarativ über Annotation-Provider (nur Design-Time) und SQL-Generator.
   \item Bezeichner maskieren, Literale über Type Mappings, selbst erzeugtes SQL validieren.
   \item Eigene Operationen idempotent, Extensions im Migrations-Namespace.
+  \item Schemagebundene Objekte bei Umbenennungen vor der Änderung entfernen und danach mit
+    den endgültigen Namen neu anlegen (Seite~\pageref{sec:sqlserver-schema-bound-changes}).
   \item DesignTimeServicesReference mit forProvider; Code-Generator entfernt Annotations.
   \item Compiled Models prüfen: Default, Instance, Laufzeit-Annotations.
 \end{checklist}
 
 \section{Qualität}
+
+\noindent Details: Kapitel~\ref{ch:test-strategy}, \ref{ch:versioning-and-compatibility}, \ref{ch:packaging-and-documentation}.
 
 \begin{checklist}
   \item Modell-, SQL-, Snapshot-Roundtrip- und Integrationstests.
@@ -715,6 +743,8 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung:
   \item Versionsbereich je EF-Major, CI gegen neueste Patches und Previews, EF1001 bewusst;
     Upgrades nach dem Playbook (Kapitel~\ref{ch:versioning-and-compatibility}).
   \item XML-Doku, SourceLink, Symbole, README, CHANGELOG, Einschränkungen dokumentiert.
+  \item Die Pakete als Verbraucher prüfen: Tooling, Compiled Model, NativeAOT
+    (Seite~\pageref{sec:consumer-test}).
   \item Serialisierte Annotation-Formate mit Golden-Value-Tests festschreiben.
   \item Zusammen mit verbreiteten Plugins testen (Naming Conventions, Decorators) und die
     Koexistenz mit einem zweiten Plugin in beiden Reihenfolgen prüfen
@@ -722,6 +752,8 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung:
 \end{checklist}
 
 \section{Fortgeschritten (Teil~\ref{part:VIII})}
+
+\noindent Details: Kapitel~\ref{ch:row-level-security-in-production}, \ref{ch:tenant-safe-relationships}, \ref{ch:retrofitting-and-operating}.
 
 \begin{checklist}
   \item Wege dokumentieren, die Interceptors umgehen (ExecuteUpdate, rohes SQL).
@@ -732,12 +764,18 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung:
   \item Betriebsannahmen dokumentieren (Rollen, Pooling, Transaction-Pooling).
   \item Context-Lebensdauern dokumentieren: Factories, Hintergrundjobs, offene Verbindungen.
   \item Mandantenübergreifender Zugriff nur über eigene Rollen, nie über App-Schalter.
+  \item Bedrohungsmodell dokumentieren: was geschützt ist und was nicht
+    (Seite~\pageref{sec:threat-model}).
+  \item Beziehungen mandantensicher: zusammengesetzte Fremdschlüssel, eindeutig pro Mandant.
+  \item Bestehende Tabellen in zwei Migrationen mit Wächter nachrüsten.
   \item Heiße Pfade (Interceptors) messen, nicht vermuten.
   \item CI mit Patch-Kanal, Preview-Kanal nur als Frühwarnung, Public-API-Analyzer als
     Fehler.
 \end{checklist}
 
 \section{Tiefe Erweiterungen (Teil~\ref{part:IX})}
+
+\noindent Details: Kapitel~\ref{ch:custom-sql-expression-nodes}, \ref{ch:a-second-provider-sql-server}.
 
 \begin{checklist}
   \item Eigene SQL-Knoten: VisitChildren, Update, Quote, Print, Equals/GetHashCode.

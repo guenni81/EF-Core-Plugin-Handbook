@@ -69,6 +69,7 @@ anderen Mandanten geschrieben oder umgehängt werden. Das ergänzt RLS (Defense 
 liefert verständlichere Fehler als die Datenbank.
 Kapitel~\ref{ch:bulk-operations-and-the-limits} zeigt, welche Wege an ihm vorbeiführen:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/Interceptors/TenantSaveChangesInterceptor.cs
 \begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Save\allowbreak{}Changes\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}1/\allowbreak{}2)]{csharp}
 public class TenantSaveChangesInterceptor : SaveChangesInterceptor
 {
@@ -220,7 +221,7 @@ Event-Daten
 (\code{context.\allowbreak{}Get\allowbreak{}Service<\allowbreak{}T>(\allowbreak{})}) aus dem
 \emph{internen} Provider, den Mandanten aus dem \emph{App}-Container:
 
-\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}Kern),\allowbreak{} Runtime/\allowbreak{}Tenant\allowbreak{}Connection\allowbreak{}Interceptor.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}Kern),\allowbreak{} Runtime/\allowbreak{}Tenant\allowbreak{}Connection\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}vereinfacht)]{csharp}
 // Kernpaket
 public abstract class TenantSessionInterceptor : DbConnectionInterceptor
 {
@@ -311,7 +312,7 @@ umgehen ihn, und beide entstehen leicht aus Versehen:
   aufrufen \\
 \end{datatable}
 
-\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Connection\allowbreak{}Lifetime\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Connection\allowbreak{}Lifetime\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}gekürzt, vereinfacht)]{csharp}
 // Bereits offen, mit einem Session-Wert aus früherer Arbeit (Mandant B)
 await using var connection = new NpgsqlConnection(appConnectionString);
 await connection.OpenAsync();
@@ -335,6 +336,7 @@ await db.Database.ApplyTenantSessionAsync();                  // Session jetzt: 
 var orders = await db.Orders.ToListAsync();                   // die Zeilen von Mandant A
 \end{sourcecode}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/Interceptors/TenantSessionInterceptor.cs
 \begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 public virtual async Task<bool> ApplyToOpenConnectionAsync(
     DbContext context, CancellationToken cancellationToken = default)
@@ -388,6 +390,7 @@ per \code{Configure\allowbreak{}Warnings} ignorieren, protokollieren oder zu Feh
 
 \section{Event-IDs}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/Diagnostics/TenancyEventId.cs
 \begin{sourcecode}[Diagnostics/\allowbreak{}Tenancy\allowbreak{}Event\allowbreak{}Id.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
 public static class TenancyEventId
 {
@@ -423,6 +426,7 @@ Meldungsvorlage und das Warnverhalten aus den Options. EF cached seine Definitio
 internem Provider; das Plugin macht es genauso mit einer eigenen Klasse, die als Singleton
 registriert ist (Kapitel~\ref{ch:registering-services}):
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/Diagnostics/TenancyLoggingDefinitions.cs (strings)
 \begin{sourcecode}[Diagnostics/\allowbreak{}Tenancy\allowbreak{}Logging\allowbreak{}Definitions.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 public class TenancyLoggingDefinitions
 {
@@ -454,7 +458,7 @@ Die eigentliche Log-Methode folgt exakt dem Muster aus EFs
 \code{Core\allowbreak{}Logger\allowbreak{}Extensions}: erst klassisches Logging, dann die
 Ereignisdaten für DiagnosticSource und \code{Log\allowbreak{}To}:
 
-\begin{sourcecode}[Diagnostics/\allowbreak{}Tenancy\allowbreak{}Logger\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+\begin{sourcecode}[Diagnostics/\allowbreak{}Tenancy\allowbreak{}Logger\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}Auszug, vereinfacht)]{csharp}
 private static void LogEntityType(
     IDiagnosticsLogger<DbLoggerCategory.Model> diagnostics,
     EventDefinition<string> definition,

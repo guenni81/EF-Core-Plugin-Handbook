@@ -52,8 +52,10 @@ jobs:
         working-directory: docs/handbook
     steps:
       - uses: actions/checkout@v4
-      - name: Check code excerpts
+      - name: Check code excerpts (line length, bound excerpts against the source files)
         run: python3 check_code.py
+      - name: Check structure (editions in sync, references, table widths)
+        run: python3 check_structure.py
       - name: Build PDFs (German and English)
         run: |
           latexmk EF-Core-Plugin-Handbuch.tex

@@ -39,7 +39,7 @@ compiled models) can work with them.
   diff shows exactly which one changed. \\
 \end{datatable}
 
-\begin{sourcecode}[Metadata/\allowbreak{}Rls\allowbreak{}Annotation\allowbreak{}Names.\allowbreak{}cs,\allowbreak{} Metadata/\allowbreak{}Rls\allowbreak{}Policy.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
+\begin{sourcecode}[Metadata/\allowbreak{}Rls\allowbreak{}Annotation\allowbreak{}Names.\allowbreak{}cs,\allowbreak{} Metadata/\allowbreak{}Rls\allowbreak{}Policy.\allowbreak{}cs (\allowbreak{}shortened, simplified)]{csharp}
 public static class RlsAnnotationNames
 {
     public const string Prefix = "Acme:Rls:";
@@ -69,6 +69,7 @@ class lives in the namespace
 \code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core} so it is
 available everywhere without a \code{using}.
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Builders/RlsEntityTypeBuilderExtensions.cs
 \begin{sourcecode}[Builders/\allowbreak{}Rls\allowbreak{}Entity\allowbreak{}Type\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
 namespace Microsoft.EntityFrameworkCore;
 
@@ -112,6 +113,7 @@ Nested configuration such as \code{Has\allowbreak{}Policy} accepts an
 rules already while the model is built. A mistake like “INSERT policy with USING” therefore
 surfaces on the application's first start, not when the migration runs in production:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Builders/PolicyBuilder.cs (strings)
 \begin{sourcecode}[Builders/\allowbreak{}Policy\allowbreak{}Builder.\allowbreak{}cs › Build]{csharp}
 internal RlsPolicy Build()
 {
@@ -153,6 +155,7 @@ plugins set sensible defaults that users can always override:
 For custom conventions the plugin therefore also offers overloads on the convention builder.
 They return \code{null} when a stronger source decided otherwise:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Builders/RlsEntityTypeBuilderExtensions.cs
 \begin{sourcecode}[Builders/\allowbreak{}Rls\allowbreak{}Entity\allowbreak{}Type\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs › convention variant]{csharp}
 public static IConventionEntityTypeBuilder? HasRowLevelSecurity(
     this IConventionEntityTypeBuilder builder,
@@ -264,6 +267,7 @@ convention set and adds its own conventions.
 \code{Convention\allowbreak{}Set.\allowbreak{}Add} registers a convention in all lists whose
 interfaces it implements, each time at the end:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Conventions/TenancyConventionSetPlugin.cs
 \begin{sourcecode}[Conventions/\allowbreak{}Tenancy\allowbreak{}Convention\allowbreak{}Set\allowbreak{}Plugin.\allowbreak{}cs]{csharp}
 public class TenancyConventionSetPlugin : IConventionSetPlugin
 {
@@ -320,7 +324,7 @@ chapter~\ref{ch:property-level-fluent-api-and}), enables RLS with a policy, crea
 index, sets a runtime annotation for the SaveChanges interceptor and optionally a query
 filter:
 
-\begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Convention.\allowbreak{}cs › Process\allowbreak{}Model\allowbreak{}Finalizing]{csharp}
+\begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Convention.\allowbreak{}cs › Process\allowbreak{}Model\allowbreak{}Finalizing (\allowbreak{}simplified)]{csharp}
 public virtual void ProcessModelFinalizing(
     IConventionModelBuilder modelBuilder,
     IConventionContext<IConventionModelBuilder> context)
@@ -364,6 +368,7 @@ public virtual void ProcessModelFinalizing(
 }
 \end{sourcecode}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Conventions/TenantIsolationConvention.cs
 \begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Convention.\allowbreak{}cs › Apply\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security]{csharp}
 protected virtual void ApplyRowLevelSecurity(
     IConventionEntityType entityType,
@@ -487,6 +492,7 @@ built as an expression tree and registered as a \textbf{named filter}, new in EF
 Named filters coexist with the user's own filters and can be switched off selectively with
 \code{Ignore\allowbreak{}Query\allowbreak{}Filters(\allowbreak{}[\textquotedbl{}Acme.\allowbreak{}Tenancy\textquotedbl{}])}.
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Conventions/TenantIsolationConvention.cs
 \begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Convention.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 protected virtual void EnsureTenantIndex(
     IConventionEntityType entityType, IConventionProperty property)
@@ -551,6 +557,7 @@ Data annotations are evaluated with an attribute convention. EF provides the bas
 which finds the attribute and only asks for the reaction. The value is set with
 \code{from\allowbreak{}Data\allowbreak{}Annotation: true} so the Fluent API can override it:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Conventions/NoTenantIsolationAttributeConvention.cs
 \begin{sourcecode}[Conventions/\allowbreak{}No\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Attribute\allowbreak{}Convention.\allowbreak{}cs]{csharp}
 public class NoTenantIsolationAttributeConvention
     : TypeAttributeConventionBase<NoTenantIsolationAttribute>
@@ -585,7 +592,7 @@ belongs to the provider. For plugins, an
 \code{IModel\allowbreak{}Finalized\allowbreak{}Convention} is the better place: it runs on
 the finished model and collides with nobody.
 
-\begin{sourcecode}[Conventions/\allowbreak{}Tenancy\allowbreak{}Model\allowbreak{}Validation\allowbreak{}Convention.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Conventions/\allowbreak{}Tenancy\allowbreak{}Model\allowbreak{}Validation\allowbreak{}Convention.\allowbreak{}cs (\allowbreak{}simplified)]{csharp}
 public virtual IModel ProcessModelFinalized(IModel model)
 {
     foreach (var entityType in model.GetEntityTypes())
@@ -637,7 +644,7 @@ options:
 The strongly typed \code{Tenant\allowbreak{}Id} and its converter live in the core package.
 The converter has a shared instance; the section on compiled models explains why.
 
-\begin{sourcecode}[Tenant\allowbreak{}Id.\allowbreak{}cs,\allowbreak{} Tenant\allowbreak{}Id\allowbreak{}Converter.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
+\begin{sourcecode}[Tenant\allowbreak{}Id.\allowbreak{}cs,\allowbreak{} Tenant\allowbreak{}Id\allowbreak{}Converter.\allowbreak{}cs (\allowbreak{}shortened, simplified)]{csharp}
 public readonly record struct TenantId(Guid Value)
 {
     public static TenantId Empty => default;
@@ -658,7 +665,7 @@ public sealed class TenantIdConverter : ValueConverter<TenantId, Guid>
 
 \section{The type mapping}
 
-\begin{sourcecode}[Storage/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Type\allowbreak{}Mapping.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Storage/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Type\allowbreak{}Mapping.\allowbreak{}cs (\allowbreak{}simplified)]{csharp}
 public class TenantIdTypeMapping : RelationalTypeMapping
 {
     // Required for compiled models: public static Default property
@@ -709,7 +716,7 @@ behavior, for example literal generation.
 \emph{before} falling back to the provider's mappings. A plugin returns \code{null} when it
 is not responsible:
 
-\begin{sourcecode}[Storage/\allowbreak{}Tenancy\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source\allowbreak{}Plugin.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Storage/\allowbreak{}Tenancy\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source\allowbreak{}Plugin.\allowbreak{}cs (\allowbreak{}simplified)]{csharp}
 public class TenancyTypeMappingSourcePlugin : IRelationalTypeMappingSourcePlugin
 {
     public virtual RelationalTypeMapping? FindMapping(
@@ -743,6 +750,7 @@ For JSON columns a mapping needs a
 read, write, and describe how it is created in generated code. The pattern follows EF's own
 \code{Json\allowbreak{}Guid\allowbreak{}Reader\allowbreak{}Writer}:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/TenantIdJsonReaderWriter.cs
 \begin{sourcecode}[Tenant\allowbreak{}Id\allowbreak{}Json\allowbreak{}Reader\allowbreak{}Writer.\allowbreak{}cs]{csharp}
 public sealed class TenantIdJsonReaderWriter : JsonValueReaderWriter<TenantId>
 {

@@ -26,6 +26,7 @@ and \code{Get\allowbreak{}Hash\allowbreak{}Code} over all fields, which is exact
 cache key needs. New settings are added to the record without touching hashing or
 comparison.
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Infrastructure/TenancySettings.cs
 \begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Settings.\allowbreak{}cs]{csharp}
 public sealed record TenancySettings
 {
@@ -47,7 +48,7 @@ every change creates a copy. What happens otherwise is shown by failure case~4 i
 chapter~\ref{ch:state-lifetimes-and-thread-safety}: new contexts silently keep working with the old value. The pattern from EF Core itself: a protected copy constructor
 and a virtual \code{Clone} method, so derived extensions clone their own type.
 
-\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs (\allowbreak{}excerpt, simplified)]{csharp}
 public class TenancyOptionsExtension : IDbContextOptionsExtension
 {
     private DbContextOptionsExtensionInfo? _info;
@@ -86,7 +87,7 @@ fast pre-filter and
 \code{Should\allowbreak{}Use\allowbreak{}Same\allowbreak{}Service\allowbreak{}Provider} as
 the exact comparison.
 
-\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Extension\allowbreak{}Info]{csharp}
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Extension\allowbreak{}Info (\allowbreak{}simplified)]{csharp}
 private sealed class ExtensionInfo : DbContextOptionsExtensionInfo
 {
     public ExtensionInfo(TenancyOptionsExtension extension)
@@ -182,6 +183,7 @@ is \code{true} only for real providers.
 preconditions arising from the combination of extensions and reports them with a clear
 message instead of a later follow-up error:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Infrastructure/TenancyOptionsExtension.cs (strings)
 \begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Validate]{csharp}
 public virtual void Validate(IDbContextOptions options)
 {
@@ -204,6 +206,7 @@ additionally for relational services. It registers each service with the correct
 and automatically uses \code{Try\allowbreak{}Add\allowbreak{}Enumerable} for services that
 can be registered multiple times.
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Infrastructure/TenancyOptionsExtension.cs
 \begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Apply\allowbreak{}Services]{csharp}
 public virtual void ApplyServices(IServiceCollection services)
 {
@@ -284,12 +287,10 @@ public void ApplyServices(IServiceCollection services)
 Singleton services such as type mapping plugins cannot resolve
 \code{IDb\allowbreak{}Context\allowbreak{}Options} per context. For them there is
 \code{ISingleton\allowbreak{}Options}: a singleton that EF initializes once from the options
-when creating the provider. EF calls \code{Validate} when a context uses a provider that EF
-did not build for exactly these options, above all with
-\code{Use\allowbreak{}Internal\allowbreak{}Service\allowbreak{}Provider}
-(chapter~\ref{ch:state-lifetimes-and-thread-safety}).
+when creating the provider. When EF calls \code{Initialize} and \code{Validate} is explained
+in chapter~\ref{ch:state-lifetimes-and-thread-safety}.
 
-\begin{sourcecode}[Infrastructure/\allowbreak{}ITenancy\allowbreak{}Singleton\allowbreak{}Options.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Infrastructure/\allowbreak{}ITenancy\allowbreak{}Singleton\allowbreak{}Options.\allowbreak{}cs (\allowbreak{}simplified)]{csharp}
 public class TenancySingletonOptions : ITenancySingletonOptions
 {
     public TenancySettings Settings { get; private set; } = TenancySettings.Default;
@@ -319,10 +320,9 @@ finds and initializes it. The factory variant ensures that both registrations re
 
 When a plugin replaces a single service, a second plugin doing the same cannot be active at
 the same time. Professional plugins mitigate this by additionally offering the actual logic
-publicly and reusably. In the sample, \code{Create\allowbreak{}Policy\allowbreak{}Sql} is
-public and all generator methods are virtual. A user who must combine two plugins writes
-their own generator deriving from one and calling the logic of the other. This option
-belongs in the documentation.
+publicly and reusably. How an application then combines two plugins is shown in the section
+“Integration as the way out” (page~\pageref{sec:integration-way-out}); this option belongs in
+the documentation.
 
 Better still, a plugin avoids the conflict altogether by \textbf{decorating} the service
 instead of replacing it: it takes whatever implementation is registered at that point (the
@@ -331,6 +331,7 @@ audit plugin that attaches a trigger to every new table. In its
 \code{Apply\allowbreak{}Services} it looks up the existing registration and replaces only
 the descriptor, not the logic:
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/CompositionTests.cs (strings)
 \begin{sourcecode}[tests/\allowbreak{}Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Tests/\allowbreak{}Composition\allowbreak{}Tests.\allowbreak{}cs › Audit\allowbreak{}Options\allowbreak{}Extension]{csharp}
 public void ApplyServices(IServiceCollection services)
 {
@@ -360,6 +361,7 @@ an instance, a factory, or a type whose dependencies (such as Npgsql's singleton
 \code{Activator\allowbreak{}Utilities} resolves from the container. The decorator itself
 only uses the public interface:
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/CompositionTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Composition\allowbreak{}Tests.\allowbreak{}cs › Audit\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator (\allowbreak{}shortened)]{csharp}
 public class AuditMigrationsSqlGenerator : IMigrationsSqlGenerator
 {
@@ -393,7 +395,7 @@ public class AuditMigrationsSqlGenerator : IMigrationsSqlGenerator
 
 In the application, the two plugins are combined without a single line of glue code:
 
-\begin{sourcecode}[Program.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Program.\allowbreak{}cs (\allowbreak{}simplified)]{csharp}
 services.AddDbContext<ShopContext>((sp, options) => options
     .UseNpgsql(connectionString)
     .UseAcmeTenancy(sp)       // replaces IMigrationsSqlGenerator
@@ -530,7 +532,7 @@ lost).
   intended & The application always wins; that is the intended way to integrate \\
 \end{datatable}
 
-\section{Integration as the way out}
+\section{Integration as the way out}\label{sec:integration-way-out}
 
 What works “only with integration” is solved by the application with a class of its own
 that combines both plugins and is registered with \code{Replace\allowbreak{}Service}. That
@@ -595,6 +597,7 @@ Users activate the plugin through an extension method on
 existing extension or creates a new one and registers it through
 \code{IDb\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder\allowbreak{}Infrastructure}:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Infrastructure/TenancyDbContextOptionsBuilderExtensions.cs
 \begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 public static DbContextOptionsBuilder UseAcmeTenancy(
     this DbContextOptionsBuilder optionsBuilder,
@@ -628,7 +631,7 @@ method can be found without an additional \code{using}, just like
 Settings are configured through a dedicated builder. It validates input immediately and
 writes every change back as a new extension:
 
-\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Builder.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Builder.\allowbreak{}cs (\allowbreak{}excerpt, simplified)]{csharp}
 public class TenancyOptionsBuilder
 {
     public TenancyOptionsBuilder(DbContextOptionsBuilder optionsBuilder)
@@ -895,7 +898,7 @@ the right one (\code{State\allowbreak{}And\allowbreak{}Lifetime\allowbreak{}Test
 in \code{Materialization\allowbreak{}Tests}, case~6 in
 \code{Failure\allowbreak{}Case\allowbreak{}Tests}).
 
-\begin{datatable}{H{0.70}H{0.75}H{0.85}H{0.70}}
+\begin{datatable}{H{0.93}H{1.00}H{1.13}H{0.94}}
   \textbf{Case} & \textbf{Cause} & \textbf{Observable} & \textbf{Solution} \\
   \tablehead
   1. Current tenant in a singleton & A tenant provider remembers the first tenant, for
@@ -936,6 +939,7 @@ Case~3 is the most treacherous because it starts without any warning. In the app
 container, ASP.NET Core reports such a “captive dependency” in the development environment
 when resolving; EF's internal provider does not check it:
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/StateAndLifetimeTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}State\allowbreak{}And\allowbreak{}Lifetime\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
 // WRONG: a singleton that needs the current context
 m.TryAddSingleton<ContextHolder, ContextHolder>();     // ContextHolder(ICurrentDbContext)

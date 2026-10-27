@@ -40,7 +40,7 @@ Migrations, Snapshots, Compiled Models) kann damit arbeiten.
   der Diff genau, welche sich geändert hat. \\
 \end{datatable}
 
-\begin{sourcecode}[Metadata/\allowbreak{}Rls\allowbreak{}Annotation\allowbreak{}Names.\allowbreak{}cs,\allowbreak{} Metadata/\allowbreak{}Rls\allowbreak{}Policy.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+\begin{sourcecode}[Metadata/\allowbreak{}Rls\allowbreak{}Annotation\allowbreak{}Names.\allowbreak{}cs,\allowbreak{} Metadata/\allowbreak{}Rls\allowbreak{}Policy.\allowbreak{}cs (\allowbreak{}gekürzt, vereinfacht)]{csharp}
 public static class RlsAnnotationNames
 {
     public const string Prefix = "Acme:Rls:";
@@ -70,6 +70,7 @@ erhält den Typ für weiteres Chaining. Und die Klasse liegt im Namespace
 \code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core}, damit sie
 überall ohne \code{using} verfügbar ist.
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Builders/RlsEntityTypeBuilderExtensions.cs
 \begin{sourcecode}[Builders/\allowbreak{}Rls\allowbreak{}Entity\allowbreak{}Type\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
 namespace Microsoft.EntityFrameworkCore;
 
@@ -114,6 +115,7 @@ Regeln der Datenbank schon beim Modellbau. Ein Fehler wie „INSERT-Policy mit U
 beim ersten Start der Anwendung auf und nicht erst beim Ausführen der Migration in
 Produktion:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Builders/PolicyBuilder.cs (strings)
 \begin{sourcecode}[Builders/\allowbreak{}Policy\allowbreak{}Builder.\allowbreak{}cs › Build]{csharp}
 internal RlsPolicy Build()
 {
@@ -156,6 +158,7 @@ Für eigene Conventions bietet das Plugin deshalb zusätzlich Überladungen auf 
 Convention-Builder an. Sie geben \code{null} zurück, wenn eine stärkere Quelle anders
 entschieden hat:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Builders/RlsEntityTypeBuilderExtensions.cs
 \begin{sourcecode}[Builders/\allowbreak{}Rls\allowbreak{}Entity\allowbreak{}Type\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs › Convention-Variante]{csharp}
 public static IConventionEntityTypeBuilder? HasRowLevelSecurity(
     this IConventionEntityTypeBuilder builder,
@@ -266,6 +269,7 @@ Convention-Set und fügt eigene Conventions hinzu.
 \code{Convention\allowbreak{}Set.\allowbreak{}Add} trägt eine Convention in alle Listen ein,
 deren Interfaces sie implementiert, jeweils am Ende:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Conventions/TenancyConventionSetPlugin.cs
 \begin{sourcecode}[Conventions/\allowbreak{}Tenancy\allowbreak{}Convention\allowbreak{}Set\allowbreak{}Plugin.\allowbreak{}cs]{csharp}
 public class TenancyConventionSetPlugin : IConventionSetPlugin
 {
@@ -322,7 +326,7 @@ Kapitel~\ref{ch:property-level-fluent-api-and}), aktiviert RLS mit Policy, legt 
 an, setzt eine Laufzeit-Annotation für den SaveChanges-Interceptor und optional einen
 Query-Filter:
 
-\begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Convention.\allowbreak{}cs › Process\allowbreak{}Model\allowbreak{}Finalizing]{csharp}
+\begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Convention.\allowbreak{}cs › Process\allowbreak{}Model\allowbreak{}Finalizing (\allowbreak{}vereinfacht)]{csharp}
 public virtual void ProcessModelFinalizing(
     IConventionModelBuilder modelBuilder,
     IConventionContext<IConventionModelBuilder> context)
@@ -366,6 +370,7 @@ public virtual void ProcessModelFinalizing(
 }
 \end{sourcecode}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Conventions/TenantIsolationConvention.cs
 \begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Convention.\allowbreak{}cs › Apply\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security]{csharp}
 protected virtual void ApplyRowLevelSecurity(
     IConventionEntityType entityType,
@@ -494,6 +499,7 @@ koexistieren mit eigenen Filtern des Nutzers und lassen sich gezielt per
 \code{Ignore\allowbreak{}Query\allowbreak{}Filters(\allowbreak{}[\textquotedbl{}Acme.\allowbreak{}Tenancy\textquotedbl{}])}
 abschalten.
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Conventions/TenantIsolationConvention.cs
 \begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Convention.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 protected virtual void EnsureTenantIndex(
     IConventionEntityType entityType, IConventionProperty property)
@@ -562,6 +568,7 @@ die das Attribut findet und nur noch die Reaktion verlangt. Der Wert wird mit
 \code{from\allowbreak{}Data\allowbreak{}Annotation: true} gesetzt, sodass die Fluent API ihn
 überstimmen kann:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Conventions/NoTenantIsolationAttributeConvention.cs
 \begin{sourcecode}[Conventions/\allowbreak{}No\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Attribute\allowbreak{}Convention.\allowbreak{}cs]{csharp}
 public class NoTenantIsolationAttributeConvention
     : TypeAttributeConventionBase<NoTenantIsolationAttribute>
@@ -596,7 +603,7 @@ gibt und der dem Provider gehört. Für Plugins ist eine
 \code{IModel\allowbreak{}Finalized\allowbreak{}Convention} der bessere Ort: Sie läuft auf
 dem fertigen Modell und kollidiert mit niemandem.
 
-\begin{sourcecode}[Conventions/\allowbreak{}Tenancy\allowbreak{}Model\allowbreak{}Validation\allowbreak{}Convention.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Conventions/\allowbreak{}Tenancy\allowbreak{}Model\allowbreak{}Validation\allowbreak{}Convention.\allowbreak{}cs (\allowbreak{}vereinfacht)]{csharp}
 public virtual IModel ProcessModelFinalized(IModel model)
 {
     foreach (var entityType in model.GetEntityTypes())
@@ -650,7 +657,7 @@ Typen hat ein Plugin zwei Möglichkeiten:
 Der stark typisierte \code{Tenant\allowbreak{}Id} und sein Konverter liegen im Kernpaket.
 Der Konverter hat eine gemeinsame Instanz; warum, zeigt der Abschnitt über Compiled Models.
 
-\begin{sourcecode}[Tenant\allowbreak{}Id.\allowbreak{}cs,\allowbreak{} Tenant\allowbreak{}Id\allowbreak{}Converter.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+\begin{sourcecode}[Tenant\allowbreak{}Id.\allowbreak{}cs,\allowbreak{} Tenant\allowbreak{}Id\allowbreak{}Converter.\allowbreak{}cs (\allowbreak{}gekürzt, vereinfacht)]{csharp}
 public readonly record struct TenantId(Guid Value)
 {
     public static TenantId Empty => default;
@@ -671,7 +678,7 @@ public sealed class TenantIdConverter : ValueConverter<TenantId, Guid>
 
 \section{Das Type Mapping}
 
-\begin{sourcecode}[Storage/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Type\allowbreak{}Mapping.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Storage/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Type\allowbreak{}Mapping.\allowbreak{}cs (\allowbreak{}vereinfacht)]{csharp}
 public class TenantIdTypeMapping : RelationalTypeMapping
 {
     // Pflicht für Compiled Models: öffentliche statische Default-Property
@@ -722,7 +729,7 @@ Mapping sein Verhalten, zum Beispiel die Literal-Erzeugung.
 Plugins, \emph{bevor} es auf die Mappings des Providers zurückgreift. Ein Plugin gibt
 \code{null} zurück, wenn es nicht zuständig ist:
 
-\begin{sourcecode}[Storage/\allowbreak{}Tenancy\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source\allowbreak{}Plugin.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Storage/\allowbreak{}Tenancy\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source\allowbreak{}Plugin.\allowbreak{}cs (\allowbreak{}vereinfacht)]{csharp}
 public class TenancyTypeMappingSourcePlugin : IRelationalTypeMappingSourcePlugin
 {
     public virtual RelationalTypeMapping? FindMapping(
@@ -756,6 +763,7 @@ Für JSON-Spalten braucht ein Mapping einen
 lesen, schreiben und beschreiben, wie er im generierten Code erzeugt wird. Das Muster folgt
 EFs eigenem \code{Json\allowbreak{}Guid\allowbreak{}Reader\allowbreak{}Writer}:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/TenantIdJsonReaderWriter.cs
 \begin{sourcecode}[Tenant\allowbreak{}Id\allowbreak{}Json\allowbreak{}Reader\allowbreak{}Writer.\allowbreak{}cs]{csharp}
 public sealed class TenantIdJsonReaderWriter : JsonValueReaderWriter<TenantId>
 {

@@ -7,6 +7,8 @@
     \item Anhang~\ref{app:B}: Dateien des Beispiel-Plugins
     \item Anhang~\ref{app:C}: Glossar
     \item Anhang~\ref{app:D}: Debugging-Werkzeugkasten
+    \item Anhang~\ref{app:E}: Übungen mit Lösungen
+    \item Anhang~\ref{app:F}: Quellen
     \item Lizenz
   }}
 \part{Anhänge}\label{part:X}
@@ -598,6 +600,188 @@ Console.WriteLine(query.ToQueryString());
   \code{To\allowbreak{}Query\allowbreak{}String(\allowbreak{})} ansehen. Ein solcher Test
   iteriert schneller als die Anwendung und bleibt danach als Regressionstest erhalten.
 \end{tip}
+
+% ------------------------------------------------------------
+\chapter{Übungen mit Lösungen}\label{app:E}
+
+Jede Übung stellt eine Frage, die sich aus dem Text beantworten lässt, und nennt einen Test des
+Beispiels, der die Antwort festhält. Wer die Lösung prüfen will, ändert das Beispiel wie in der
+Aufgabe beschrieben und sieht zu, welcher Test scheitert.
+
+\section{Übung 1: Convention gegen explizite Konfiguration}
+
+Ein Anwender konfiguriert für \code{Order} selbst eine Policy mit dem Namen der
+Plugin-Policy: \code{Has\allowbreak{}Policy(\allowbreak{}\textquotedbl{}tenant\_\allowbreak{}isolation\textquotedbl{},
+p => p.\allowbreak{}Using(\allowbreak{}\textquotedbl{}true\textquotedbl{}))}. Die
+Isolations-Convention setzt bei \code{Model\allowbreak{}Finalizing} dieselbe Annotation. Welche
+Konfiguration gilt? Was ändert sich, wenn die Convention die Annotation mit
+\code{Set\allowbreak{}Annotation} direkt am Entity-Typ setzt statt über den Builder?
+
+\begin{note}[Lösung]
+  Die explizite Konfiguration gilt. Der Convention-Builder setzt Annotations mit
+  \code{Configuration\allowbreak{}Source.\allowbreak{}Convention} und lässt eine explizite
+  Konfiguration stehen; \code{Has\allowbreak{}Annotation} gibt dann \code{null} zurück
+  (Kapitel~\ref{ch:conventions}). \code{Set\allowbreak{}Annotation} am Typ kennt keine
+  Konfigurationsquelle und würde die Policy des Anwenders still überschreiben.
+  Nachprüfen: \code{Convention\allowbreak{}Tests.\allowbreak{}Explicit\allowbreak{}\_policy\allowbreak{}\_with\allowbreak{}\_same\allowbreak{}\_name\allowbreak{}\_wins\allowbreak{}\_over\allowbreak{}\_convention}.
+\end{note}
+
+\section{Übung 2: Der Mandant im Cache-Schlüssel}
+
+Ein Plugin nimmt den aktuellen Mandanten in
+\code{Get\allowbreak{}Service\allowbreak{}Provider\allowbreak{}Hash\allowbreak{}Code} auf, damit
+jeder Mandant „sein“ Modell bekommt. Was passiert mit 1000 Mandanten?
+
+\begin{note}[Lösung]
+  Jeder Mandant bekommt einen eigenen internen Service Provider mit eigenem Modell. Ab dem
+  21.~Provider wirft EF standardmäßig die
+  \code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}
+  als Fehler, und jeder Provider hält Modell, Query-Cache und Dienste im Speicher. Der Mandant ist
+  Zustand pro Anfrage und gehört in den Interceptor
+  (Kapitel~\ref{ch:state-lifetimes-and-thread-safety}); nur wenn sich das \emph{Modell} wirklich
+  unterscheidet, hilft ein eigener Modell-Cache-Schlüssel (Kapitel~\ref{ch:models-per-runtime-context}).
+  Nachprüfen: \code{State\allowbreak{}And\allowbreak{}Lifetime\allowbreak{}Tests.\allowbreak{}Tenant\allowbreak{}\_in\allowbreak{}\_the\allowbreak{}\_service\allowbreak{}\_provider\allowbreak{}\_key\allowbreak{}\_needs\allowbreak{}\_a\allowbreak{}\_provider\allowbreak{}\_per\allowbreak{}\_tenant}.
+\end{note}
+
+\section{Übung 3: Nullability eines Translators}
+
+\code{Current\allowbreak{}Tenant(\allowbreak{})} wird ohne Mandant in SQL zu \code{NULL}. Jemand
+deklariert den Ausdruck deshalb als nullable. Was liefert
+\code{o.\allowbreak{}Tenant\allowbreak{}Id != EF.\allowbreak{}Functions.\allowbreak{}Current\allowbreak{}Tenant(\allowbreak{})}
+dann ohne Mandant, etwa unter der Reporting-Rolle ohne RLS?
+
+\begin{note}[Lösung]
+  Für einen nullable Ausdruck ergänzt EF C\#-Semantik: \code{<>} wird zu einem Vergleich mit
+  \code{OR \allowbreak{}.\allowbreak{}.\allowbreak{}. IS NULL}, und ohne Mandant ist die Bedingung
+  für \emph{alle} Zeilen wahr. Als nicht nullable bleibt es beim reinen \code{<>}, das mit
+  \code{NULL} nie wahr ist: keine Zeilen, die sichere Richtung
+  (Kapitel~\ref{ch:translating-methods-and-members}).
+  Nachprüfen: \code{Query\allowbreak{}Translation\allowbreak{}Tests.\allowbreak{}Inequality\allowbreak{}\_with\allowbreak{}\_Current\allowbreak{}Tenant\allowbreak{}\_never\allowbreak{}\_matches\allowbreak{}\_without\allowbreak{}\_a\allowbreak{}\_tenant}.
+\end{note}
+
+\section{Übung 4: Ein Migrations-Diff unter SQL Server}
+
+Die Mandantenspalte wird mit \code{Has\allowbreak{}Column\allowbreak{}Name(\allowbreak{}\textquotedbl{}Mandant\textquotedbl{})}
+umbenannt. In welcher Reihenfolge erzeugt EF die Operationen, und warum genügt es nicht, die
+Security Policy bei der \code{Alter\allowbreak{}Table\allowbreak{}Operation} neu anzulegen?
+
+\begin{note}[Lösung]
+  EF erzeugt \code{Rename\allowbreak{}Column}, \code{Rename\allowbreak{}Index} und erst danach
+  die \code{Alter\allowbreak{}Table\allowbreak{}Operation} mit der geänderten Annotation. Die
+  schemagebundene Policy blockiert aber schon das \code{sp\_\allowbreak{}rename}. Der Generator
+  muss die ganze Operationsliste umklammern
+  (Seite~\pageref{sec:sqlserver-schema-bound-changes}).
+  Nachprüfen: \code{Sql\allowbreak{}Server\allowbreak{}Migration\allowbreak{}Order\allowbreak{}Tests}
+  ohne Datenbank, \code{Sql\allowbreak{}Server\allowbreak{}Migration\allowbreak{}Tests} gegen
+  SQL Server.
+\end{note}
+
+\section{Übung 5: Ein Update aus der API}
+
+Eine API nimmt eine Bestellung entgegen und speichert sie mit \code{Update}. Warum markiert EF
+die Mandanten-Property als geändert, und was verhindert, dass ein Angreifer die ID einer
+fremden Bestellung mit dem eigenen Mandanten schickt?
+
+\begin{note}[Lösung]
+  \code{Update} einer nicht getrackten Entität markiert jede Property, Original- und aktueller
+  Wert sind gleich. Das ist kein Mandantenwechsel; der Interceptor prüft nur den Wert
+  (Seite~\pageref{sec:tracking-flag-versus-value}). Gegen die fremde ID hilft er nicht, weil er
+  ohne Datenbankzugriff nicht wissen kann, wem die Zeile gehört. Das \code{UPDATE} sieht die
+  Zeile wegen der Policy nicht, ändert null Zeilen, und EF meldet einen Konkurrenzfehler.
+  Nachprüfen: \code{Detached\allowbreak{}Update\allowbreak{}Tests} gegen PostgreSQL.
+\end{note}
+
+Ausführen lässt sich jede Prüfung mit einem Filter, zum Beispiel:
+
+\begin{sourcecode}[Shell]{text}
+dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Tests --filter "Name~Inequality_with"
+\end{sourcecode}
+
+% ------------------------------------------------------------
+\chapter{Quellen}\label{app:F}
+
+Die Auswahl beschränkt sich auf Primärquellen: die offizielle Dokumentation von EF Core, Npgsql,
+PostgreSQL, SQL Server und .NET sowie den Quellcode genau der Versionen, auf die sich das Buch
+bezieht. Implementierungsdetails sind deshalb an Tags gebunden (\code{v10.0.0}), nicht an
+Branches, die sich weiterbewegen. Alle Adressen waren bei Redaktionsschluss erreichbar.
+
+\begin{datatable}{H{1.62}H{0.38}}
+  \textbf{Quelle} & \textbf{Kap.} \\
+  \tablehead
+  \tablegroup{2}{EF Core: Releases und Erweiterungspunkte}
+  \href{https://learn.microsoft.com/en-us/ef/core/what-is-new/}{EF Core releases and planning}\cellmeta{\url{https://learn.microsoft.com/en-us/ef/core/what-is-new/}} & \ref{ch:versioning-and-compatibility} \\
+  \tablerule
+  \href{https://learn.microsoft.com/en-us/ef/core/what-is-new/ef-core-10.0/breaking-changes}{Breaking changes in EF Core 10}\cellmeta{\url{https://learn.microsoft.com/en-us/ef/core/what-is-new/ef-core-10.0/breaking-changes}} & \ref{ch:versioning-and-compatibility} \\
+  \tablerule
+  \href{https://learn.microsoft.com/en-us/ef/core/providers/writing-a-provider}{Writing a database provider}\cellmeta{\url{https://learn.microsoft.com/en-us/ef/core/providers/writing-a-provider}} & \ref{ch:registering-services} \\
+  \tablerule
+  \href{https://learn.microsoft.com/en-us/ef/core/modeling/bulk-configuration}{Model bulk configuration (conventions)}\cellmeta{\url{https://learn.microsoft.com/en-us/ef/core/modeling/bulk-configuration}} & \ref{ch:conventions} \\
+  \tablerule
+  \href{https://learn.microsoft.com/en-us/ef/core/modeling/value-conversions}{Value conversions}\cellmeta{\url{https://learn.microsoft.com/en-us/ef/core/modeling/value-conversions}} & \ref{ch:type-mappings-and-value-converters} \\
+  \tablerule
+  \href{https://learn.microsoft.com/en-us/ef/core/modeling/value-comparers}{Value comparers}\cellmeta{\url{https://learn.microsoft.com/en-us/ef/core/modeling/value-comparers}} & \ref{ch:compiled-models-trimming-and-nativeaot} \\
+  \tablerule
+  \href{https://learn.microsoft.com/en-us/ef/core/querying/filters}{Global query filters}\cellmeta{\url{https://learn.microsoft.com/en-us/ef/core/querying/filters}} & \ref{ch:conventions} \\
+  \tablerule
+  \href{https://learn.microsoft.com/en-us/ef/core/logging-events-diagnostics/interceptors}{Interceptors}\cellmeta{\url{https://learn.microsoft.com/en-us/ef/core/logging-events-diagnostics/interceptors}} & \ref{ch:interceptors} \\
+  \tablerule
+  \href{https://learn.microsoft.com/en-us/ef/core/logging-events-diagnostics/}{Logging, events and diagnostics}\cellmeta{\url{https://learn.microsoft.com/en-us/ef/core/logging-events-diagnostics/}} & \ref{ch:diagnostics-and-logging} \\
+  \tablerule
+  \tablegroup{2}{EF Core: Modell, Migrationen, Betrieb}
+  \href{https://learn.microsoft.com/en-us/ef/core/modeling/inheritance}{Inheritance (TPH, TPT, TPC)}\cellmeta{\url{https://learn.microsoft.com/en-us/ef/core/modeling/inheritance}} & \ref{ch:conventions} \\
+  \tablerule
+  \href{https://learn.microsoft.com/en-us/ef/core/modeling/owned-entities}{Owned entity types}\cellmeta{\url{https://learn.microsoft.com/en-us/ef/core/modeling/owned-entities}} & \ref{ch:conventions} \\
+  \tablerule
+  \href{https://learn.microsoft.com/en-us/ef/core/modeling/table-splitting}{Table and entity splitting}\cellmeta{\url{https://learn.microsoft.com/en-us/ef/core/modeling/table-splitting}} & \ref{ch:conventions} \\
+  \tablerule
+  \href{https://learn.microsoft.com/en-us/ef/core/managing-schemas/migrations/operations}{Custom migrations operations}\cellmeta{\url{https://learn.microsoft.com/en-us/ef/core/managing-schemas/migrations/operations}} & \ref{ch:custom-migration-operations} \\
+  \tablerule
+  \href{https://learn.microsoft.com/en-us/ef/core/cli/services}{Design-time services}\cellmeta{\url{https://learn.microsoft.com/en-us/ef/core/cli/services}} & \ref{ch:design-time-services} \\
+  \tablerule
+  \href{https://learn.microsoft.com/en-us/ef/core/miscellaneous/connection-resiliency}{Connection resiliency}\cellmeta{\url{https://learn.microsoft.com/en-us/ef/core/miscellaneous/connection-resiliency}} & \ref{ch:retrofitting-and-operating} \\
+  \tablerule
+  \href{https://learn.microsoft.com/en-us/ef/core/performance/advanced-performance-topics}{Advanced performance topics (compiled models)}\cellmeta{\url{https://learn.microsoft.com/en-us/ef/core/performance/advanced-performance-topics}} & \ref{ch:compiled-models-trimming-and-nativeaot} \\
+  \tablerule
+  \href{https://learn.microsoft.com/en-us/ef/core/performance/nativeaot-and-precompiled-queries}{NativeAOT and precompiled queries}\cellmeta{\url{https://learn.microsoft.com/en-us/ef/core/performance/nativeaot-and-precompiled-queries}} & \ref{ch:compiled-models-trimming-and-nativeaot} \\
+  \tablerule
+  \tablegroup{2}{Quellcode zur verwendeten Version}
+  \href{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore/Infrastructure/EntityFrameworkServicesBuilder.cs}{EntityFrameworkServicesBuilder (EF Core 10.0.0)}\cellmeta{\url{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore/Infrastructure/EntityFrameworkServicesBuilder.cs}} & \ref{app:A} \\
+  \tablerule
+  \href{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore.Relational/Infrastructure/EntityFrameworkRelationalServicesBuilder.cs}{EntityFrameworkRelationalServicesBuilder (EF Core 10.0.0)}\cellmeta{\url{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore.Relational/Infrastructure/EntityFrameworkRelationalServicesBuilder.cs}} & \ref{app:A} \\
+  \tablerule
+  \href{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore/Metadata/Internal/ConstructorBindingFactory.cs}{ConstructorBindingFactory (EF Core 10.0.0)}\cellmeta{\url{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore/Metadata/Internal/ConstructorBindingFactory.cs}} & \ref{ch:materialization-from-rows-to-objects} \\
+  \tablerule
+  \href{https://github.com/npgsql/efcore.pg/tree/v10.0.0}{Npgsql EF Core provider 10.0.0}\cellmeta{\url{https://github.com/npgsql/efcore.pg/tree/v10.0.0}} & \ref{ch:registering-services} \\
+  \tablerule
+  \tablegroup{2}{Npgsql und PostgreSQL}
+  \href{https://www.npgsql.org/efcore/}{Npgsql Entity Framework Core provider}\cellmeta{\url{https://www.npgsql.org/efcore/}} & \ref{ch:the-sample-scenario} \\
+  \tablerule
+  \href{https://www.npgsql.org/doc/connection-string-parameters.html}{Npgsql connection string parameters}\cellmeta{\url{https://www.npgsql.org/doc/connection-string-parameters.html}} & \ref{ch:retrofitting-and-operating} \\
+  \tablerule
+  \href{https://www.postgresql.org/docs/17/ddl-rowsecurity.html}{PostgreSQL: Row Security Policies}\cellmeta{\url{https://www.postgresql.org/docs/17/ddl-rowsecurity.html}} & \ref{ch:row-level-security-in-production} \\
+  \tablerule
+  \href{https://www.postgresql.org/docs/17/sql-createpolicy.html}{PostgreSQL: CREATE POLICY}\cellmeta{\url{https://www.postgresql.org/docs/17/sql-createpolicy.html}} & \ref{ch:declarative-sql-from-annotations} \\
+  \tablerule
+  \href{https://www.postgresql.org/docs/17/xfunc-volatility.html}{PostgreSQL: Function Volatility Categories}\cellmeta{\url{https://www.postgresql.org/docs/17/xfunc-volatility.html}} & \ref{ch:row-level-security-in-production} \\
+  \tablerule
+  \href{https://www.postgresql.org/docs/17/functions-admin.html}{PostgreSQL: System Administration Functions (set\_config)}\cellmeta{\url{https://www.postgresql.org/docs/17/functions-admin.html}} & \ref{ch:interceptors} \\
+  \tablerule
+  \tablegroup{2}{SQL Server}
+  \href{https://learn.microsoft.com/en-us/sql/relational-databases/security/row-level-security}{SQL Server: Row-Level Security}\cellmeta{\url{https://learn.microsoft.com/en-us/sql/relational-databases/security/row-level-security}} & \ref{ch:a-second-provider-sql-server} \\
+  \tablerule
+  \href{https://learn.microsoft.com/en-us/sql/t-sql/statements/create-security-policy-transact-sql}{CREATE SECURITY POLICY}\cellmeta{\url{https://learn.microsoft.com/en-us/sql/t-sql/statements/create-security-policy-transact-sql}} & \ref{ch:a-second-provider-sql-server} \\
+  \tablerule
+  \href{https://learn.microsoft.com/en-us/sql/relational-databases/system-stored-procedures/sp-set-session-context-transact-sql}{sp\_set\_session\_context}\cellmeta{\url{https://learn.microsoft.com/en-us/sql/relational-databases/system-stored-procedures/sp-set-session-context-transact-sql}} & \ref{ch:a-second-provider-sql-server} \\
+  \tablerule
+  \tablegroup{2}{.NET und NuGet}
+  \href{https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/}{Native AOT deployment}\cellmeta{\url{https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/}} & \ref{ch:compiled-models-trimming-and-nativeaot} \\
+  \tablerule
+  \href{https://learn.microsoft.com/en-us/nuget/consume-packages/package-source-mapping}{Package source mapping}\cellmeta{\url{https://learn.microsoft.com/en-us/nuget/consume-packages/package-source-mapping}} & \ref{ch:compiled-models-trimming-and-nativeaot} \\
+  \tablerule
+  \href{https://learn.microsoft.com/en-us/nuget/concepts/auditing-packages}{Auditing package dependencies}\cellmeta{\url{https://learn.microsoft.com/en-us/nuget/concepts/auditing-packages}} & \ref{ch:versioning-and-compatibility} \\
+  \tablerule
+  \href{https://github.com/dotnet/roslyn-analyzers/blob/main/src/PublicApiAnalyzers/PublicApiAnalyzers.Help.md}{Public API analyzers}\cellmeta{\url{https://github.com/dotnet/roslyn-analyzers/blob/main/src/PublicApiAnalyzers/PublicApiAnalyzers.Help.md}} & \ref{ch:ci-and-api-stability} \\
+\end{datatable}
 
 % ------------------------------------------------------------
 \addchap{Lizenz}

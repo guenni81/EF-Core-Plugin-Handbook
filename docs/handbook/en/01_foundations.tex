@@ -109,6 +109,41 @@ PostgreSQL helps with the sample, but every SQL construct is explained when it f
 appears. Chapter~\ref{ch:ef-core-s-architecture-from} ends with a complete mini plugin that
 shows all building blocks on a single page before the large sample begins.
 
+\section{Two reading paths}\label{sec:reading-paths}
+
+The book is a textbook and a reference at the same time. Two paths lead through it on purpose;
+both end with a result that can be checked:
+
+\begin{datatable}{H{0.62}H{1.19}H{1.19}}
+  & \textbf{My first plugin} & \textbf{Reference for advanced readers} \\
+  \tablehead
+  Prerequisites & EF Core as a user: \code{Db\allowbreak{}Context}, migrations, LINQ,
+  dependency injection & The first path or an own plugin in production \\
+  \tablerule
+  Chapters & \ref{ch:what-is-an-ef-core}, \ref{ch:ef-core-s-architecture-from} (with the mini
+  plugin), \ref{ch:the-sample-scenario}, \ref{ch:the-options-extension},
+  \ref{ch:registering-services}, \ref{ch:public-api-and-integration-into},
+  \ref{ch:conventions}, \ref{ch:translating-methods-and-members}, \ref{ch:interceptors},
+  \ref{ch:test-strategy}, \ref{ch:packaging-and-documentation} &
+  \ref{ch:choosing-the-right-extension-point} and appendix~\ref{app:A} as the entry, then as
+  needed \ref{ch:state-lifetimes-and-thread-safety}, \ref{ch:the-query-pipeline},
+  \ref{ch:materialization-from-rows-to-objects}, \ref{ch:how-migrations-work},
+  \ref{ch:versioning-and-compatibility}, \ref{ch:row-level-security-in-production}--%
+  \ref{ch:retrofitting-and-operating} and part~\ref{part:IX} \\
+  \tablerule
+  Result & An own plugin with an options extension, a convention, a translator and an
+  interceptor that builds as a package & A reasoned choice of an extension point: lifetime,
+  composability, API status and upgrade risk \\
+  \tablerule
+  Checkable by & \code{Minimal\allowbreak{}Plugin\allowbreak{}Tests} as a template for the own
+  tests, plus the consumer test (page~\pageref{sec:consumer-test}) applied to the own package &
+  The compatibility matrix in chapter~\ref{ch:registering-services}, the check of the lifetimes
+  against EF's service tables and the upgrade checklist \\
+\end{datatable}
+
+The exercises in appendix~\ref{app:E} belong to both paths: each one ties in with a test of the
+sample that checks the solution.
+
 \section{What a level 3 plugin can do}
 
 A complete plugin can extend EF Core at practically every point: it can make new CLR types
@@ -168,6 +203,7 @@ When you derive from an EF service, you accept this object in the constructor an
 on. EF Core adds new dependencies to the object without breaking constructors. For plugins
 this is a blessing: derived services stay compatible across minor versions.
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Migrations/Internal/TenancyMigrationsSqlGenerator.cs
 \begin{sourcecode}[Migrations/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}header)]{csharp}
 public class TenancyMigrationsSqlGenerator : NpgsqlMigrationsSqlGenerator
 {
@@ -217,6 +253,7 @@ PostgreSQL's \code{reverse(\allowbreak{})} available in LINQ as
 \code{EF.\allowbreak{}Functions.\allowbreak{}Reverse(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}.
 Every later chapter elaborates one of its five pieces:
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/MinimalPluginTests.cs
 \begin{sourcecode}[tests/\allowbreak{}Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Tests/\allowbreak{}Minimal\allowbreak{}Plugin\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}1/\allowbreak{}2,\allowbreak{} shortened)]{csharp}
 // 1. The function users call in LINQ; it is never executed
 public static class ReverseDbFunctionsExtensions
@@ -253,6 +290,7 @@ public class ReverseTranslatorPlugin : IMethodCallTranslatorPlugin
 }
 \end{sourcecode}
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/MinimalPluginTests.cs
 \begin{sourcecode}[tests/\allowbreak{}Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Tests/\allowbreak{}Minimal\allowbreak{}Plugin\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}2/\allowbreak{}2,\allowbreak{} shortened)]{csharp}
 // 4. The options extension registers the plugin in EF's internal provider
 //    (chapters "The options extension" and "Registering services")

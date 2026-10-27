@@ -47,6 +47,7 @@ plugin that enforces its guarantees only through SaveChanges has a gap here:
 In the sample, RLS catches every one of these paths because the database enforces the rules
 itself. An integration test proves it by deliberately bypassing the interceptor:
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests/AdvancedTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Advanced\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 [Fact]
 public async Task ExecuteUpdate_bypasses_interceptor_but_not_rls()
@@ -81,6 +82,7 @@ EF generates key values either in the database (identity, sequences) or client-s
 types like \code{Tenant\allowbreak{}Id} it does not. A plugin closes this gap with a
 generator, a factory and a convention:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/ValueGeneration/TenantIdValueGenerator.cs
 \begin{sourcecode}[Value\allowbreak{}Generation/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Value\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}core package)]{csharp}
 public class TenantIdValueGenerator : ValueGenerator<TenantId>
 {
@@ -91,6 +93,7 @@ public class TenantIdValueGenerator : ValueGenerator<TenantId>
 }
 \end{sourcecode}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/ValueGeneration/TenantIdValueGeneratorFactory.cs
 \begin{sourcecode}[Value\allowbreak{}Generation/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Value\allowbreak{}Generator\allowbreak{}Factory.\allowbreak{}cs (\allowbreak{}core package)]{csharp}
 public class TenantIdValueGeneratorFactory : ValueGeneratorFactory
 {
@@ -100,6 +103,7 @@ public class TenantIdValueGeneratorFactory : ValueGeneratorFactory
 }
 \end{sourcecode}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/Conventions/TenantIdKeyValueGenerationConvention.cs
 \begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Key\allowbreak{}Value\allowbreak{}Generation\allowbreak{}Convention.\allowbreak{}cs (\allowbreak{}core package)]{csharp}
 public virtual void ProcessModelFinalizing(
     IConventionModelBuilder modelBuilder,
@@ -211,6 +215,7 @@ converters but through the type mapping's
 (chapter~\ref{ch:type-mappings-and-value-converters}). Without it, model building fails. The
 sample's unit and integration tests check both sides:
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/JsonTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Json\allowbreak{}Tests.\allowbreak{}cs]{csharp}
 using var ctx = Contexts.Create(model: m =>
     m.Entity<Shipment>().OwnsOne(s => s.Details, d => d.ToJson()));
@@ -238,7 +243,7 @@ EF builds the model once per context type and caches it
 such as one schema per tenant, the cache key must contain that data. That is what
 \code{IModel\allowbreak{}Cache\allowbreak{}Key\allowbreak{}Factory} is for:
 
-\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Schema\allowbreak{}Per\allowbreak{}Tenant\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Schema\allowbreak{}Per\allowbreak{}Tenant\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}shortened, simplified)]{csharp}
 public sealed class SchemaModelCacheKeyFactory : IModelCacheKeyFactory
 {
     public object Create(DbContext context, bool designTime)
@@ -322,6 +327,7 @@ database state. For this, Npgsql wraps every operation in a \code{DO \$EF\$
 Custom operations that produce a \code{DO \$\$} block themselves end up inside it. This
 works because the dollar quotes use different tags. Assumptions like this belong in a test:
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests/AdvancedTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Advanced\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 var script = db.GetService<IMigrator>()
     .GenerateScript(options: MigrationsSqlGenerationOptions.Idempotent);
@@ -572,6 +578,7 @@ to ask.
 The solution is to make the tenant part of every reference. The principal gets an alternate key
 of tenant and ID, the dependent side a foreign key of its tenant column and the ID:
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests/RelationshipTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Relationship\allowbreak{}Tests.\allowbreak{}cs › Tenant\allowbreak{}Safe\allowbreak{}Context]{csharp}
 modelBuilder.Entity<Customer>(b =>
 {
@@ -793,6 +800,7 @@ costs one round trip per open, which is documented. Such assumptions should be m
 guessed. The repository contains a BenchmarkDotNet project for the SaveChanges logic; it
 runs without a database:
 
+% source: benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/SaveChangesInterceptorBenchmark.cs
 \begin{sourcecode}[benchmarks/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Save\allowbreak{}Changes\allowbreak{}Interceptor\allowbreak{}Benchmark.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
 [MemoryDiagnoser]
 public class SaveChangesInterceptorBenchmark
@@ -863,6 +871,7 @@ The sample \code{samples/\allowbreak{}Shop\allowbreak{}Api} shows the way from t
 into a web API. The tenant comes from the claim \code{tenant\_\allowbreak{}id} of the
 signed-in user:
 
+% source: samples/ShopApi/HttpTenantProvider.cs
 \begin{sourcecode}[samples/\allowbreak{}Shop\allowbreak{}Api/\allowbreak{}Http\allowbreak{}Tenant\allowbreak{}Provider.\allowbreak{}cs]{csharp}
 public sealed class HttpTenantProvider : ITenantProvider
 {
@@ -889,6 +898,7 @@ public sealed class HttpTenantProvider : ITenantProvider
 }
 \end{sourcecode}
 
+% source: samples/ShopApi/Program.cs
 \begin{sourcecode}[samples/\allowbreak{}Shop\allowbreak{}Api/\allowbreak{}Program.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddAcmeTenancy<HttpTenantProvider>();
@@ -964,6 +974,7 @@ tenants to process. The sample's \code{Ambient\allowbreak{}Tenant\allowbreak{}Pr
 stores it in an \code{Async\allowbreak{}Local}, which flows with the asynchronous control
 flow:
 
+% source: samples/ShopSample/AmbientTenantProvider.cs
 \begin{sourcecode}[samples/\allowbreak{}Shop\allowbreak{}Sample/\allowbreak{}Ambient\allowbreak{}Tenant\allowbreak{}Provider.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
 public sealed class AmbientTenantProvider : ITenantProvider
 {
@@ -1034,9 +1045,25 @@ jobs:
     container: texlive/texlive@sha256:540d…   # TeX Live 2026, pinned by digest
     steps:
       # ... checkout ...
-      - run: python3 check_code.py     # fails on overlong code lines
+      - run: python3 check_code.py       # line length, excerpts against the sources
+      - run: python3 check_structure.py  # editions in sync, references, tables
       - run: latexmk EF-Core-Plugin-Handbook.tex
+
+  consumer:                            # check the packages as a consumer
+    steps:
+      - run: eng/consumer-test/run.sh --nativeaot
 \end{sourcecode}
+
+Code excerpts go stale silently when the code changes. A comment line
+\code{\% source: <path>} directly before the listing therefore binds an excerpt to its source
+file, and \code{check\_\allowbreak{}code.\allowbreak{}py} compares the two: comments and elisions
+(\code{...}) do not count, so the German edition may translate comments and excerpts may be
+shortened; every other line must appear in the source in the same order, line breaks may
+differ. With the suffix \code{(strings)} translated messages are left out as well. An excerpt
+whose title names a file of the repository and that is not bound must be called “simplified”.
+\code{check\_\allowbreak{}structure.\allowbreak{}py} checks that both editions have the same
+sections, listings, bindings, tables and callouts per chapter, that every reference target exists
+and that the column widths of every table add up.
 
 The sample builds against stable versions only (.NET 10, EF Core 10). A second workflow,
 \code{compatibility.\allowbreak{}yml}, runs weekly and tests against the newest stable 10.0.x

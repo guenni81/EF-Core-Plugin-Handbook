@@ -160,6 +160,13 @@ dotnet test tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests     # requir
 dotnet test tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests      # requires Docker
 ```
 
+The packages as a customer gets them (pack, fresh application, `dotnet-ef`, compiled model;
+`--nativeaot` also publishes and runs a NativeAOT application, needs Docker and clang):
+
+```bash
+eng/consumer-test/run.sh --nativeaot
+```
+
 Micro benchmarks for the SaveChanges logic (BenchmarkDotNet, no database required):
 
 ```bash
