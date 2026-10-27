@@ -30,8 +30,16 @@ public class TenantConnectionInterceptor : TenantSessionInterceptor
     {
         ArgumentNullException.ThrowIfNull(connection);
 
-        var settingName = context?.GetService<ITenancySingletonOptions>().Settings.SettingName
-                          ?? TenancySettings.Default.SettingName;
+        var settings = context?.GetService<ITenancySingletonOptions>().Settings ?? TenancySettings.Default;
+        var settingName = settings.SettingName;
+
+        // A session value would outlive the transaction and reach other clients of the pooled
+        // server connection: with transaction pooling, refuse instead of leaking
+        if (settings.UseTransactionPooling)
+            throw new TenancyException(
+                "UseTransactionPooling() sets the tenant per transaction; remove the "
+                + "TenantConnectionInterceptor and use UseAcmeTenancy(applicationServices), which "
+                + "registers PostgreSqlTransactionSessionInterceptor instead.");
 
         // set_config() instead of SET: the name and value can be passed as parameters (no SQL
         // injection). is_local = false: valid for the session, not just the current transaction.

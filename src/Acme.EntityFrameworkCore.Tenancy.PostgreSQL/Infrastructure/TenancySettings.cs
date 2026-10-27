@@ -35,4 +35,11 @@ public sealed record TenancySettings
     /// singleton query expression interceptor.
     /// </summary>
     public bool ProtectBulkOperations { get; init; }
+
+    /// <summary>
+    /// Set the tenant per transaction (<c>set_config(..., true)</c>) instead of per session, for
+    /// PgBouncer in transaction mode (off by default). Commands outside a transaction then have
+    /// no tenant.
+    /// </summary>
+    public bool UseTransactionPooling { get; init; }
 }

@@ -933,7 +933,8 @@ Werkzeuge gelten soll, gehört in die Datenbank, nicht in einen Interceptor.
   Genügt der Connection-Interceptor? Er genügt, solange kein Transaction-Pooling im Spiel
   ist. &
   Transaktionslokale Settings verwenden, aber Abfragen außerhalb von Transaktionen zulassen:
-  Diese laufen ohne Zustand. &
+  Diese laufen ohne Zustand. Im Beispiel:
+  \code{Use\allowbreak{}Transaction\allowbreak{}Pooling(\allowbreak{})}. &
   \ref{ch:row-level-security-in-production} \\
   \tablerule
   \textbf{INSERT, UPDATE oder DELETE sollen eine andere Form bekommen (Upsert).}

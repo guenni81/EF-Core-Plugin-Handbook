@@ -461,7 +461,8 @@ stillschweigend wirkungslos oder unbrauchbar:
   Index-Convention (Kapitel~\ref{ch:conventions}) \\
   \tablerule
   Transaction-Pooling (PgBouncer) & Session-Settings landen bei anderen Clients oder gehen
-  verloren & Setting transaktionslokal setzen (siehe unten) \\
+  verloren & \code{Use\allowbreak{}Transaction\allowbreak{}Pooling(\allowbreak{})}: Setting
+  transaktionslokal (siehe unten) \\
   \tablerule
   Verbindung außerhalb von EF geöffnet & Die Session behält einen alten Mandanten oder
   keinen & EF die Verbindungen öffnen lassen oder
@@ -492,7 +493,8 @@ schützt, worauf sie sich verlässt und wo sie aufhört:
   Annahmen & Die App-Rolle ist weder Superuser noch Eigentümer und hat kein
   \code{BYPASSRLS}. Der Mandant stammt aus einem authentifizierten Claim, nicht aus einem
   Header oder Parameter, den der Client frei wählt. Verbindungen werden von EF geöffnet, und es
-  gibt kein Transaction-Pooling. \\
+  gibt kein Transaction-Pooling, außer mit
+  \code{Use\allowbreak{}Transaction\allowbreak{}Pooling(\allowbreak{})}. \\
   \tablerule
   Grenze & Die App-Rolle darf das Session-Setting selbst setzen; das muss sie, damit der
   Interceptor es setzen kann. Wer beliebiges SQL unter dieser Rolle ausführt, wechselt damit
@@ -538,22 +540,82 @@ Mandant mit \code{SET ROLE} oder ein signiertes Mandanten-Token, das eine
 hier nur als Richtung genannt. Mandantenübergreifender Zugriff gehört weiterhin in eigene
 Rollen (Abschnitt unten).
 
-\section{Transaction-Pooling}
+\section{Transaction-Pooling}\label{sec:transaction-pooling}
 
 PgBouncer im Modus „transaction“ teilt eine Serververbindung zwischen Clients pro
 Transaktion. Ein mit
 \code{set\_\allowbreak{}config(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{},\allowbreak{}
 false)} gesetzter Session-Wert kann dann bei einem anderen Client ankommen, eine
-Sicherheitslücke. Die sichere Variante: das Setting mit
+Sicherheitslücke. Die sichere Variante setzt den Wert mit
 \code{set\_\allowbreak{}config(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{},\allowbreak{}
-true)} \emph{transaktionslokal} setzen und jede Datenbankarbeit in einer expliziten
-Transaktion ausführen. Technisch wechselt der Interceptor dafür von
-\code{IDb\allowbreak{}Connection\allowbreak{}Interceptor} zu
-\code{IDb\allowbreak{}Transaction\allowbreak{}Interceptor}
-(\code{Transaction\allowbreak{}Started}). Weil dann Abfragen ohne Transaktion gar keinen
-Mandanten haben, muss die Anwendung das konsequent einhalten. Das Beispiel bleibt beim
-einfacheren Session-Modell und dokumentiert, dass es Session- oder Npgsql-Pooling
-voraussetzt.
+true)} \emph{transaktionslokal}: Er endet mit Commit oder Rollback. Dafür wechselt der
+Interceptor von \code{IDb\allowbreak{}Connection\allowbreak{}Interceptor} zu
+\code{IDb\allowbreak{}Transaction\allowbreak{}Interceptor} und setzt den Mandanten in
+\code{Transaction\allowbreak{}Started}, im Befehl der neuen Transaktion. Das Beispiel bietet das
+als Option an:
+
+\begin{sourcecode}[Anwendung]{csharp}
+services.AddDbContext<ShopContext>((sp, options) => options
+    .UseNpgsql(connectionString)
+    .UseAcmeTenancy(sp, t => t.UseTransactionPooling()));
+\end{sourcecode}
+
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Runtime/PostgreSqlTransactionSessionInterceptor.cs
+\begin{sourcecode}[Runtime/\allowbreak{}Postgre\allowbreak{}Sql\allowbreak{}Transaction\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+public override async ValueTask<DbTransaction> TransactionStartedAsync(
+    DbConnection connection,
+    TransactionEndEventData eventData,
+    DbTransaction result,
+    CancellationToken cancellationToken = default)
+{
+    await using var command = CreateSessionCommand(connection, result, eventData.Context);
+    await command.ExecuteNonQueryAsync(cancellationToken);
+    return result;
+}
+
+// SaveChanges immer in einer Transaktion, auch bei einem einzelnen Befehl
+private static void RequireTransaction(DbContextEventData eventData)
+{
+    // ...
+        context.Database.AutoTransactionBehavior = AutoTransactionBehavior.Always;
+}
+
+protected virtual DbCommand CreateSessionCommand(
+    DbConnection connection, DbTransaction transaction, DbContext? context)
+{
+    // ...
+    var command = connection.CreateCommand();
+    command.Transaction = transaction;
+    command.CommandText = "SELECT set_config(@name, @value, true)";   // is_local = true
+    // ...
+}
+\end{sourcecode}
+
+\code{Use\allowbreak{}Acme\allowbreak{}Tenancy(\allowbreak{}sp)} registriert dann diesen
+Interceptor statt des Connection-Interceptors. Drei Regeln gehören dazu:
+
+\begin{itemize}
+  \item \textbf{Lesen in Transaktionen.} Abfragen außerhalb einer Transaktion haben keinen
+    Mandanten und sehen keine Zeilen. Das ist sicher, aber die Anwendung muss lesende Arbeit,
+    die Daten braucht, in eine Transaktion legen.
+  \item \textbf{Speichern immer in einer Transaktion.} EF lässt die automatische Transaktion
+    weg, wenn \code{Save\allowbreak{}Changes} nur einen Befehl ausführt
+    (\code{Auto\allowbreak{}Transaction\allowbreak{}Behavior.\allowbreak{}When\allowbreak{}Needed}).
+    Ein einzelner Insert liefe dann ohne Mandanten und scheiterte an der Policy. Der Interceptor
+    ist deshalb zugleich ein \code{ISave\allowbreak{}Changes\allowbreak{}Interceptor} und stellt
+    \code{Always} ein.
+  \item \textbf{Kein Session-Wert.} Ist die Option gesetzt und trotzdem ein
+    \code{Tenant\allowbreak{}Connection\allowbreak{}Interceptor} registriert, verweigert dieser
+    das Setzen mit einer \code{Tenancy\allowbreak{}Exception}, statt einen Wert zu
+    hinterlassen, der die Transaktion überdauert. Damit entfällt auch
+    \code{Apply\allowbreak{}Tenant\allowbreak{}Session}.
+\end{itemize}
+
+\code{Transaction\allowbreak{}Pooling\allowbreak{}Tests} prüft gegen PostgreSQL: Innerhalb
+der Transaktion ist der Wert gesetzt und RLS greift, nach Commit und nach Rollback ist er auf
+derselben Verbindung leer, ein einzelner Insert bekommt seine Transaktion, und der
+Connection-Interceptor lehnt den Session-Wert ab. PgBouncer selbst ist nicht Teil des Tests;
+geprüft wird die Eigenschaft, auf die es ankommt: dass nach der Transaktion kein Wert bleibt.
 
 \section{Performance von Policies}
 
@@ -878,9 +940,9 @@ unter den Resilienzmechanismen von EF:
     \code{Apply\allowbreak{}Tenant\allowbreak{}Session} (Kapitel~\ref{ch:interceptors}).
 \end{itemize}
 
-Nicht implementiert sind transaktionslokale Settings für Transaction-Pooling (Abschnitt
-„Transaction-Pooling“ in Kapitel~\ref{ch:row-level-security-in-production}) und ein
-schreibgeschützter Session-Schlüssel (Abschnitt „Das Bedrohungsmodell“).
+Für Transaction-Pooling setzt \code{Use\allowbreak{}Transaction\allowbreak{}Pooling(\allowbreak{})}
+den Mandanten pro Transaktion (Seite~\pageref{sec:transaction-pooling}). Nicht implementiert ist
+ein schreibgeschützter Session-Schlüssel (Abschnitt „Das Bedrohungsmodell“).
 \code{Operations\allowbreak{}Tests} enthält den Verbindungsabbruch und die Transaktion in der
 Strategie; die Fälle offener Verbindungen stehen in
 \code{Connection\allowbreak{}Lifetime\allowbreak{}Tests}.

@@ -912,7 +912,8 @@ belongs in the database, not in an interceptor.
   Does the connection interceptor suffice? It does as long as no transaction pooling is
   involved. &
   Using transaction-local settings but allowing queries outside of transactions: those run
-  without the state. &
+  without the state. In the sample:
+  \code{Use\allowbreak{}Transaction\allowbreak{}Pooling(\allowbreak{})}. &
   \ref{ch:row-level-security-in-production} \\
   \tablerule
   \textbf{INSERT, UPDATE or DELETE should take a different shape (upsert).}

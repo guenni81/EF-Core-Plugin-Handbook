@@ -156,6 +156,7 @@ public class TenancyOptionsExtension : IDbContextOptionsExtension
             debugInfo["Acme:Tenancy:Index"] = s.CreateTenantIndex.ToString();
             debugInfo["Acme:Tenancy:VerifyMaterialized"] = s.VerifyMaterializedTenants.ToString();
             debugInfo["Acme:Tenancy:ProtectBulkOperations"] = s.ProtectBulkOperations.ToString();
+            debugInfo["Acme:Tenancy:TransactionPooling"] = s.UseTransactionPooling.ToString();
         }
     }
 }

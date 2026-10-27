@@ -69,6 +69,18 @@ public class TenancyOptionsBuilder
         => With(s => s with { ProtectBulkOperations = protect });
 
     /// <summary>
+    /// Sets the tenant per transaction instead of per session, for PgBouncer in transaction
+    /// mode (default: off). <c>UseAcmeTenancy(applicationServices)</c> then registers
+    /// <see cref="Runtime.PostgreSqlTransactionSessionInterceptor"/> instead of the connection
+    /// interceptor, and the connection interceptor refuses to set the session value. Reads
+    /// outside a transaction see no rows.
+    /// </summary>
+    /// <param name="enabled">Whether to set the tenant per transaction.</param>
+    /// <returns>The same builder for chaining.</returns>
+    public virtual TenancyOptionsBuilder UseTransactionPooling(bool enabled = true)
+        => With(s => s with { UseTransactionPooling = enabled });
+
+    /// <summary>
     /// Applies a change to the settings. Options extensions are immutable, so a modified copy
     /// replaces the registered extension.
     /// </summary>

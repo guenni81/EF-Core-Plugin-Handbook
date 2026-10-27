@@ -9,6 +9,14 @@ version is given by the dependency range and the compatibility table in the READ
 
 ### Added
 
+- `UseTransactionPooling()` (PostgreSQL options builder) with the new
+  `PostgreSqlTransactionSessionInterceptor` for PgBouncer in transaction mode: together with
+  `UseAcmeTenancy(applicationServices)` the tenant is set per transaction with
+  `set_config(..., true)` in `TransactionStarted` instead of per connection, and every
+  `SaveChanges` runs in a transaction (`AutoTransactionBehavior.Always`). Commands outside a
+  transaction have no tenant (fail closed); a `TenantConnectionInterceptor` refuses the session
+  value with a `TenancyException` when the option is set. Tested in `TransactionPoolingTests`;
+  handbook section "Transaction pooling" rewritten.
 - `ProtectBulkOperations()` (PostgreSQL options builder, SQL Server provider builder) with the
   new `TenantQueryExpressionInterceptor` from the core package: `ExecuteUpdate` calls that set
   the tenant property fail with a `TenancyException` when the query is compiled. It is

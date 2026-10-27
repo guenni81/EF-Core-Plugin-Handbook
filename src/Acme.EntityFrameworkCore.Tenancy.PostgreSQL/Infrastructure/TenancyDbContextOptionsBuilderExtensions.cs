@@ -2,6 +2,7 @@ using Acme.EntityFrameworkCore.Tenancy;
 using Acme.EntityFrameworkCore.Tenancy.Interceptors;
 using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure;
 using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Runtime;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -48,11 +49,16 @@ public static class TenancyDbContextOptionsBuilderExtensions
         // that is the bridge to the application container that knows the current tenant
         var tenants = applicationServices.GetRequiredService<ITenantProvider>();
 
-        return optionsBuilder
-            .UseAcmeTenancy(configure)
-            .AddInterceptors(
-                new TenantConnectionInterceptor(tenants),
-                new TenantSaveChangesInterceptor(tenants));
+        optionsBuilder.UseAcmeTenancy(configure);
+
+        // Transaction pooling: the tenant per transaction, never for the session
+        var pooling = optionsBuilder.Options.FindExtension<TenancyOptionsExtension>()!
+            .Settings.UseTransactionPooling;
+        IInterceptor session = pooling
+            ? new PostgreSqlTransactionSessionInterceptor(tenants)
+            : new TenantConnectionInterceptor(tenants);
+
+        return optionsBuilder.AddInterceptors(session, new TenantSaveChangesInterceptor(tenants));
     }
 
     /// <inheritdoc cref="UseAcmeTenancy(DbContextOptionsBuilder, Action{TenancyOptionsBuilder})"/>
