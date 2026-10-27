@@ -10,7 +10,7 @@
   zwei Beispiel-Apps, Unit- und Integrationstests \\
   Geprüft & Der Beispielcode wird gegen EF Core 10 und Npgsql 10 gebaut; Unit- und
   Integrationstests laufen gegen echtes PostgreSQL und SQL Server. \\
-  Aufbau & 9 Teile, 44 Kapitel, 4 Anhänge \\
+  Aufbau & 9 Teile, 45 Kapitel, 4 Anhänge \\
   Lizenz & MIT-Lizenz, © 2026 guenni81. Frei nutzbar, kopierbar, veränderbar und
   weitergebbar, auch kommerziell; siehe letzte Seite. \\
 \end{handbookmeta}
@@ -162,7 +162,8 @@ Jeder EF-Dienst hat eine feste Lebensdauer. \textbf{Singleton} heißt hier: einm
 internem Service Provider, nicht pro Anwendung. \textbf{Scoped} heißt: einmal pro
 Context-Instanz. Ein Singleton darf keinen Scoped-Dienst halten, und ein Dienst, der pro
 Context unterschiedliche Daten braucht, darf kein Singleton sein. Anhang~\ref{app:A} listet
-die Lebensdauern aller Erweiterungspunkte.
+die Lebensdauern aller Erweiterungspunkte; Kapitel~\ref{ch:state-lifetimes-and-thread-safety} fasst zusammen,
+welcher Zustand wohin gehört.
 
 \section{Das Dependencies-Muster}
 
@@ -503,7 +504,7 @@ fünf Fragen:
   Plugins; bei einem Einzeldienst gewinnt genau einer. \\
   \tablerule
   Welche Lebensdauer? & Ein Singleton darf weder Scoped-Dienste halten noch Daten pro
-  Context; ein Scoped-Dienst darf beides. \\
+  Context; ein Scoped-Dienst darf beides (Kapitel~\ref{ch:state-lifetimes-and-thread-safety}). \\
 \end{datatable}
 
 \section{Der zuständige Bereich}

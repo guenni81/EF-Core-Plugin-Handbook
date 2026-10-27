@@ -32,6 +32,12 @@ version of EF Core (10.x = EF Core 10).
   provider-internal API begins, lifetimes, and how to locate a change before choosing a
   mechanism. Appendix D shows the query compilation logs; `DebuggingTests` checks them.
 
+- Handbook (both editions): new chapter 8 "State, lifetimes and thread safety", the central
+  rule which state belongs where (application container vs. internal provider, singleton
+  per internal provider, scoped per context instance, pooling, factories, background jobs,
+  open connections), with five failure cases. `StateAndLifetimeTests` reproduces cases 1-4,
+  each wrong variant next to the correct one; appendix A lists `IResettableService`.
+
 ### Fixed
 
 - The handbook said EF only warns after 20 internal service providers; by default it throws.
@@ -39,6 +45,11 @@ version of EF Core (10.x = EF Core 10).
   query interceptor in preprocessing; the materialization chapter said the value converter
   is inlined into the shaper (the shaper calls its compiled delegate); the performance
   chapter listed the evaluatable filter as running once per query shape only.
+- The handbook and the XML documentation of the singleton options said EF validates
+  `ISingletonOptions` for every context; EF calls `Validate` when a context uses a provider
+  not built for exactly its options, above all with `UseInternalServiceProvider`. The
+  exception message now names that cause. The pooling note described the interceptor instead
+  of the tenant provider as the part that must read the tenant on every access.
 - `TenancyDesignTimeServices` registered `IDatabaseModelFactory` as a singleton although EF
   and Npgsql register it as scoped and it depends on the scoped scaffolding logger.
 

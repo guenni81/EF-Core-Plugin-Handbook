@@ -14,8 +14,9 @@ public interface ISqlServerTenancySingletonOptions : ISingletonOptions
 
 /// <summary>
 /// Default implementation of <see cref="ISqlServerTenancySingletonOptions" />. EF calls
-/// <see cref="Initialize" /> once per internal service provider and <see cref="Validate" /> for
-/// every further context that reuses it.
+/// <see cref="Initialize" /> once per internal service provider and <see cref="Validate" /> when a
+/// context uses a provider it did not build for exactly these options, above all with
+/// UseInternalServiceProvider.
 /// </summary>
 public class SqlServerTenancySingletonOptions : ISqlServerTenancySingletonOptions
 {
@@ -41,6 +42,8 @@ public class SqlServerTenancySingletonOptions : ISqlServerTenancySingletonOption
 
         if (settings != Settings)
             throw new InvalidOperationException(
-                "The tenancy options were changed after the internal service provider was created.");
+                "The tenancy options differ from those the internal service provider was created "
+                + "with. Contexts with different tenancy settings must not share a provider passed "
+                + "to UseInternalServiceProvider.");
     }
 }

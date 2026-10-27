@@ -19,7 +19,9 @@
 Lebensdauern und Kardinalität laut den Service-Tabellen von EF Core 10
 (\code{Entity\allowbreak{}Framework\allowbreak{}Services\allowbreak{}Builder},
 \code{Entity\allowbreak{}Framework\allowbreak{}Relational\allowbreak{}Services\allowbreak{}Builder}).
-„Mehrfach“ heißt: Plugin-Interface, alle Registrierungen werden verwendet. Welcher Dienst für
+„Mehrfach“ heißt: Plugin-Interface, alle Registrierungen werden verwendet. Singleton heißt
+einmal pro internem Provider, Scoped einmal pro Context-Instanz, mit Pooling über mehrere
+Anfragen hinweg (Kapitel~\ref{ch:state-lifetimes-and-thread-safety}). Welcher Dienst für
 welches Problem in Frage kommt und was vorher geprüft werden sollte, zeigt die
 Entscheidungshilfe in Kapitel~\ref{ch:choosing-the-right-extension-point}.
 
@@ -28,7 +30,9 @@ Entscheidungshilfe in Kapitel~\ref{ch:choosing-the-right-extension-point}.
   \tablehead
   \code{IConvention\allowbreak{}Set\allowbreak{}Plugin} & Scoped & mehrfach & \ref{ch:conventions} \\
   \tablerule
-  \code{ISingleton\allowbreak{}Options} & Singleton & mehrfach & \ref{ch:registering-services} \\
+  \code{ISingleton\allowbreak{}Options} & Singleton & mehrfach & \ref{ch:registering-services}, \ref{ch:state-lifetimes-and-thread-safety} \\
+  \tablerule
+  \code{IResettable\allowbreak{}Service} & Scoped & mehrfach & \ref{ch:state-lifetimes-and-thread-safety} \\
   \tablerule
   \code{IType\allowbreak{}Mapping\allowbreak{}Source\allowbreak{}Plugin} & Singleton &
   mehrfach & \ref{ch:type-mappings-and-value-converters} \\
@@ -267,6 +271,9 @@ und der Registrierung von \code{Add\allowbreak{}Entity\allowbreak{}Framework\all
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Composition\allowbreak{}Tests.\allowbreak{}cs}
   & Decorator-Beispiel (Audit-Plugin) & \ref{ch:registering-services} \\
+  \tablerule
+  \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}State\allowbreak{}And\allowbreak{}Lifetime\allowbreak{}Tests.\allowbreak{}cs}
+  & Fehlerfälle zu Zustand und Lebensdauern, falsche neben richtiger Variante & \ref{ch:state-lifetimes-and-thread-safety} \\
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Materialization\allowbreak{}Tests.\allowbreak{}cs}
   & Prüfung beim Laden: Registrierung, Logik, Fehlerfall pro Context (Unit), Leck,

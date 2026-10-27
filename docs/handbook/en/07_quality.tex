@@ -383,6 +383,9 @@ For every new plugin, in the order of development:
     (chapter~\ref{ch:registering-services}).
   \item Otherwise Replace, and offer the logic publicly and virtually.
   \item ISingletonOptions for singleton services, registered twice.
+  \item Classify every piece of state according to chapter~\ref{ch:state-lifetimes-and-thread-safety}: request data never
+    in options, hash, model, singleton or translated query.
+  \item Reset scoped services with state for pooling (IResettableService).
   \item App dependencies via AddInterceptors, document pooling behavior.
 \end{checklist}
 

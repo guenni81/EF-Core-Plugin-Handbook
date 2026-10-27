@@ -1,12 +1,13 @@
 % ============================================================
 \setpartpreamble{\partintro
-  {How a plugin is configured, registers its services and connects to the application's DI
-  container.}
+  {How a plugin is configured, registers its services, connects to the application's DI
+  container, and which state belongs where.}
   {
     \item Chapter~\ref{ch:the-options-extension}: The options extension
     \item Chapter~\ref{ch:registering-services}: Registering services
     \item Chapter~\ref{ch:public-api-and-integration-into}: Public API and integration into
     the application
+    \item Chapter~\ref{ch:state-lifetimes-and-thread-safety}: State, lifetimes and thread safety
   }}
 \part{Infrastructure}\label{part:II}
 
@@ -225,7 +226,10 @@ public virtual void ApplyServices(IServiceCollection services)
 Singleton services such as type mapping plugins cannot resolve
 \code{IDb\allowbreak{}Context\allowbreak{}Options} per context. For them there is
 \code{ISingleton\allowbreak{}Options}: a singleton that EF initializes once from the options
-when creating the provider and validates for every further context.
+when creating the provider. EF calls \code{Validate} when a context uses a provider that EF
+did not build for exactly these options, above all with
+\code{Use\allowbreak{}Internal\allowbreak{}Service\allowbreak{}Provider}
+(chapter~\ref{ch:state-lifetimes-and-thread-safety}).
 
 \begin{sourcecode}[Infrastructure/\allowbreak{}ITenancy\allowbreak{}Singleton\allowbreak{}Options.\allowbreak{}cs]{csharp}
 public class TenancySingletonOptions : ITenancySingletonOptions
@@ -237,13 +241,13 @@ public class TenancySingletonOptions : ITenancySingletonOptions
         => Settings = options.FindExtension<TenancyOptionsExtension>()?.Settings
                       ?? TenancySettings.Default;
 
-    // For every context: options must not differ from the provider's state
+    // Options must not differ from the provider's state (shared provider)
     public virtual void Validate(IDbContextOptions options)
     {
         var settings = options.FindExtension<TenancyOptionsExtension>()?.Settings
                        ?? TenancySettings.Default;
         if (settings != Settings)
-            throw new InvalidOperationException("Tenancy options changed afterwards ...");
+            throw new InvalidOperationException("The tenancy options differ ...");
     }
 }
 \end{sourcecode}
@@ -497,11 +501,233 @@ the connection interceptor gets the setting name from the singleton options that
 
 \begin{important}[DbContext pooling]
   With \code{Add\allowbreak{}Db\allowbreak{}Context\allowbreak{}Pool}, contexts are reused
-  and receive their options only once. Scoped interceptors from the first scope would be
-  reused for all later requests, with the tenant of the first request. For pooling, the
-  tenant provider must be a singleton that determines the tenant anew on every access, for
+  and receive their options only once, built with the root provider. The interceptor
+  instances are created once and serve all later requests. A tenant provider that keeps its
+  tenant per scope then always returns that of the first request. For pooling, the tenant
+  provider must therefore be a singleton that determines the tenant anew on every access, for
   example via \code{IHttp\allowbreak{}Context\allowbreak{}Accessor}.
-  Chapter~\ref{ch:using-the-plugin-in-asp} shows this variant, and the same applies to
+  Chapter~\ref{ch:using-the-plugin-in-asp} shows this variant, chapter~\ref{ch:state-lifetimes-and-thread-safety} the
+  rule behind it, and the same applies to
   \code{Add\allowbreak{}Db\allowbreak{}Context\allowbreak{}Factory}, whose factory is a
   singleton by default.
+\end{important}
+
+% ------------------------------------------------------------
+\chapter{State, lifetimes and thread safety}\label{ch:state-lifetimes-and-thread-safety}
+
+Almost every hard-to-find plugin bug has the same cause: state in the wrong place. A tenant
+in a singleton, a value in the hash that does not belong there, a scoped service held by a
+singleton. The previous chapters contain the individual rules; this chapter merges them into
+one and answers one question: \textbf{which kind of state may be stored where in an EF Core
+plugin?}
+
+\section{Two containers, two meanings of lifetime}
+
+A plugin lives in two containers (chapters~\ref{ch:ef-core-s-architecture-from} and
+\ref{ch:public-api-and-integration-into}). The same words mean different things there:
+
+\begin{datatable}{H{0.65}H{1.15}H{1.20}}
+  \textbf{Lifetime} & \textbf{Application container} & \textbf{EF's internal provider} \\
+  \tablehead
+  Singleton & Once per application & Once per internal provider, that is per
+  configuration. Several configurations in one process yield several instances. \\
+  \tablerule
+  Scoped & Once per scope, in ASP.NET Core per request & Once per context instance. With
+  pooling, the instance outlives the request and serves the next one. \\
+  \tablerule
+  Transient & New on every resolution & The same; rare for EF services
+  (\code{ILazy\allowbreak{}Loader}) \\
+  \tablerule
+  \code{static} & Once per process, across all containers & The same \\
+\end{datatable}
+
+Who builds which container decides the lifetime. The application builds the application
+container; the internal provider cannot resolve its services. EF builds the internal
+provider from the options, caches it by the hash of the options extensions
+(chapter~\ref{ch:the-options-extension}) and shares it among all contexts with the same
+configuration. The lifetime of an EF service is set by EF (appendix~\ref{app:A});
+\code{Try\allowbreak{}Add} applies it (chapter~\ref{ch:registering-services}).
+
+\section{Which state belongs where}
+
+\begin{datatable}{H{0.85}H{1.30}H{0.85}}
+  \textbf{State} & \textbf{Right place} & \textbf{Valid for} \\
+  \tablehead
+  Static plugin configuration (annotation names, event IDs, defaults) & \code{const} or
+  \code{static readonly}, immutable & Process \\
+  \tablerule
+  Cached reflection metadata (\code{Method\allowbreak{}Info},
+  \code{Property\allowbreak{}Info}) & \code{static readonly} fields; they are immutable and
+  therefore thread-safe & Process \\
+  \tablerule
+  Model-relevant configuration (setting name, policy name) & Immutable options extension, in
+  the hash; singleton services read it through \code{ISingleton\allowbreak{}Options} &
+  Internal provider \\
+  \tablerule
+  Provider- and model-specific data (derived from the model or the options) & Annotation or
+  runtime annotation on the model; intermediate results in a thread-safe singleton or
+  through
+  \code{Get\allowbreak{}Or\allowbreak{}Add\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Value}
+  & Internal provider, model \\
+  \tablerule
+  DbContext-specific data & Scoped service in the internal provider or the context from the
+  event data; reset with pooling (\code{IResettable\allowbreak{}Service}) & Context instance
+  \\
+  \tablerule
+  Connection-specific data (session settings) & The database session itself, set on every
+  opening by a connection interceptor (chapter~\ref{ch:interceptors}) & As long as the
+  connection is open \\
+  \tablerule
+  Current tenant & \code{ITenant\allowbreak{}Provider} in the application container, read on
+  every access; into the SQL only as a parameter or through the session & Request or job \\
+  \tablerule
+  Current user & Like the tenant: in the application container, per access (for example
+  through \code{IHttp\allowbreak{}Context\allowbreak{}Accessor}) & Request \\
+  \tablerule
+  Other request-specific data (correlation ID, culture) & Application scope or
+  \code{Async\allowbreak{}Local}; in the SQL at most as a parameter or tag & Request or job \\
+\end{datatable}
+
+Just as important is where state \emph{never} belongs: values of a request never go into
+the options, the hash, the model, a singleton field or a translated query. All these places
+are reused across requests.
+
+\section{Singleton means: one per internal provider}
+
+A singleton in the internal provider is not “global for the process”. Two contexts with a
+different setting name get two providers and therefore two instances of
+\code{Tenancy\allowbreak{}Singleton\allowbreak{}Options}. Conversely, all contexts of one
+configuration share \emph{one} instance, on all threads at the same time: parallel requests
+work with different contexts but with the same singletons.
+
+A singleton must therefore be immutable after its initialization or cache in a thread-safe
+way. The sample shows three forms: the type mapping plugin and the materialization
+interceptor are stateless, \code{Tenancy\allowbreak{}Singleton\allowbreak{}Options} is
+initialized once and then only read, and
+\code{Tenancy\allowbreak{}Logging\allowbreak{}Definitions} creates its definitions with
+\code{Lazy\allowbreak{}Initializer.\allowbreak{}Ensure\allowbreak{}Initialized}
+(chapter~\ref{ch:diagnostics-and-logging}). A single \code{Db\allowbreak{}Context}, on the
+other hand, is not thread-safe and is never used concurrently; a scoped service therefore
+only ever sees one caller at a time.
+
+\code{ISingleton\allowbreak{}Options} answers the question of how a singleton gets the
+configuration. \code{IDb\allowbreak{}Context\allowbreak{}Options} is scoped and not
+available in a singleton (see failure case~3). EF calls \code{Initialize} once when it
+builds the provider, with the options of the first context. That is enough because the hash
+ensures that only contexts with the same model-relevant options get this provider. EF calls
+\code{Validate} when a context uses a provider that EF did not build for exactly these
+options, above all with \code{Use\allowbreak{}Internal\allowbreak{}Service\allowbreak{}Provider}:
+then contexts with different settings may share a provider, and \code{Validate} has to
+reject that.
+
+\section{Service provider and model cache}
+
+Both caches amplify every decision about state. The provider cache uses the options
+extensions as its key; the model is built per provider and context type
+(chapter~\ref{ch:models-per-runtime-context}). This leads to two directions of error, which
+chapter~\ref{ch:the-options-extension} covers in detail: what is missing from the key
+although it influences the model leads to a wrong, shared model. What is in the key although
+it changes per request creates a provider including model per value; from the 21st on, EF
+throws by default with
+\code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}.
+Instances of singleton interceptors are part of the key as well
+(chapter~\ref{ch:materialization-from-rows-to-objects}).
+
+\section{Pooling, factories, jobs and open connections}
+
+The lifetimes above apply to \code{Add\allowbreak{}Db\allowbreak{}Context}. Other ways of
+creating contexts shift them:
+
+\begin{datatable}{H{0.80}H{1.15}H{1.05}}
+  \textbf{Situation} & \textbf{What changes} & \textbf{Rule} \\
+  \tablehead
+  \code{Add\allowbreak{}Db\allowbreak{}Context\allowbreak{}Pool} & Options and interceptors
+  are created once from the root provider; the context instance and its scoped services serve
+  many requests one after the other & Tenant provider reads per access; scoped services with
+  state implement \code{IResettable\allowbreak{}Service}
+  (chapter~\ref{ch:using-the-plugin-in-asp}) \\
+  \tablerule
+  \code{Add\allowbreak{}Db\allowbreak{}Context\allowbreak{}Factory} & Factory and options are
+  singletons by default; the options callback gets the root provider & Register the factory
+  as scoped or use a tenant provider that reads per access \\
+  \tablerule
+  Parallel requests & Different contexts, the same singletons & Singletons stateless or
+  thread-safe \\
+  \tablerule
+  Background services & No \code{Http\allowbreak{}Context}; the tenant comes from the job &
+  Set the tenant before scope and context, for example through
+  \code{Async\allowbreak{}Local}; never fall back to “all tenants” \\
+  \tablerule
+  Long-open connections & The session state belongs to the connection, not to the context &
+  Let EF open the connection; on a tenant change call
+  \code{Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})}
+  (chapter~\ref{ch:interceptors}); mind transaction pooling
+  (chapter~\ref{ch:row-level-security-in-production}) \\
+\end{datatable}
+
+\section{Five failure cases}
+
+Each of the following cases is reproduced as a test in the sample, the wrong variant next to
+the right one (\code{State\allowbreak{}And\allowbreak{}Lifetime\allowbreak{}Tests}, case~5
+in \code{Materialization\allowbreak{}Tests}).
+
+\begin{datatable}{H{0.70}H{0.75}H{0.85}H{0.70}}
+  \textbf{Case} & \textbf{Cause} & \textbf{Observable} & \textbf{Solution} \\
+  \tablehead
+  1. Current tenant in a singleton & A tenant provider remembers the first tenant, for
+  example as an “optimization” & With pooling or a singleton factory, request B works
+  entirely as tenant A: session, reads and writes. RLS does not help because all values
+  match & Read the tenant on every access (\code{Http\allowbreak{}Context},
+  \code{Async\allowbreak{}Local}) \\
+  \tablerule
+  2. Current tenant in the hash & The options extension carries the tenant into the provider
+  key & One provider including model per tenant: memory and startup time grow, from the
+  21st on an exception & Tenant through interceptors and session; only model-relevant values
+  in the hash \\
+  \tablerule
+  3. Scoped service in a singleton & A singleton service injects
+  \code{ICurrent\allowbreak{}Db\allowbreak{}Context} or
+  \code{IDb\allowbreak{}Context\allowbreak{}Options} & No error at registration, because EF
+  does not validate scopes in the internal provider; the singleton gets \code{null} and fails
+  later & Register the service as scoped, take the context from the event data, or read
+  configuration through \code{ISingleton\allowbreak{}Options} \\
+  \tablerule
+  4. Options extension changed after registration & A mutable property of the extension is
+  set later & The provider was built with the old value; new contexts silently keep working
+  with it & Immutable extension, changes as a copy (\code{With\allowbreak{}Settings},
+  chapter~\ref{ch:the-options-extension}) \\
+  \tablerule
+  5. Context state in a singleton interceptor & The interceptor remembers tenant or context
+  of the first call & False alarms for other tenants, hidden leaks, race conditions; one
+  instance per context creates one provider per context & Get data on every call through the
+  context (chapter~\ref{ch:materialization-from-rows-to-objects}) \\
+\end{datatable}
+
+Case~3 is the most treacherous because it starts without any warning. In the application
+container, ASP.NET Core reports such a “captive dependency” in the development environment
+when resolving; EF's internal provider does not check it:
+
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}State\allowbreak{}And\allowbreak{}Lifetime\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
+// WRONG: a singleton that needs the current context
+m.TryAddSingleton<ContextHolder, ContextHolder>();     // ContextHolder(ICurrentDbContext)
+
+using var ctx = ContextWithHolder(ServiceLifetime.Singleton);
+Assert.Null(ctx.GetService<ContextHolder>().Current);  // root scope: no context
+
+// Right: scoped, one instance per context
+Assert.Same(ctx, ctx.GetService<ContextHolder>().Current!.Context);
+\end{sourcecode}
+
+Case~4 can only be detected with \code{ISingleton\allowbreak{}Options.\allowbreak{}Validate}
+where EF calls it, that is with a provider shared through
+\code{Use\allowbreak{}Internal\allowbreak{}Service\allowbreak{}Provider}. The test
+\code{Shared\allowbreak{}\_provider\allowbreak{}\_rejects\allowbreak{}\_contexts\allowbreak{}\_with\allowbreak{}\_different\allowbreak{}\_tenancy\allowbreak{}\_settings}
+shows that \code{Tenancy\allowbreak{}Singleton\allowbreak{}Options} does exactly that. In
+the normal case, only immutability itself protects.
+
+\begin{important}[The rule in one sentence]
+  What is the same for all contexts of a configuration belongs in options, model or
+  singletons; what changes per context, in scoped services; what changes per request, in the
+  application container, and from there per call into parameters or the session, never into
+  a cache.
 \end{important}

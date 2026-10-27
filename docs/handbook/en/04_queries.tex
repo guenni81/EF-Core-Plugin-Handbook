@@ -914,7 +914,8 @@ condition, because all threads write the same field.
   A singleton interceptor has only two sources of data: what belongs to the configuration
   (through the constructor or singleton options, the same for all contexts) and what the call
   brings along (\code{Context}, entity type, the row's values). Everything else belongs in
-  the application or in a scoped service the interceptor reaches through the context.
+  the application or in a scoped service the interceptor reaches through the context
+  (chapter~\ref{ch:state-lifetimes-and-thread-safety}).
 \end{tip}
 
 \section{Limits}

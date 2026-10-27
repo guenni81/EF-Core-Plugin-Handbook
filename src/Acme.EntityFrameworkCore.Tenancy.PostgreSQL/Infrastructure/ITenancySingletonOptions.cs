@@ -24,7 +24,11 @@ public class TenancySingletonOptions : ITenancySingletonOptions
         => Settings = options.FindExtension<TenancyOptionsExtension>()?.Settings
                       ?? TenancySettings.Default;
 
-    /// <summary>For every context: options must not differ from the provider's state.</summary>
+    /// <summary>
+    /// Options must not differ from the provider's state. EF calls this when a context uses a
+    /// provider it did not build for exactly these options, above all with
+    /// UseInternalServiceProvider; with EF's own provider cache the hash already separates them.
+    /// </summary>
     /// <param name="options">Options of the current context.</param>
     /// <exception cref="InvalidOperationException">The tenancy settings differ.</exception>
     public virtual void Validate(IDbContextOptions options)
@@ -34,7 +38,8 @@ public class TenancySingletonOptions : ITenancySingletonOptions
 
         if (settings != Settings)
             throw new InvalidOperationException(
-                "The tenancy options were changed after the internal service provider was "
-                + "created. Check GetServiceProviderHashCode of the options extension.");
+                "The tenancy options differ from those the internal service provider was "
+                + "created with. Contexts with different tenancy settings must not share a "
+                + "provider passed to UseInternalServiceProvider.");
     }
 }

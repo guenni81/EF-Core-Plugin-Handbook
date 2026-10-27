@@ -29,7 +29,7 @@ backed by more than 100 tests.
 | English | [EF-Core-Plugin-Handbook.pdf](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/docs/handbook/out/EF-Core-Plugin-Handbook.pdf) | [`docs/handbook/en`](https://github.com/guenni81/EF-Core-Plugin-Handbook/tree/main/docs/handbook/en) |
 | Deutsch | [EF-Core-Plugin-Handbuch.pdf](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/docs/handbook/out/EF-Core-Plugin-Handbuch.pdf) | [`docs/handbook/de`](https://github.com/guenni81/EF-Core-Plugin-Handbook/tree/main/docs/handbook/de) |
 
-44 chapters in 9 parts plus 4 appendices, about 130 pages, for developers who already use
+45 chapters in 9 parts plus 4 appendices, about 140 pages, for developers who already use
 EF Core and want to extend it. The PDFs are typeset with LaTeX (LuaLaTeX) so that text and
 code excerpts are versioned together with the code. See [`docs/handbook/README.md`](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/docs/handbook/README.md)
 for how to build them.
@@ -103,26 +103,27 @@ per table (FILTER and BLOCK predicates) and `SESSION_CONTEXT`.
 | Options extension | `TenancyOptionsExtension`: service provider hash, validation, debug info | 5 |
 | Internal services | Plugin interfaces, replacing and decorating provider services, `ISingletonOptions` | 6 |
 | Application DI | `AddAcmeTenancy<T>()`, interceptors that use application services | 7 |
-| Model building | Fluent API, data annotation, conventions, named query filter, index, validation | 8–10 |
-| Composability | Tested together with EFCore.NamingConventions | 9 |
-| Type mapping | `TenantId` → `uuid` via `IRelationalTypeMappingSourcePlugin`, JSON, compiled models | 11 |
-| Queries | `EF.Functions.CurrentTenant()`, `TenantId.IsEmpty`, `IEvaluatableExpressionFilterPlugin` | 12–15 |
-| Materialization | Shaping, constructor binding, tracking; `VerifyMaterializedTenants()` checks every loaded entity in a singleton interceptor | 16 |
-| Run time | SaveChanges and connection interceptors, `Database.ApplyTenantSession()` | 17 |
-| Diagnostics | Custom event IDs, `EventDefinition`, warning-as-error, `DiagnosticSource` | 18 |
-| Migrations | Annotation-driven RLS, custom operations (roles, privileges) | 19–21, 34 |
-| Design time | Annotation code generator, `[DesignTimeServicesReference]` | 22–24 |
-| Testing | Model, SQL, snapshot round-trip, compiled model and Testcontainers tests | 25 |
-| Shipping | Versioning, stable annotation formats, packaging, CI, Public API analyzer | 26–27, 38 |
-| Value generation | `TenantId` keys via convention and `HasValueGeneratorFactory(Type)` | 30 |
-| Operations | RLS pitfalls, PgBouncer, legitimate cross-tenant access | 35 |
-| Performance | BenchmarkDotNet project with measured overhead of the SaveChanges logic | 36 |
-| ASP.NET Core | `samples/ShopApi`, DbContext factories, background jobs | 37 |
-| Custom SQL nodes | `EF.Functions.IsNotDistinctFrom` with SQL generator and nullability processor | 39 |
-| Aggregates | `EF.Functions.Every` (`bool_and`) with FILTER/DISTINCT support | 40 |
-| Runtime annotations | Tenant property in the compiled model, design-time annotations filtered | 41 |
-| Scaffolding | RLS and policies are read back from the database | 42 |
-| Second provider | SQL Server: security policies and `SESSION_CONTEXT` on the same core | 43–44 |
+| State and lifetimes | Which state belongs where: app container vs. internal provider, pooling, factories, jobs; five failure cases as tests | 8 |
+| Model building | Fluent API, data annotation, conventions, named query filter, index, validation | 9–11 |
+| Composability | Tested together with EFCore.NamingConventions | 10 |
+| Type mapping | `TenantId` → `uuid` via `IRelationalTypeMappingSourcePlugin`, JSON, compiled models | 12 |
+| Queries | `EF.Functions.CurrentTenant()`, `TenantId.IsEmpty`, `IEvaluatableExpressionFilterPlugin` | 13–16 |
+| Materialization | Shaping, constructor binding, tracking; `VerifyMaterializedTenants()` checks every loaded entity in a singleton interceptor | 17 |
+| Run time | SaveChanges and connection interceptors, `Database.ApplyTenantSession()` | 18 |
+| Diagnostics | Custom event IDs, `EventDefinition`, warning-as-error, `DiagnosticSource` | 19 |
+| Migrations | Annotation-driven RLS, custom operations (roles, privileges) | 20–22, 35 |
+| Design time | Annotation code generator, `[DesignTimeServicesReference]` | 23–25 |
+| Testing | Model, SQL, snapshot round-trip, compiled model and Testcontainers tests | 26 |
+| Shipping | Versioning, stable annotation formats, packaging, CI, Public API analyzer | 27–28, 39 |
+| Value generation | `TenantId` keys via convention and `HasValueGeneratorFactory(Type)` | 31 |
+| Operations | RLS pitfalls, PgBouncer, legitimate cross-tenant access | 36 |
+| Performance | BenchmarkDotNet project with measured overhead of the SaveChanges logic | 37 |
+| ASP.NET Core | `samples/ShopApi`, DbContext factories, background jobs | 38 |
+| Custom SQL nodes | `EF.Functions.IsNotDistinctFrom` with SQL generator and nullability processor | 40 |
+| Aggregates | `EF.Functions.Every` (`bool_and`) with FILTER/DISTINCT support | 41 |
+| Runtime annotations | Tenant property in the compiled model, design-time annotations filtered | 42 |
+| Scaffolding | RLS and policies are read back from the database | 43 |
+| Second provider | SQL Server: security policies and `SESSION_CONTEXT` on the same core | 44–45 |
 | Debugging | Model debug view, resolved services, convention set, query trees, logging | App. D |
 
 ## Repository layout

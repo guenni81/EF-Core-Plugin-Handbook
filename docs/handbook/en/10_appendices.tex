@@ -19,7 +19,9 @@
 Lifetimes and cardinality according to EF Core 10's service tables
 (\code{Entity\allowbreak{}Framework\allowbreak{}Services\allowbreak{}Builder},
 \code{Entity\allowbreak{}Framework\allowbreak{}Relational\allowbreak{}Services\allowbreak{}Builder}).
-“Multiple” means: plugin interface, all registrations are used. Which service fits which
+“Multiple” means: plugin interface, all registrations are used. Singleton means once per
+internal provider, scoped once per context instance, with pooling across several requests
+(chapter~\ref{ch:state-lifetimes-and-thread-safety}). Which service fits which
 problem, and what to check first, is shown by the decision guide in
 chapter~\ref{ch:choosing-the-right-extension-point}.
 
@@ -28,7 +30,9 @@ chapter~\ref{ch:choosing-the-right-extension-point}.
   \tablehead
   \code{IConvention\allowbreak{}Set\allowbreak{}Plugin} & Scoped & multiple & \ref{ch:conventions} \\
   \tablerule
-  \code{ISingleton\allowbreak{}Options} & Singleton & multiple & \ref{ch:registering-services} \\
+  \code{ISingleton\allowbreak{}Options} & Singleton & multiple & \ref{ch:registering-services}, \ref{ch:state-lifetimes-and-thread-safety} \\
+  \tablerule
+  \code{IResettable\allowbreak{}Service} & Scoped & multiple & \ref{ch:state-lifetimes-and-thread-safety} \\
   \tablerule
   \code{IType\allowbreak{}Mapping\allowbreak{}Source\allowbreak{}Plugin} & Singleton &
   multiple & \ref{ch:type-mappings-and-value-converters} \\
@@ -267,6 +271,9 @@ and the registrations of \code{Add\allowbreak{}Entity\allowbreak{}Framework\allo
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Composition\allowbreak{}Tests.\allowbreak{}cs}
   & Decorator example (audit plugin) & \ref{ch:registering-services} \\
+  \tablerule
+  \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}State\allowbreak{}And\allowbreak{}Lifetime\allowbreak{}Tests.\allowbreak{}cs}
+  & Failure cases for state and lifetimes, the wrong variant next to the right one & \ref{ch:state-lifetimes-and-thread-safety} \\
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Materialization\allowbreak{}Tests.\allowbreak{}cs}
   & Check while loading: registration, logic, failure case per context (unit), leak, limits

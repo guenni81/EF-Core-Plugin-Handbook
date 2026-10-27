@@ -385,6 +385,9 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung:
     (Kapitel~\ref{ch:registering-services}).
   \item Sonst Replace, und die Logik öffentlich und virtuell anbieten.
   \item ISingletonOptions für Singleton-Dienste, doppelt registriert.
+  \item Jeden Zustand nach Kapitel~\ref{ch:state-lifetimes-and-thread-safety} einordnen: Anfragedaten nie in
+    Options, Hash, Modell, Singleton oder übersetzte Abfrage.
+  \item Scoped-Dienste mit Zustand für Pooling zurücksetzen (IResettableService).
   \item App-Abhängigkeiten über AddInterceptors, Pooling-Verhalten dokumentieren.
 \end{checklist}
 

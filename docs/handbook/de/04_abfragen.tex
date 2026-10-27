@@ -927,7 +927,8 @@ es. Unter Last kommt eine Race Condition hinzu, denn alle Threads schreiben dass
   Ein Singleton-Interceptor hat nur zwei Quellen für Daten: was zur Konfiguration gehört
   (über Konstruktor oder Singleton-Options, für alle Contexts gleich) und was der Aufruf
   mitbringt (\code{Context}, Entity-Typ, Werte der Zeile). Alles andere gehört in die
-  Anwendung oder in einen Scoped-Dienst, den der Interceptor über den Context erreicht.
+  Anwendung oder in einen Scoped-Dienst, den der Interceptor über den Context erreicht
+  (Kapitel~\ref{ch:state-lifetimes-and-thread-safety}).
 \end{tip}
 
 \section{Grenzen}
