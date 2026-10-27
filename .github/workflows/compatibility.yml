@@ -24,6 +24,13 @@ jobs:
       - name: Build against the newest EF Core 10.0.x patches
         run: dotnet build -c Release -p:EFCoreVersion=10.0.*
 
+      # NuGet audit reports advisories as NU1901-NU1904 warnings; this step makes them fail the
+      # build and lists the affected packages with their advisories, for every project
+      - name: No known vulnerable packages
+        run: |
+          dotnet list package --vulnerable --include-transitive | tee vulnerable.txt
+          ! grep -q '^ *> ' vulnerable.txt
+
       - name: Show the resolved EF Core and provider versions
         run: >
           dotnet list src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL package

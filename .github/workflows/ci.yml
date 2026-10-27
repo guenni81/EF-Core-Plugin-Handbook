@@ -17,6 +17,13 @@ jobs:
       - name: Build
         run: dotnet build -c Release
 
+      # NuGet audit reports advisories as NU1901-NU1904 warnings; this step makes them fail the
+      # build and lists the affected packages with their advisories, for every project
+      - name: No known vulnerable packages
+        run: |
+          dotnet list package --vulnerable --include-transitive | tee vulnerable.txt
+          ! grep -q '^ *> ' vulnerable.txt
+
       - name: Unit tests (no database)
         run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Tests -c Release --no-build
 

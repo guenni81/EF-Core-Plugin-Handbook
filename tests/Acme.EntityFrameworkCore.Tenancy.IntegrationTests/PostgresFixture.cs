@@ -98,8 +98,7 @@ public sealed class PostgresFixture : IAsyncLifetime
     public const string AppRole = "shop_app";
     private const string AppPassword = "shop_app_pw";
 
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder()
-        .WithImage("postgres:17-alpine")
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:17-alpine")
         .Build();
 
     /// <summary>Connection string for <see cref="AppRole"/>; set in <see cref="InitializeAsync"/>.</summary>

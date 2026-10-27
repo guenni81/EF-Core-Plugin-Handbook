@@ -241,7 +241,10 @@ internal EF Core and Npgsql APIs (namespaces `*.Internal`, warning EF1001); thes
 are commented in the code. The code is built and tested against EF Core 10.0 and
 Npgsql 10.0; a weekly [compatibility workflow](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/.github/workflows/compatibility.yml)
 also tests the newest stable 10.0.x patches. Upgrading to the next EF Core major version
-follows the upgrade playbook in chapter "Versioning and compatibility".
+follows the upgrade playbook in chapter "Versioning and compatibility". NuGet advisories in the dependency graph
+are fixed, not suppressed; where no responsible dependency carries a fix yet, a documented
+minimum version in `Directory.Packages.props` closes the gap (the SQL Server package depends on
+`System.Security.Cryptography.Pkcs` 9.0.22 for that reason).
 
 ## Contributing
 

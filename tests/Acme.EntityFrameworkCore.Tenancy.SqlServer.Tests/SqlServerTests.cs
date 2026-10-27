@@ -190,7 +190,9 @@ public class SqlServerUnitTests
 public sealed class SqlServerFixture : IAsyncLifetime
 {
     private const string AppPassword = "Acme!App#2026";
-    private readonly MsSqlContainer _container = new MsSqlBuilder().Build();
+    // The image Testcontainers 4.6 used by default, now named explicitly
+    private readonly MsSqlContainer _container =
+        new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04").Build();
 
     public string AppConnectionString { get; private set; } = "";
 

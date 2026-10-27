@@ -537,6 +537,43 @@ Third-party test dependencies such as EFCore.NamingConventions often ship later 
 version and can block this job's restore. Exclude such tests in the preview channel instead
 of switching the channel off.
 
+\section{NuGet advisories and transitive dependencies}\label{sec:nuget-advisories}
+
+A plugin ships not only its own code but also its dependency graph. NuGet audit reports known
+vulnerabilities as warnings NU1901 to NU1904
+(\href{https://learn.microsoft.com/en-us/nuget/concepts/auditing-packages}{NuGet: Auditing package dependencies}).
+What matters is \emph{whom} a finding affects. \code{dotnet nuget why} finds out, showing the path
+from the direct dependency to the affected package. The sample had three cases:
+
+\begin{datatable}{H{0.75}H{1.05}H{0.70}H{1.50}}
+  \textbf{Package} & \textbf{Origin} & \textbf{Affects} & \textbf{Decision} \\
+  \tablehead
+  \code{System.\allowbreak{}Security.\allowbreak{}Cryptography.\allowbreak{}Pkcs} 9.0.4 &
+  EF Core SqlServer → \code{Microsoft.\allowbreak{}Data.\allowbreak{}SqlClient} 6.1 & Consumers of
+  the SQL Server package & No patch and no SqlClient version (not even 7.x) brings 9.0.21 yet.
+  Hence a direct dependency on 9.0.22 in the SQL Server package; it ends up in the nuspec and
+  fixes the application's graph. \\
+  \tablerule
+  \code{Cryptography.\allowbreak{}Xml}/\code{Pkcs} 9.0.0 & EF Core Design 10.0.0 → MSBuild
+  17.14, Workspaces.MSBuild 4.14 & Tooling only: tests, sample & Newer Design patches need other
+  MSBuild packages but would pull EF itself along and end the test of the minimum version.
+  Hence \code{Xml} 9.0.22 in test and sample projects only. \\
+  \tablerule
+  \code{SSH.\allowbreak{}NET} 2024.2.0 & Testcontainers 4.6 & Tests only & Testcontainers 4.16
+  within the same major version; brings 2026.0.0. \\
+\end{datatable}
+
+Every direct dependency on what is really a transitive package is listed in
+\code{Directory.\allowbreak{}Packages.\allowbreak{}props} with its origin, the advisory and the
+criterion for when it can go again. Nothing is suppressed: neither \code{NoWarn} nor a disabled
+audit makes a dependency safe, they only hide the finding. Both CI channels also run
+\code{dotnet list package -\allowbreak{}-vulnerable -\allowbreak{}-include-transitive} and fail on
+any finding. The regular run still builds against EF Core 10.0.0, the compatibility run against
+the newest 10.0.x patch; the fixes are minimum versions and apply in both. For tooling there is an
+interaction: \code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tasks}
+treats the audit warnings as errors on publish, so NativeAOT fails with EF Design 10.0.0
+(page~\pageref{sec:consumer-test}).
+
 \section{Upgrade checklist}
 
 \begin{checklist}

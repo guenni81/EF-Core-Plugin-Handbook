@@ -9,6 +9,8 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" />
+    <!-- Tooling security fix, see Directory.Packages.props -->
+    <PackageReference Include="System.Security.Cryptography.Xml" />
     <PackageReference Include="EFCore.NamingConventions" />
   </ItemGroup>
   <ItemGroup>
