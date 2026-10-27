@@ -20,6 +20,26 @@ public class SqlServerTenancyAnnotationProvider : SqlServerAnnotationProvider
     {
     }
 
+    /// <summary>Returns SQL Server's model annotations plus session key and policy schema at design time.</summary>
+    /// <param name="model">The relational model.</param>
+    /// <param name="designTime">Whether the annotations are requested for migrations.</param>
+    /// <returns>The annotations for the database.</returns>
+    public override IEnumerable<IAnnotation> For(IRelationalModel model, bool designTime)
+    {
+        foreach (var annotation in base.For(model, designTime))
+            yield return annotation;
+
+        // A change becomes an AlterDatabaseOperation with old and new values
+        if (!designTime)
+            yield break;
+
+        foreach (var name in new[] { SqlServerRlsAnnotationNames.SessionKey, SqlServerRlsAnnotationNames.PolicySchema })
+        {
+            if (model.Model.FindAnnotation(name) is { } annotation)
+                yield return annotation;
+        }
+    }
+
     /// <summary>Returns SQL Server's table annotations plus the tenant column at design time.</summary>
     /// <param name="table">The table.</param>
     /// <param name="designTime">Whether the annotations are requested for migrations.</param>

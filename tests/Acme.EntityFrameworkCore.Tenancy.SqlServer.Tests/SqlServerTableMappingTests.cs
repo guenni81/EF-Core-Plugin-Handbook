@@ -62,12 +62,25 @@ public sealed class MappingContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) => _model(modelBuilder);
 
-    public static MappingContext Create(Action<ModelBuilder> model, string? connectionString = null)
-        => new(new DbContextOptionsBuilder<MappingContext>()
+    public static MappingContext Create(
+        Action<ModelBuilder> model,
+        string? connectionString = null,
+        string sessionKey = "TenantId",
+        string policySchema = "acme",
+        ITenantProvider? tenants = null)
+    {
+        var builder = new DbContextOptionsBuilder<MappingContext>()
             .UseSqlServer(connectionString ?? "Server=localhost;Database=unused",
-                sql => sql.UseAcmeTenancy())
-            .EnableServiceProviderCaching(false)
-            .Options, model);
+                sql => sql.UseAcmeTenancy(sessionKey, policySchema))
+            .EnableServiceProviderCaching(false);
+
+        if (tenants is not null)
+            builder.AddInterceptors(
+                new Runtime.SqlServerTenantSessionInterceptor(tenants),
+                new Interceptors.TenantSaveChangesInterceptor(tenants));
+
+        return new MappingContext(builder.Options, model);
+    }
 }
 
 /// <summary>

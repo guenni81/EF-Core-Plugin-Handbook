@@ -9,6 +9,7 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="Testcontainers.MsSql" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Acme.EntityFrameworkCore.Tenancy.SqlServer\Acme.EntityFrameworkCore.Tenancy.SqlServer.csproj" />

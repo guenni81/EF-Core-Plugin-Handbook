@@ -840,6 +840,64 @@ umbenennen, Schemawechsel, jeden Schritt zurück und Löschen, nach jedem Schrit
 Schreibisolation über den App-Login. Dazu kommen gleichnamige Tabellen in zwei Schemas, eine
 Policy unter dem alten Namen und die fremde Policy einer Tabelle ohne RLS.
 
+\section{Session-Schlüssel und Policy-Schema ändern}\label{sec:sqlserver-session-settings}
+
+\code{session\allowbreak{}Key} und \code{policy\allowbreak{}Schema} sind Options, wirken aber
+an zwei Stellen: zur Laufzeit im Session-Interceptor, der den Schlüssel setzt, und in der
+Datenbank in der Predicate-Funktion, die ihn liest. Bis 10.0 las der Generator beide Werte aus
+den \emph{aktuellen} Options und legte die Funktion nur an, wenn sie fehlte. Ein Wechsel von
+\code{TenantId} auf \code{NewTenant} erzeugte deshalb keine Migration. Der Interceptor setzte
+danach den neuen Schlüssel, die Funktion las weiter den alten, und kein Mandant sah mehr Zeilen.
+Schlimmer noch: Eine alte Migration hätte beim erneuten Ausführen, etwa für eine neue
+Testdatenbank, Objekte mit den neuen Werten erzeugt.
+
+Seit 10.1 trennt das Paket die beiden Rollen. Die Convention schreibt Schlüssel und Schema als
+Modell-Annotationen \code{Acme:\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Rls:\allowbreak{}Session\allowbreak{}Key}
+und \code{Acme:\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Rls:\allowbreak{}Policy\allowbreak{}Schema}
+ins Modell und damit in den Snapshot. Der Annotation-Provider gibt sie an das relationale Modell
+weiter, und der Differ erzeugt bei einer Änderung eine
+\code{Alter\allowbreak{}Database\allowbreak{}Operation} mit altem und neuem Wert. Der Generator
+liest beide Werte aus dem Zielmodell der Migration, die er gerade erzeugt; die Options gelten nur
+noch für Modelle, die die Werte nicht festhalten. Damit bleibt jede Migration bei dem Stand,
+mit dem sie erzeugt wurde.
+
+\begin{datatable}{H{0.70}H{1.30}}
+  \textbf{Fall} & \textbf{Verhalten der Migration} \\
+  \tablehead
+  Unverändert & Keine Operation, keine Phantomänderung \\
+  \tablerule
+  Schlüssel oder Schema geändert, alter Wert im Snapshot & In einer Transaktion: Policies aller
+  geschützten Tabellen entfernen, alte Funktion löschen, Funktion mit den neuen Werten anlegen,
+  Policies neu anlegen. Der Down-Weg macht dasselbe rückwärts. \\
+  \tablerule
+  Erste Migration eines Contexts oder erste nach dem Upgrade von 10.0 (alter Wert unbekannt) &
+  Nichts wird gelöscht. Eine vorhandene Funktion muss den Schlüssel lesen, den das Modell nennt,
+  sonst bricht die Migration mit \code{THROW 50000} ab. \\
+  \tablerule
+  Down auf einen Snapshot vor 10.1 & Funktion und Policies bleiben, wie sie sind. \\
+\end{datatable}
+
+Die dritte Zeile ist eine bewusste Grenze. Ohne festgehaltenen alten Wert lässt sich nicht
+beweisen, dass eine vorhandene Funktion dem Plugin gehört und nicht einem anderen Context.
+Eine bestehende Installation wechselt den Schlüssel deshalb in zwei Schritten: erst die erste
+Migration nach dem Upgrade mit unverändertem Schlüssel, dann der Wechsel in einer eigenen
+Migration.
+
+Dieselbe Prüfung schützt mehrere Contexts in einer Datenbank. Die Funktion ist pro
+Policy-Schema eine, und jede Policy des Plugins prüft nach dem Anlegen der Funktion deren
+Definition. Konfiguriert ein zweiter Context einen anderen Schlüssel im selben Schema, scheitert
+seine Migration, statt seine Tabellen an eine Funktion zu binden, die den falschen Schlüssel
+liest. Contexts mit verschiedenen Schlüsseln brauchen verschiedene Policy-Schemas.
+
+Laufzeit und Datenbank können trotzdem kurz auseinanderlaufen. Läuft eine neue App-Version mit
+neuem Schlüssel, bevor die Migration eingespielt ist, setzt der Interceptor einen Schlüssel, den
+die Funktion nicht liest. Die Folge ist kein Datenleck, sondern \emph{fail closed}: keine Zeilen,
+und Schreibversuche scheitern am BLOCK-Prädikat. Die Migration gehört deshalb vor die neue
+App-Version. \code{Sql\allowbreak{}Server\allowbreak{}Session\allowbreak{}Settings\allowbreak{}Tests}
+prüft ohne Datenbank die Annotationen, den Snapshot, den leeren Diff, die erkannte Änderung und
+die historische Migration. Gegen einen echten SQL Server prüft es den Wechsel von Schlüssel und
+Schema mit Up und Down, das Upgrade einer 10.0-Installation und den zweiten Context.
+
 \section{Laufzeit: derselbe Ablauf, anderer Befehl}
 
 \begin{sourcecode}[Runtime/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs]{csharp}

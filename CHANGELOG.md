@@ -74,6 +74,13 @@ version of EF Core (10.x = EF Core 10).
 
 ### Changed
 
+- SQL Server upgrade note: the first migration after upgrading from 10.0 contains an
+  `AlterDatabaseOperation` that records session key and policy schema and only verifies the
+  existing predicate function. Change the session key in a later migration of its own;
+  changing it in the same migration is rejected because the old value is not recorded.
+  Apply migrations before deploying an app version with a new session key (until then the
+  database fails closed).
+
 - SQL Server: security policies are dropped by the table they bind and the plugin's predicate
   function instead of by name, so policies created by 10.0 (`tenant_<table>`) are found and
   replaced with the new name the next time their table changes; policies of others are never
@@ -87,6 +94,16 @@ version of EF Core (10.x = EF Core 10).
   patches.
 
 ### Fixed
+
+- SQL Server: changing `sessionKey` or `policySchema` produced no migration; the interceptor
+  then set the new key while the predicate function kept reading the old one, and historical
+  migrations generated objects from the current options. Both values are now recorded as
+  model annotations (`Acme:SqlServerRls:SessionKey`, `Acme:SqlServerRls:PolicySchema`) and so
+  in the snapshot; a change becomes an `AlterDatabaseOperation` that rebuilds the function and
+  all policies in one transaction (Up and Down), and the generator reads the values from the
+  migration's own target model. An existing function whose session key does not match fails
+  the migration (`THROW 50000`) instead of being shared silently, also between contexts in the
+  same database.
 
 - SQL Server: renaming a tenant column or a protected table, moving it to another schema, and
   altering or dropping its columns failed with "object participates in enforced

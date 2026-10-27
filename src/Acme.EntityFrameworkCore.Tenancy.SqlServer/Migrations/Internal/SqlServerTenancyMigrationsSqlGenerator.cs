@@ -28,6 +28,10 @@ public class SqlServerTenancyMigrationsSqlGenerator : SqlServerMigrationsSqlGene
     // whole operation list (reference equality: operations are not copied)
     private readonly HashSet<MigrationOperation> _wrapped = new(ReferenceEqualityComparer.Instance);
 
+    // Target model of the migration being generated: its annotations decide session key and
+    // policy schema, not the application's current options
+    private IModel? _model;
+
     /// <summary>Creates the generator; the first two parameters are passed on to EF's generator.</summary>
     /// <param name="dependencies">The migrations SQL generator dependencies.</param>
     /// <param name="commandBatchPreparer">Used by the base class for data operations.</param>
@@ -43,8 +47,23 @@ public class SqlServerTenancyMigrationsSqlGenerator : SqlServerMigrationsSqlGene
         _options = options;
     }
 
-    /// <summary>The tenancy settings of the current context.</summary>
-    protected virtual SqlServerTenancySettings Settings => _options.Settings;
+    /// <summary>
+    /// The settings for the migration being generated: session key and policy schema as recorded
+    /// in its target model; the current options only for models that do not record them (before
+    /// 10.1, or without tenant tables).
+    /// </summary>
+    protected virtual SqlServerTenancySettings Settings
+    {
+        get
+        {
+            var settings = _options.Settings;
+            if (_model?[SqlServerRlsAnnotationNames.SessionKey] is string sessionKey)
+                settings = settings with { SessionKey = sessionKey };
+            if (_model?[SqlServerRlsAnnotationNames.PolicySchema] is string policySchema)
+                settings = settings with { PolicySchema = policySchema };
+            return settings;
+        }
+    }
 
     /// <summary>
     /// Removes the security policies of all tables whose schema-bound objects change before the
@@ -69,6 +88,7 @@ public class SqlServerTenancyMigrationsSqlGenerator : SqlServerMigrationsSqlGene
 #pragma warning restore RS0027
     {
         _wrapped.Clear();
+        _model = model;
         try
         {
             return base.Generate(WrapSchemaBoundChanges(operations, model), model, options);
@@ -76,6 +96,7 @@ public class SqlServerTenancyMigrationsSqlGenerator : SqlServerMigrationsSqlGene
         finally
         {
             _wrapped.Clear();
+            _model = null;
         }
     }
 
@@ -95,6 +116,10 @@ public class SqlServerTenancyMigrationsSqlGenerator : SqlServerMigrationsSqlGene
         var final = new Dictionary<(string? Schema, string Name), (string? Schema, string Name)>();
         var affected = new List<(string? Schema, string Name)>();
         var columns = new Dictionary<(string? Schema, string Name), string?>();
+        var created = new HashSet<(string? Schema, string Name)>();
+        string? oldPolicySchema = null;
+        var settingsChanged = false;
+        var verifySettings = false;
 
         (string? Schema, string Name) Original(string? schema, string name)
             => original.TryGetValue((schema, name), out var o) ? o : (schema, name);
@@ -134,6 +159,20 @@ public class SqlServerTenancyMigrationsSqlGenerator : SqlServerMigrationsSqlGene
                     columns[Original(table.Schema, table.Name)] = TenantColumn(table);
                     _wrapped.Add(table);
                     break;
+                case CreateTableOperation create:
+                    created.Add((create.Schema, create.Name));
+                    break;
+                case AlterDatabaseOperation database when SettingsChanged(database):
+                    // Session key or policy schema changed: the function is rebuilt, so every
+                    // policy that uses it has to go first
+                    settingsChanged = true;
+                    oldPolicySchema = database.OldDatabase[SqlServerRlsAnnotationNames.PolicySchema] as string;
+                    break;
+                case AlterDatabaseOperation database when SettingsRecordedFirst(database):
+                    // First migration of this context, or the first after an upgrade from 10.0: an
+                    // existing function is of unknown origin and must already fit
+                    verifySettings = true;
+                    break;
                 case DropTableOperation drop:
                     // Dropped later in the same migration: nothing to restore
                     if (affected.Contains(Original(drop.Schema, drop.Name)))
@@ -142,12 +181,35 @@ public class SqlServerTenancyMigrationsSqlGenerator : SqlServerMigrationsSqlGene
             }
         }
 
-        if (affected.Count == 0)
+        if (settingsChanged && model is not null)
+        {
+            // Every protected table of the target that already exists before this migration
+            var renamedBack = original.ToDictionary(e => e.Key, e => e.Value);
+            foreach (var table in model.GetRelationalModel().Tables)
+            {
+                if (TenantColumn(table) is null || created.Contains((table.Schema, table.Name)))
+                    continue;
+
+                var key = renamedBack.TryGetValue((table.Schema, table.Name), out var o) ? o : (table.Schema, table.Name);
+                if (!affected.Contains(key))
+                    affected.Add(key);
+                final.TryAdd(key, (table.Schema, table.Name));
+            }
+        }
+
+        if (affected.Count == 0 && !settingsChanged && !verifySettings)
             return operations;
 
         var result = new List<MigrationOperation>();
+        if (verifySettings)
+            result.Add(new VerifyTenantPredicateOperation());
         foreach (var table in affected)
             result.Add(new DropTenantPolicyOperation { Table = table.Name, Schema = table.Schema });
+
+        // Without a recorded old schema (snapshot before 10.1) the function can only be found in
+        // the schema that is configured now
+        if (settingsChanged)
+            result.Add(new DropTenantPredicateOperation { Schema = oldPolicySchema ?? Settings.PolicySchema });
 
         result.AddRange(operations);
 
@@ -192,6 +254,13 @@ public class SqlServerTenancyMigrationsSqlGenerator : SqlServerMigrationsSqlGene
         {
             case DropTenantPolicyOperation drop:
                 DropPolicy(drop.Table, TableSchema(drop.Schema, model), builder);
+                break;
+            case VerifyTenantPredicateOperation:
+                VerifyPredicateFunction(builder, onlyIfExists: true);
+                break;
+            case DropTenantPredicateOperation function:
+                Statement(builder,
+                    $"DROP FUNCTION IF EXISTS {Delimit(PredicateFunctionName, function.Schema)}");
                 break;
             case CreateTenantPolicyOperation create:
                 CreatePolicy(create.Table, TableSchema(create.Schema, model), create.Column, builder);
@@ -278,6 +347,10 @@ public class SqlServerTenancyMigrationsSqlGenerator : SqlServerMigrationsSqlGene
         Statement(builder,
             $"IF OBJECT_ID({Literal(function)}, N'IF') IS NULL EXEC({Literal(functionSql)})");
 
+        // The function is shared by all tables, and possibly by other contexts in the same
+        // database: if it reads another session key, fail instead of binding this table to it
+        VerifyPredicateFunction(builder, onlyIfExists: false);
+
         // 2. Security policy: FILTER (reading) and BLOCK (writing, including moving rows to another
         //    tenant). Without AFTER UPDATE, an UPDATE could set a foreign TenantId.
         Statement(builder,
@@ -344,6 +417,43 @@ public class SqlServerTenancyMigrationsSqlGenerator : SqlServerMigrationsSqlGene
     /// </summary>
     private static string TableSchema(string? schema, IModel? model)
         => schema ?? model?.GetDefaultSchema() ?? "dbo";
+
+    /// <summary>
+    /// Fails if the predicate function reads another session key than the settings of this
+    /// migration: it may belong to another context or to an older configuration.
+    /// </summary>
+    /// <param name="builder">The command builder.</param>
+    /// <param name="onlyIfExists">Whether a missing function is acceptable.</param>
+    protected virtual void VerifyPredicateFunction(MigrationCommandListBuilder builder, bool onlyIfExists)
+    {
+        var function = Delimit(PredicateFunctionName, Settings.PolicySchema);
+        var keyPattern = "%SESSION[_]CONTEXT(" + Literal(Settings.SessionKey)
+            .Replace("[", "[[]", StringComparison.Ordinal)
+            .Replace("_", "[_]", StringComparison.Ordinal)
+            .Replace("%", "[%]", StringComparison.Ordinal) + ")%";
+        var message = $"{function} reads a different session key than '{Settings.SessionKey}'. Contexts with "
+                      + "different session keys need different policy schemas; change the key of an existing "
+                      + "installation in a migration of its own after upgrading.";
+
+        Statement(builder,
+            (onlyIfExists ? $"IF OBJECT_ID({Literal(function)}, N'IF') IS NOT NULL AND " : "IF ")
+            + $"OBJECT_DEFINITION(OBJECT_ID({Literal(function)})) NOT LIKE {Literal(keyPattern)} "
+            + $"THROW 50000, {Literal(message)}, 1");
+    }
+
+    // Both values recorded before and after, and different: a change the migration can carry out
+    private static bool SettingsChanged(AlterDatabaseOperation operation)
+        => operation[SqlServerRlsAnnotationNames.SessionKey] is string sessionKey
+           && operation[SqlServerRlsAnnotationNames.PolicySchema] is string policySchema
+           && operation.OldDatabase[SqlServerRlsAnnotationNames.SessionKey] is string oldSessionKey
+           && operation.OldDatabase[SqlServerRlsAnnotationNames.PolicySchema] is string oldPolicySchema
+           && (oldSessionKey != sessionKey || oldPolicySchema != policySchema);
+
+    // Recorded now, unknown before (first migration, or snapshot before 10.1). Without values in
+    // the target (Down to such a snapshot) the database keeps what it has.
+    private static bool SettingsRecordedFirst(AlterDatabaseOperation operation)
+        => operation[SqlServerRlsAnnotationNames.SessionKey] is string
+           && operation.OldDatabase[SqlServerRlsAnnotationNames.SessionKey] is null;
 
     private static string? TenantColumn(IReadOnlyAnnotatable annotatable)
         => annotatable[SqlServerRlsAnnotationNames.TenantColumn] as string;

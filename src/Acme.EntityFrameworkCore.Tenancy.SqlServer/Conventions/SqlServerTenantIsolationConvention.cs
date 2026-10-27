@@ -1,5 +1,6 @@
 using Acme.EntityFrameworkCore.Tenancy.Diagnostics;
 using Acme.EntityFrameworkCore.Tenancy.Metadata;
+using Acme.EntityFrameworkCore.Tenancy.SqlServer.Infrastructure;
 using Acme.EntityFrameworkCore.Tenancy.SqlServer.Metadata;
 using Acme.EntityFrameworkCore.Tenancy.SqlServer.Metadata.Internal;
 using Microsoft.EntityFrameworkCore;
@@ -23,19 +24,35 @@ public class SqlServerTenantIsolationConvention : IModelFinalizingConvention
 {
     private readonly IDiagnosticsLogger<DbLoggerCategory.Model> _logger;
     private readonly TenancyLoggingDefinitions _loggingDefinitions;
+    private readonly SqlServerTenancySettings? _settings;
 
     /// <summary>Creates the convention.</summary>
     /// <param name="logger">The model logger.</param>
     /// <param name="loggingDefinitions">The tenancy package's cached log definitions.</param>
+    [Obsolete("Without the settings the model does not record session key and policy schema. "
+              + "Use the constructor with the settings.")]
     public SqlServerTenantIsolationConvention(
         IDiagnosticsLogger<DbLoggerCategory.Model> logger,
         TenancyLoggingDefinitions loggingDefinitions)
+        : this(logger, loggingDefinitions, settings: null)
+    {
+    }
+
+    /// <summary>Creates the convention.</summary>
+    /// <param name="logger">The model logger.</param>
+    /// <param name="loggingDefinitions">The tenancy package's cached log definitions.</param>
+    /// <param name="settings">Session key and policy schema to record in the model.</param>
+    public SqlServerTenantIsolationConvention(
+        IDiagnosticsLogger<DbLoggerCategory.Model> logger,
+        TenancyLoggingDefinitions loggingDefinitions,
+        SqlServerTenancySettings? settings)
     {
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(loggingDefinitions);
 
         _logger = logger;
         _loggingDefinitions = loggingDefinitions;
+        _settings = settings;
     }
 
     /// <summary>
@@ -98,6 +115,15 @@ public class SqlServerTenantIsolationConvention : IModelFinalizingConvention
             }
 
             _logger.TenantIsolationApplied(_loggingDefinitions, entityType);
+        }
+
+        // The database objects depend on these settings: record them in the model (and so in the
+        // snapshot), so that a change produces an AlterDatabaseOperation and every migration
+        // generates SQL from its own model instead of from the current options
+        if (_settings is not null && policies.Count > 0)
+        {
+            modelBuilder.HasAnnotation(SqlServerRlsAnnotationNames.SessionKey, _settings.SessionKey);
+            modelBuilder.HasAnnotation(SqlServerRlsAnnotationNames.PolicySchema, _settings.PolicySchema);
         }
     }
 

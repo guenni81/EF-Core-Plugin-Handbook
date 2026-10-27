@@ -829,6 +829,63 @@ step back and drop, with read and write isolation through the app login after ev
 addition: tables with the same name in two schemas, a policy under the old name and someone
 else's policy on a table without RLS.
 
+\section{Changing the session key and the policy schema}\label{sec:sqlserver-session-settings}
+
+\code{session\allowbreak{}Key} and \code{policy\allowbreak{}Schema} are options, but they act
+in two places: at run time in the session interceptor, which sets the key, and in the database in
+the predicate function, which reads it. Up to 10.0 the generator read both values from the
+\emph{current} options and created the function only if it was missing. Switching from
+\code{TenantId} to \code{NewTenant} therefore produced no migration. The interceptor then set the
+new key, the function kept reading the old one, and no tenant saw any rows. Worse still: run
+again, for example for a new test database, an old migration would have created objects with the
+new values.
+
+Since 10.1 the package separates the two roles. The convention writes key and schema into the
+model as the model annotations
+\code{Acme:\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Rls:\allowbreak{}Session\allowbreak{}Key}
+and \code{Acme:\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Rls:\allowbreak{}Policy\allowbreak{}Schema},
+and so into the snapshot. The annotation provider passes them on to the relational model, and the
+differ produces an \code{Alter\allowbreak{}Database\allowbreak{}Operation} with the old and the
+new value when they change. The generator reads both values from the target model of the
+migration it is generating; the options only apply to models that do not record the values. That
+way every migration stays with the state it was generated from.
+
+\begin{datatable}{H{0.70}H{1.30}}
+  \textbf{Case} & \textbf{Behavior of the migration} \\
+  \tablehead
+  Unchanged & No operation, no phantom change \\
+  \tablerule
+  Key or schema changed, old value in the snapshot & In one transaction: remove the policies of
+  all protected tables, drop the old function, create the function with the new values,
+  recreate the policies. The Down path does the same in reverse. \\
+  \tablerule
+  First migration of a context, or the first after the upgrade from 10.0 (old value unknown) &
+  Nothing is dropped. An existing function must read the key that the model names, otherwise the
+  migration stops with \code{THROW 50000}. \\
+  \tablerule
+  Down to a snapshot before 10.1 & Function and policies stay as they are. \\
+\end{datatable}
+
+The third row is a deliberate limit. Without a recorded old value there is no proof that an
+existing function belongs to the plugin and not to another context. An existing installation
+therefore changes its key in two steps: first the first migration after the upgrade with the key
+unchanged, then the change in a migration of its own.
+
+The same check protects several contexts in one database. There is one function per policy
+schema, and every policy of the plugin checks the function's definition after creating it. If a
+second context configures another key in the same schema, its migration fails instead of binding
+its tables to a function that reads the wrong key. Contexts with different keys need different
+policy schemas.
+
+Run time and database can still drift apart briefly. If a new app version with a new key runs
+before the migration has been applied, the interceptor sets a key that the function does not
+read. The result is not a data leak but \emph{fail closed}: no rows, and writes fail on the BLOCK
+predicate. The migration therefore belongs before the new app version.
+\code{Sql\allowbreak{}Server\allowbreak{}Session\allowbreak{}Settings\allowbreak{}Tests} checks
+without a database the annotations, the snapshot, the empty diff, the detected change and the
+historical migration. Against a real SQL Server it checks changing key and schema with Up and
+Down, the upgrade of a 10.0 installation and the second context.
+
 \section{Run time: same flow, different command}
 
 \begin{sourcecode}[Runtime/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs]{csharp}
