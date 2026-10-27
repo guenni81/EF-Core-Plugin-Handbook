@@ -121,9 +121,9 @@ public static IReadOnlyList<string> MigrationSql(DbContext? source, DbContext ta
   ExecuteUpdate and raw SQL against RLS, value generation, JSON columns, compiled model,
   idempotent script. \\
   \tablerule
-  Composability & Decorator around the migrations generator
-  (chapter~\ref{ch:registering-services}), EFCore.NamingConventions in both orders
-  (chapter~\ref{ch:conventions}). \\
+  Composability & Decorator around the migrations generator and the composition matrix of
+  two plugins (chapter~\ref{ch:registering-services}), EFCore.NamingConventions in both
+  orders (chapter~\ref{ch:conventions}). \\
   \tablerule
   Annotation format & Serialized policies stay identical; tolerant reading
   (chapter~\ref{ch:versioning-and-compatibility}). \\
@@ -449,7 +449,8 @@ For every new plugin, in the order of development:
   \item Version range per EF major, CI against previews, EF1001 deliberately.
   \item XML docs, SourceLink, symbols, README, CHANGELOG, limitations documented.
   \item Pin serialized annotation formats with golden-value tests.
-  \item Test together with popular plugins (naming conventions, decorators).
+  \item Test together with popular plugins (naming conventions, decorators) and check the
+    coexistence with a second plugin in both orders (chapter~\ref{ch:registering-services}).
 \end{checklist}
 
 \section{Advanced (part~\ref{part:VIII})}

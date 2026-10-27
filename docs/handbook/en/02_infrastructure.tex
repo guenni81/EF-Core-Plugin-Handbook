@@ -362,6 +362,171 @@ services.AddDbContext<ShopContext>((sp, options) => options
   the SQL of both plugins, and that activating the decorator before the provider fails.
 \end{tip}
 
+\section{Two architectures: multiple registration and single service}
+
+Whether two plugins work side by side is decided in one place: does EF ask \emph{all}
+registrations of a service or exactly \emph{one}? With a plugin interface, cooperation is
+part of EF's design. EF asks all translator plugins until one answers, lets every convention
+set plugin add its conventions and calls every interceptor. Two plugins need to know nothing
+about each other.
+
+With a single service there is no such cooperation. EF asks exactly one implementation, and
+it has to do everything all active plugins need. If two plugins replace the same service,
+one wins and the other loses its function without EF warning about it. Composition is then
+no longer EF's job but that of the plugin authors: through decorators that delegate, or
+through an integration in the application.
+
+\section{The rules in EF Core 10}
+
+The methods from the table at the beginning of this chapter behave like this with two
+plugins. Every row is reproduced in \code{Composition\allowbreak{}Matrix\allowbreak{}Tests}:
+
+\begin{datatable}{H{0.75}H{1.25}H{1.00}}
+  \textbf{Mechanism} & \textbf{Behavior} & \textbf{Consequence} \\
+  \tablehead
+  Options extensions & One extension per type: a second
+  \code{Add\allowbreak{}Or\allowbreak{}Update\allowbreak{}Extension} of the same type replaces
+  the first. \code{Apply\allowbreak{}Services} runs in activation order; every extension
+  contributes to the provider key & Different plugins coexist; the use method fetches the
+  existing extension and changes a copy \\
+  \tablerule
+  \code{Try\allowbreak{}Add} for a plugin interface & Adds unless the same implementation is
+  already registered (\code{Try\allowbreak{}Add\allowbreak{}Enumerable}) & Idempotent,
+  composable \\
+  \tablerule
+  \code{Try\allowbreak{}Add} for a single service & The first registration wins. The provider
+  registers with \code{Try\allowbreak{}Add}: a plugin before the provider wins, after it it
+  silently loses & Unsuitable for single services \\
+  \tablerule
+  \code{Replace} & The last registration wins, independent of the provider & Silently
+  discards earlier replacements and decorators \\
+  \tablerule
+  Decorator & Wraps what is registered at its point in time & Must run after the provider
+  and after replacements \\
+  \tablerule
+  \code{Replace\allowbreak{}Service} (application) & Applied after all extensions and always
+  wins & The application's tool for integration \\
+  \tablerule
+  Translator plugins & Plugins come before the provider's translators; among plugins, the
+  one activated first answers & Same method: the order decides \\
+  \tablerule
+  Convention set plugins & Run in activation order; later conventions see the results of
+  earlier ones & Same metadata: order and configuration source decide \\
+  \tablerule
+  Interceptors & Injected ones first, then those from \code{Add\allowbreak{}Interceptors} in
+  their order & Whoever suppresses or replaces a result affects the ones that follow \\
+\end{datatable}
+
+\section{Compatibility matrix}
+
+The following matrix rates typical combinations of two plugins. The ratings mean:
+\textbf{composable} (works without coordination), \textbf{order-dependent} (works if the
+activation order is right), \textbf{potential conflict} (works as long as the plugins do not
+overlap) and \textbf{integration only} (without code in the application, a function is
+lost).
+
+\begin{datatable}{H{0.95}H{0.65}H{1.40}}
+  \textbf{Combination} & \textbf{Rating} & \textbf{Reason} \\
+  \tablehead
+  Two \code{IMethod\allowbreak{}Call\allowbreak{}Translator\allowbreak{}Plugin} & composable;
+  potential conflict & Different methods: both active. The same method: the one activated
+  first wins, the other is never asked \\
+  \tablerule
+  Two \code{IMember\allowbreak{}Translator\allowbreak{}Plugin} & composable; potential
+  conflict & The same mechanism as for method translators \\
+  \tablerule
+  Two \code{IConvention\allowbreak{}Set\allowbreak{}Plugin} & composable; order-dependent &
+  Both run. If both set the same metadata with convention source, the later one wins;
+  explicit configuration beats both \\
+  \tablerule
+  Two type mapping plugins for the same CLR type & potential conflict & EF takes the first
+  mapping that is not \code{null}; the other plugin has no effect for this type \\
+  \tablerule
+  Two interceptors of the same kind & composable; order-dependent & Both run. Whoever
+  suppresses a result or rewrites a command affects the ones that follow \\
+  \tablerule
+  Two plugins replace \code{IMigrations\allowbreak{}Sql\allowbreak{}Generator} & integration
+  only & The one activated last wins; the first loses its SQL without a warning (in the
+  test: no policies any more) \\
+  \tablerule
+  Two plugins replace \code{IQuery\allowbreak{}Sql\allowbreak{}Generator\allowbreak{}Factory}
+  & integration only & The loser keeps its translators, but its nodes reach a generator that
+  does not know them: the SQL is silently missing. If the winner also replaces the
+  parameter-based processor, the query throws
+  (chapter~\ref{ch:custom-sql-expression-nodes}) \\
+  \tablerule
+  Decorator and replacement & order-dependent & Replacement first, then decorator: it wraps
+  the replacement. The other way round, \code{Replace} silently discards the decorator \\
+  \tablerule
+  Two decorators & composable & Each wraps what it finds \\
+  \tablerule
+  Two options extensions of different types & composable & Both contribute to the key, both
+  register their services; conflicts only arise in the services \\
+  \tablerule
+  Two plugins with the same use method name, annotation prefix or event ID range & potential
+  conflict & Ambiguous calls, mixed metadata or messages
+  (chapters~\ref{ch:what-belongs-in-the-core}, \ref{ch:annotations-and-fluent-api},
+  \ref{ch:diagnostics-and-logging}) \\
+  \tablerule
+  Plugin replacement and the application's \code{Replace\allowbreak{}Service} & composable if
+  intended & The application always wins; that is the intended way to integrate \\
+\end{datatable}
+
+\section{Integration as the way out}
+
+What works “only with integration” is solved by the application with a class of its own
+that combines both plugins and is registered with \code{Replace\allowbreak{}Service}. That
+is only possible if at least one of the plugins offers its logic publicly: the application
+derives from its class and calls the logic of the other. That is exactly why all generator
+methods in the sample are virtual and \code{Create\allowbreak{}Policy\allowbreak{}Sql} is
+public:
+
+\begin{sourcecode}[Application (\allowbreak{}sketch)]{csharp}
+// Both plugins replace IMigrationsSqlGenerator; the application combines them
+public class ShopMigrationsSqlGenerator : TenancyMigrationsSqlGenerator
+{
+    // Constructor as in TenancyMigrationsSqlGenerator
+
+    protected override void Generate(CreateTableOperation operation, IModel? model,
+        MigrationCommandListBuilder builder, bool terminate = true)
+    {
+        base.Generate(operation, model, builder, terminate);   // Acme: table and RLS
+        OtherPluginSql.AppendTableSql(operation, builder);     // the other plugin's logic
+    }
+}
+
+options.UseNpgsql(connectionString)
+       .UseAcmeTenancy(sp)
+       .UseOtherPlugin()
+       .ReplaceService<IMigrationsSqlGenerator, ShopMigrationsSqlGenerator>();
+\end{sourcecode}
+
+A plugin that replaces a single service and keeps its logic only in private or internal
+methods does not leave this way open. The application then has no choice but to decide for
+one of the plugins.
+
+\section{Before publishing: checking coexistence}
+
+A plugin author can check with little effort how well the plugin gets along with others.
+\code{Composition\allowbreak{}Matrix\allowbreak{}Tests} shows the technique: a fictional
+second plugin with its own options extension that registers the same services, and
+assertions for both activation orders.
+
+\begin{checklist}
+  \item List every replaced single service and name it in the documentation.
+  \item Replace single services with \code{Replace}, never with \code{Try\allowbreak{}Add};
+    decorate where the public interface suffices.
+  \item Decorators abort with a clear message when there is nothing to wrap.
+  \item Offer the logic of replaced services as public and virtual so that applications can
+    integrate.
+  \item Plugin interfaces return \code{null} for anything foreign and do not claim methods,
+    types or metadata that do not belong to them.
+  \item Own annotation prefix, own event ID range, unique use method.
+  \item Test with a second plugin in both activation orders, and with popular plugins such as
+    EFCore.NamingConventions (chapter~\ref{ch:conventions}).
+  \item Document the required activation order, if there is one.
+\end{checklist}
+
 % ------------------------------------------------------------
 \chapter{Public API and integration into the application}\label{ch:public-api-and-integration-into}
 

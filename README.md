@@ -101,7 +101,7 @@ per table (FILTER and BLOCK predicates) and `SESSION_CONTEXT`.
 | Minimal plugin | `EF.Functions.Reverse()` in five pieces as a warm-up | 2 |
 | Decision guide | From the problem to the extension point: simpler alternatives, public or internal API, lifetimes | 4 |
 | Options extension | `TenancyOptionsExtension`: service provider hash, validation, debug info | 5 |
-| Internal services | Plugin interfaces, replacing and decorating provider services, `ISingletonOptions` | 6 |
+| Internal services | Plugin interfaces, replacing and decorating provider services, `ISingletonOptions`, compatibility matrix of two plugins | 6 |
 | Application DI | `AddAcmeTenancy<T>()`, interceptors that use application services | 7 |
 | State and lifetimes | Which state belongs where: app container vs. internal provider, pooling, factories, jobs; five failure cases as tests | 8 |
 | Model building | Fluent API, data annotation, conventions, named query filter, index, validation | 9–11 |

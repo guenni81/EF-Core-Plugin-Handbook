@@ -38,6 +38,13 @@ version of EF Core (10.x = EF Core 10).
   open connections), with five failure cases. `StateAndLifetimeTests` reproduces cases 1-4,
   each wrong variant next to the correct one; appendix A lists `IResettableService`.
 
+- Handbook (both editions): chapter 6 "Registering services" explains plugin composition
+  systematically: multiple registration vs. single services, the rules of `TryAdd`,
+  `TryAddEnumerable`, `Replace`, decorators, `ReplaceService`, options extensions and
+  evaluation order in EF Core 10, a compatibility matrix for typical combinations of two
+  plugins, integration through public logic, and a coexistence checklist before
+  publishing. `CompositionMatrixTests` reproduces every rule and conflict.
+
 ### Fixed
 
 - The handbook said EF only warns after 20 internal service providers; by default it throws.
