@@ -36,8 +36,9 @@ public class TenancyDesignTimeServices : IDesignTimeServices
         services.RemoveAll<ICSharpRuntimeAnnotationCodeGenerator>();
         services.AddSingleton<ICSharpRuntimeAnnotationCodeGenerator, TenancyCSharpRuntimeAnnotationCodeGenerator>();
 
-        // Scaffolding: read RLS and policies from the database (chapter "Scaffolding in practice")
+        // Scaffolding: read RLS and policies from the database (chapter "Scaffolding in practice").
+        // Scoped like EF's and Npgsql's registration: the factory depends on a scoped logger.
         services.RemoveAll<IDatabaseModelFactory>();
-        services.AddSingleton<IDatabaseModelFactory, TenancyDatabaseModelFactory>();
+        services.AddScoped<IDatabaseModelFactory, TenancyDatabaseModelFactory>();
     }
 }

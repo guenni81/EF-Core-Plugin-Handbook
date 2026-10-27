@@ -39,7 +39,7 @@ TeX Live allows in restricted shell-escape mode, so `-shell-escape` is not neede
 | File | Content |
 |---|---|
 | `EF-Core-Plugin-Handbook.tex` · `EF-Core-Plugin-Handbuch.tex` | Main document of each edition: language, PDF metadata, chapter files |
-| `handbook.sty` | Layout: fonts, colors, page style, code blocks, callouts, tables, flow diagrams, checklists, title block |
+| `handbook.sty` | Layout: fonts, colors, page style, code blocks, callouts, tables, flow diagrams, decision trees, checklists, title block |
 | `en/01_foundations.tex` · `de/01_grundlagen.tex` | Title, preface, table of contents, part I |
 | `en/02_infrastructure.tex` · `de/02_infrastruktur.tex` | Part II |
 | `en/03_model.tex` · `de/03_modell.tex` | Part III |
@@ -71,6 +71,10 @@ The chapter files only use the commands from `handbook.sty`:
   Cell & Cell \\
 \end{datatable}
 \begin{flowdiagram} \flowstep{Stage}{Description} ... \end{flowdiagram}
+\begin{decisiontree}                           % "yes" leads right, "no" down
+  \decision{Question?}{Outcome} ... \decisionend{Otherwise}
+\end{decisiontree}
+\cellmeta{public · multiple · Scoped}          % grey second line in a table cell
 \begin{checklist} \item ... \end{checklist}
 ```
 

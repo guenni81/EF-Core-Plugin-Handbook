@@ -19,7 +19,9 @@
 Lebensdauern und Kardinalität laut den Service-Tabellen von EF Core 10
 (\code{Entity\allowbreak{}Framework\allowbreak{}Services\allowbreak{}Builder},
 \code{Entity\allowbreak{}Framework\allowbreak{}Relational\allowbreak{}Services\allowbreak{}Builder}).
-„Mehrfach“ heißt: Plugin-Interface, alle Registrierungen werden verwendet.
+„Mehrfach“ heißt: Plugin-Interface, alle Registrierungen werden verwendet. Welcher Dienst für
+welches Problem in Frage kommt und was vorher geprüft werden sollte, zeigt die
+Entscheidungshilfe in Kapitel~\ref{ch:choosing-the-right-extension-point}.
 
 \begin{datatable}{H{2.13}H{0.80}H{0.71}H{0.36}}
   \textbf{Dienst} & \textbf{Lebensdauer} & \textbf{Art} & \textbf{Kap.} \\
@@ -63,6 +65,8 @@ Lebensdauern und Kardinalität laut den Service-Tabellen von EF Core 10
   \code{IModel\allowbreak{}Cache\allowbreak{}Key\allowbreak{}Factory} & Singleton & einzeln
   & \ref{ch:models-per-runtime-context} \\
   \tablerule
+  \code{IValue\allowbreak{}Generator\allowbreak{}Selector} & Scoped & einzeln & \ref{ch:value-generation} \\
+  \tablerule
   \code{ISql\allowbreak{}Generation\allowbreak{}Helper} & Singleton & einzeln & – \\
   \tablerule
   \code{IRelational\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source} & Singleton &
@@ -72,6 +76,9 @@ Lebensdauern und Kardinalität laut den Service-Tabellen von EF Core 10
   \tablerule
   \code{IQuery\allowbreak{}Sql\allowbreak{}Generator\allowbreak{}Factory} & Singleton &
   einzeln & \ref{ch:further-query-extension-points}, \ref{ch:custom-sql-expression-nodes} \\
+  \tablerule
+  \code{IQuery\allowbreak{}Translation\allowbreak{}Postprocessor\allowbreak{}Factory} &
+  Scoped & einzeln & \ref{ch:further-query-extension-points} \\
   \tablerule
   \code{IModification\allowbreak{}Command\allowbreak{}Factory} & Singleton & einzeln & \ref{ch:the-update-pipeline} \\
   \tablerule
@@ -88,24 +95,28 @@ Lebensdauern und Kardinalität laut den Service-Tabellen von EF Core 10
 
 \section{Design-Time-Dienste (über IDesignTimeServices)}
 
-\begin{datatable}{H{0.87}H{1.13}}
-  \textbf{Dienst} & \textbf{Zweck} \\
+Alle sind Einzeldienste. Die Lebensdauern stammen aus
+\code{Entity\allowbreak{}Framework\allowbreak{}Relational\allowbreak{}Design\allowbreak{}Services\allowbreak{}Builder}
+und der Registrierung von \code{Add\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Design\allowbreak{}Time\allowbreak{}Services}.
+
+\begin{datatable}{H{1.25}H{0.50}H{1.25}}
+  \textbf{Dienst} & \textbf{Lebensdauer} & \textbf{Zweck} \\
   \tablehead
-  \code{IAnnotation\allowbreak{}Code\allowbreak{}Generator} & Annotations als Fluent API in
-  Snapshot und Scaffolding \\
+  \code{IAnnotation\allowbreak{}Code\allowbreak{}Generator} & Singleton & Annotations als
+  Fluent API in Snapshot und Scaffolding \\
   \tablerule
   \code{ICSharp\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator}
-  & Annotations im Compiled Model filtern oder komplexe Werte übersetzen
-  (Kapitel~\ref{ch:property-level-fluent-api-and}) \\
+  & Singleton & Annotations im Compiled Model filtern oder komplexe Werte übersetzen
+  (Kapitel~\ref{ch:property-level-fluent-api-and}); pubternal \\
   \tablerule
-  \code{ICSharp\allowbreak{}Migration\allowbreak{}Operation\allowbreak{}Generator} & Eigene
-  Operationen als C\# in Migrationen \\
+  \code{ICSharp\allowbreak{}Migration\allowbreak{}Operation\allowbreak{}Generator} &
+  Singleton & Eigene Operationen als C\# in Migrationen \\
   \tablerule
-  \code{IDatabase\allowbreak{}Model\allowbreak{}Factory} & Schema lesen für Scaffolding
-  (Kapitel~\ref{ch:scaffolding-in-practice}) \\
+  \code{IDatabase\allowbreak{}Model\allowbreak{}Factory} & Scoped & Schema lesen für
+  Scaffolding (Kapitel~\ref{ch:scaffolding-in-practice}) \\
   \tablerule
   \code{IProvider\allowbreak{}Configuration\allowbreak{}Code\allowbreak{}Generator} &
-  UseXyz-Aufruf im gescaffoldeten Context \\
+  Singleton & UseXyz-Aufruf im gescaffoldeten Context \\
 \end{datatable}
 
 % ------------------------------------------------------------
@@ -254,6 +265,9 @@ Lebensdauern und Kardinalität laut den Service-Tabellen von EF Core 10
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Composition\allowbreak{}Tests.\allowbreak{}cs}
   & Decorator-Beispiel (Audit-Plugin) & \ref{ch:registering-services} \\
   \tablerule
+  \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Design\allowbreak{}Time\allowbreak{}Services\allowbreak{}Tests.\allowbreak{}cs}
+  & Lebensdauern der ersetzten Design-Time-Dienste & \ref{ch:choosing-the-right-extension-point}, \ref{ch:scaffolding-in-practice} \\
+  \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Debugging\allowbreak{}Tests.\allowbreak{}cs}
   & Debugging-Techniken & Anh. D \\
   \tablerule
@@ -302,6 +316,11 @@ Lebensdauern und Kardinalität laut den Service-Tabellen von EF Core 10
   \tablerule
   Laufzeit-Annotation & Annotation, die zur Laufzeit gelesen wird und deshalb im Laufzeit-
   und Compiled Model erhalten bleiben muss. \\
+  \tablerule
+  Runtime-Annotation (EF-API) & Nicht dasselbe wie eine Laufzeit-Annotation: ein Wert, den
+  Code erst am fertigen Modell ablegt
+  (\code{Get\allowbreak{}Or\allowbreak{}Add\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Value}),
+  etwa als Cache; er erscheint nie in Snapshot oder Migrations. \\
   \tablerule
   Interner Service Provider & EFs eigener DI-Container pro Konfiguration. \\
   \tablerule

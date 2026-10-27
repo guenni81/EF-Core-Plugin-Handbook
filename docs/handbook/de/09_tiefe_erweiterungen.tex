@@ -482,6 +482,17 @@ einer Überschreibung von \code{Generate(\allowbreak{}ITable,\allowbreak{}
   ungenutzt & ja (klein) \\
 \end{datatable}
 
+\begin{note}[Laufzeit-Annotation und Runtime-Annotation]
+  „Laufzeit-Annotation“ heißt in diesem Buch: eine gewöhnliche Annotation, die zur Laufzeit
+  gelesen wird. EF kennt zusätzlich eine eigene Runtime-Annotation-API
+  (\code{Add\allowbreak{}Runtime\allowbreak{}Annotation},
+  \code{Get\allowbreak{}Or\allowbreak{}Add\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Value}
+  auf \code{IAnnotatable}). Sie legt Werte erst am fertigen Modell ab, etwa abgeleitete
+  Daten, die nicht bei jedem Zugriff neu berechnet werden sollen. Solche Werte erscheinen nie
+  in Snapshot oder Migrations. Für Konfiguration, die ein Plugin beim Modellbau festlegt, ist
+  die gewöhnliche Annotation der richtige Weg.
+\end{note}
+
 \begin{tip}
   Für jede Annotation sollte klar sein, wer sie wann liest. Nur zur Design-Zeit gelesene
   Annotations gehören nicht ins Compiled Model; zur Laufzeit gelesene müssen hinein und
@@ -542,9 +553,10 @@ public class TenancyDatabaseModelFactory : NpgsqlDatabaseModelFactory
 }
 \end{sourcecode}
 
-Registriert wird die Factory wie der Code-Generator in den Design-Time-Services, mit
-\code{Remove\allowbreak{}All} und \code{Add\allowbreak{}Singleton}. Das Datenformat ist
-dasselbe wie bei der Fluent API; deshalb funktionieren Snapshot, Migrations und
+Registriert wird die Factory wie der Code-Generator in den Design-Time-Services mit
+\code{Remove\allowbreak{}All}, aber mit \code{Add\allowbreak{}Scoped}: EF und Npgsql
+registrieren die Database-Model-Factory als Scoped, und sie hängt vom ebenfalls Scoped
+Scaffolding-Logger ab. Das Datenformat ist dasselbe wie bei der Fluent API; deshalb funktionieren Snapshot, Migrations und
 Code-Generator ohne weitere Anpassung.
 
 \begin{note}[Normalisierte Ausdrücke]

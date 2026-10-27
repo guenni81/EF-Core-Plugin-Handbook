@@ -477,6 +477,17 @@ time there. The generator therefore applies the same filter in an override of
   unused & yes (small) \\
 \end{datatable}
 
+\begin{note}[Two kinds of runtime annotations]
+  In this book, “runtime annotation” means an ordinary annotation that is read at run time.
+  EF also has a runtime annotation API in a narrower sense
+  (\code{Add\allowbreak{}Runtime\allowbreak{}Annotation},
+  \code{Get\allowbreak{}Or\allowbreak{}Add\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Value}
+  on \code{IAnnotatable}). It stores values on the finished model only, for example derived
+  data that should not be recomputed on every access. Such values never appear in the
+  snapshot or in migrations. For configuration that a plugin sets while the model is built,
+  the ordinary annotation is the right choice.
+\end{note}
+
 \begin{tip}
   For every annotation it should be clear who reads it and when. Annotations read only at
   design time do not belong in the compiled model; those read at run time must be in it and
@@ -535,9 +546,10 @@ public class TenancyDatabaseModelFactory : NpgsqlDatabaseModelFactory
 }
 \end{sourcecode}
 
-The factory is registered like the code generator in the design-time services, with
-\code{Remove\allowbreak{}All} and \code{Add\allowbreak{}Singleton}. The data format is the
-same as with the Fluent API; snapshot, migrations and code generator therefore work without
+The factory is registered like the code generator in the design-time services with
+\code{Remove\allowbreak{}All}, but with \code{Add\allowbreak{}Scoped}: EF and Npgsql
+register the database model factory as scoped, and it depends on the scaffolding logger,
+which is scoped as well. The data format is the same as with the Fluent API; snapshot, migrations and code generator therefore work without
 further changes.
 
 \begin{note}[Normalized expressions]
