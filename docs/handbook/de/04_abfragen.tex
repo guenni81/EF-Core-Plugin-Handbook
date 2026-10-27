@@ -386,8 +386,7 @@ public class CurrentTenantTranslator : IMethodCallTranslator
         var text = _typeMappingSource.FindMapping(typeof(string))!;
         var boolean = _typeMappingSource.FindMapping(typeof(bool))!;
 
-        // Beide Funktionen liefern NULL, ohne dass ein Argument NULL ist:
-        // kein Argument propagiert Nullability (siehe Fehlerfall unten)
+        // Liefert NULL, ohne dass ein Argument NULL ist: kein Argument propagiert
         var currentSetting = _sql.Function(
             "current_setting",
             [
@@ -398,10 +397,11 @@ public class CurrentTenantTranslator : IMethodCallTranslator
             argumentsPropagateNullability: [false, false],
             typeof(string), text);
 
+        // Für EF bewusst nie NULL, passend zum CLR-Typ TenantId (siehe unten)
         var nullIfEmpty = _sql.Function(
             "nullif",
             [currentSetting, _sql.Constant(string.Empty, text)],
-            nullable: true,
+            nullable: false,
             argumentsPropagateNullability: [false, false],
             typeof(string), text);
 
@@ -428,7 +428,9 @@ WHERE o."TenantId" = nullif(current_setting('app.tenant_id', TRUE), '')::uuid
   (hier \code{Db\allowbreak{}Functions}). \\
   \tablerule
   \code{nullable} & Kann das Ergebnis NULL sein? EF optimiert damit \code{IS
-  NULL}-Prüfungen. Falsche Angaben führen zu falschen Ergebnissen. \\
+  NULL}-Prüfungen und erzeugt die NULL-Semantik von C\#. \code{Current\allowbreak{}Tenant}
+  sagt bewusst \code{false}: Der CLR-Typ \code{Tenant\allowbreak{}Id} ist nicht nullbar, und
+  ohne Mandanten soll jeder Vergleich NULL ergeben, also keine Zeile treffen. \\
   \tablerule
   \code{arguments\allowbreak{}Propagate\allowbreak{}Nullability} & „Das Ergebnis ist genau
   dann NULL, wenn dieses Argument NULL ist.“ Gibt es solche Argumente, leitet EF die
@@ -447,38 +449,40 @@ WHERE o."TenantId" = nullif(current_setting('app.tenant_id', TRUE), '')::uuid
 \end{datatable}
 
 Die Angaben zur Nullability sind die tückischste Stelle eines Translators, weil ein Fehler
-nur bei bestimmten Abfragen sichtbar wird:
+nur bei bestimmten Abfragen sichtbar wird. Ein Beispiel ist eine Funktion
+\code{EF.\allowbreak{}Functions.\allowbreak{}Empty\allowbreak{}As\allowbreak{}Null(\allowbreak{}c.\allowbreak{}Name)},
+die einen leeren String in NULL verwandelt und \code{string?} zurückgibt:
 
 \begin{sourcecode}[Translator (\allowbreak{}FALSCH)]{csharp}
-var nullIfEmpty = _sql.Function("nullif", [currentSetting, empty],
+_sql.Function("nullif", [arguments[1], _sql.Constant("", arguments[1].TypeMapping)],
     nullable: true,                                   // richtig: kann NULL sein ...
     argumentsPropagateNullability: [true, false],     // ... aber hier hebelt es EF aus
-    typeof(string), text);
+    typeof(string), arguments[1].TypeMapping);
 \end{sourcecode}
 
 \begin{failure}[Was passiert, wenn ein Translator die Nullability falsch angibt?]
   \textbf{Beobachtbar.}
-  \code{EF.\allowbreak{}Functions.\allowbreak{}Current\allowbreak{}Tenant(\allowbreak{}) == null}
-  wird zu \code{WHERE FALSE}, obwohl es ohne Mandanten wahr wäre, und
-  \code{o.\allowbreak{}Tenant\allowbreak{}Id != Current\allowbreak{}Tenant(\allowbreak{})}
-  verliert die NULL-Behandlung der C\#-Semantik. Gewöhnliche Vergleiche mit \code{==}
-  bleiben richtig, deshalb fällt der Fehler lange nicht auf. Bis Ausgabe~1.0 enthielt das
-  Beispiel genau diesen Fehler.
+  \code{Where(\allowbreak{}c => EF.\allowbreak{}Functions.\allowbreak{}Empty\allowbreak{}As\allowbreak{}Null(\allowbreak{}c.\allowbreak{}Name) == null)}
+  wird zu \code{WHERE FALSE}: Kunden mit leerem Namen findet die Abfrage nie, ohne Fehler
+  und ohne Warnung. Mit einer nullbaren Spalte als Argument wäre das Ergebnis richtig; der
+  Fehler zeigt sich nur bei Pflichtspalten.
 
   \textbf{Ursache.} Hat eine Funktion propagierende Argumente, bestimmt EFs
-  Nullability-Prozessor ihre Nullbarkeit allein aus diesen. Sind sie nicht nullbar (eine
-  Konstante, eine Pflichtspalte), gilt die Funktion als nie NULL, egal was \code{nullable}
-  sagt.
+  Nullability-Prozessor ihre Nullbarkeit allein aus diesen. Ist das Argument nicht nullbar
+  (eine Pflichtspalte, eine Konstante), gilt die Funktion als nie NULL, egal was
+  \code{nullable} sagt.
 
   \textbf{Lösung.} Propagierend ist ein Argument nur, wenn „Argument ist NULL“ das
   \emph{einzige} ist, was das Ergebnis NULL macht. Funktionen, die selbst NULL erzeugen,
-  markieren kein Argument.
+  markieren kein Argument. Und \code{nullable} folgt dem CLR-Typ: Ist er nullbar, darf EF
+  NULL erwarten; ist er es nicht, wie bei \code{Tenant\allowbreak{}Id}, ist \code{false} die
+  ehrliche Angabe.
 
   \textbf{Test:}
-  \code{Query\allowbreak{}Translation\allowbreak{}Tests.\allowbreak{}Current\allowbreak{}Tenant\allowbreak{}\_can\allowbreak{}\_be\allowbreak{}\_null\allowbreak{}\_…}
-  und
   \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Nullable\allowbreak{}\_function\allowbreak{}\_…}
-  mit beiden Varianten.
+  mit beiden Varianten;
+  \code{Query\allowbreak{}Translation\allowbreak{}Tests.\allowbreak{}Inequality\allowbreak{}\_with\allowbreak{}\_Current\allowbreak{}Tenant\allowbreak{}\_…}
+  hält die sichere Richtung fest.
 \end{failure}
 
 \section{Ein Member-Translator}

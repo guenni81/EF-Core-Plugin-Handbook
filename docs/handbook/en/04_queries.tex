@@ -382,8 +382,7 @@ public class CurrentTenantTranslator : IMethodCallTranslator
         var text = _typeMappingSource.FindMapping(typeof(string))!;
         var boolean = _typeMappingSource.FindMapping(typeof(bool))!;
 
-        // Both functions return NULL although no argument is NULL:
-        // no argument propagates nullability (see the failure case below)
+        // Returns NULL although no argument is NULL: no argument propagates
         var currentSetting = _sql.Function(
             "current_setting",
             [
@@ -394,10 +393,11 @@ public class CurrentTenantTranslator : IMethodCallTranslator
             argumentsPropagateNullability: [false, false],
             typeof(string), text);
 
+        // Deliberately never NULL for EF, matching the CLR type TenantId (see below)
         var nullIfEmpty = _sql.Function(
             "nullif",
             [currentSetting, _sql.Constant(string.Empty, text)],
-            nullable: true,
+            nullable: false,
             argumentsPropagateNullability: [false, false],
             typeof(string), text);
 
@@ -422,8 +422,10 @@ WHERE o."TenantId" = nullif(current_setting('app.tenant_id', TRUE), '')::uuid
   \code{arguments} & For extension methods, \code{arguments[0]} is the \code{this} parameter
   (here \code{Db\allowbreak{}Functions}). \\
   \tablerule
-  \code{nullable} & Can the result be NULL? EF uses this to optimize \code{IS NULL} checks.
-  Wrong values lead to wrong results. \\
+  \code{nullable} & Can the result be NULL? EF uses this to optimize \code{IS NULL} checks
+  and to produce C\# NULL semantics. \code{Current\allowbreak{}Tenant} deliberately says
+  \code{false}: the CLR type \code{Tenant\allowbreak{}Id} is not nullable, and without a
+  tenant every comparison should be NULL, so that no row matches. \\
   \tablerule
   \code{arguments\allowbreak{}Propagate\allowbreak{}Nullability} & “The result is NULL
   exactly when this argument is NULL.” If there are such arguments, EF derives the
@@ -441,37 +443,38 @@ WHERE o."TenantId" = nullif(current_setting('app.tenant_id', TRUE), '')::uuid
 \end{datatable}
 
 The nullability details are the most treacherous part of a translator, because a mistake
-only shows in certain queries:
+only shows in certain queries. An example is a function
+\code{EF.\allowbreak{}Functions.\allowbreak{}Empty\allowbreak{}As\allowbreak{}Null(\allowbreak{}c.\allowbreak{}Name)}
+that turns an empty string into NULL and returns \code{string?}:
 
 \begin{sourcecode}[Translator (\allowbreak{}WRONG)]{csharp}
-var nullIfEmpty = _sql.Function("nullif", [currentSetting, empty],
+_sql.Function("nullif", [arguments[1], _sql.Constant("", arguments[1].TypeMapping)],
     nullable: true,                                   // right: can be NULL ...
     argumentsPropagateNullability: [true, false],     // ... but this overrides it for EF
-    typeof(string), text);
+    typeof(string), arguments[1].TypeMapping);
 \end{sourcecode}
 
 \begin{failure}[What happens if a translator declares the wrong nullability?]
   \textbf{Observable.}
-  \code{EF.\allowbreak{}Functions.\allowbreak{}Current\allowbreak{}Tenant(\allowbreak{}) == null}
-  becomes \code{WHERE FALSE}, although it would be true without a tenant, and
-  \code{o.\allowbreak{}Tenant\allowbreak{}Id != Current\allowbreak{}Tenant(\allowbreak{})}
-  loses the NULL handling of C\# semantics. Ordinary comparisons with \code{==} stay right,
-  which is why the mistake goes unnoticed for a long time. Up to edition~1.0 the sample
-  contained exactly this mistake.
+  \code{Where(\allowbreak{}c => EF.\allowbreak{}Functions.\allowbreak{}Empty\allowbreak{}As\allowbreak{}Null(\allowbreak{}c.\allowbreak{}Name) == null)}
+  becomes \code{WHERE FALSE}: the query never finds customers with an empty name, without an
+  error or a warning. With a nullable column as the argument the result would be right; the
+  mistake only shows with required columns.
 
   \textbf{Cause.} If a function has propagating arguments, EF's nullability processor
-  determines its nullability from these alone. If they are not nullable (a constant, a
-  required column), the function counts as never NULL, whatever \code{nullable} says.
+  determines its nullability from these alone. If the argument is not nullable (a required
+  column, a constant), the function counts as never NULL, whatever \code{nullable} says.
 
   \textbf{Solution.} An argument propagates only if “the argument is NULL” is the
-  \emph{only} thing that makes the result NULL. Functions that produce NULL themselves mark
-  no argument.
+  \emph{only} thing that makes the result NULL. Functions that produce NULL themselves mark no
+  argument. And \code{nullable} follows the CLR type: if it is nullable, EF may expect NULL;
+  if it is not, as with \code{Tenant\allowbreak{}Id}, \code{false} is the honest statement.
 
   \textbf{Test:}
-  \code{Query\allowbreak{}Translation\allowbreak{}Tests.\allowbreak{}Current\allowbreak{}Tenant\allowbreak{}\_can\allowbreak{}\_be\allowbreak{}\_null\allowbreak{}\_…}
-  and
   \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Nullable\allowbreak{}\_function\allowbreak{}\_…}
-  with both variants.
+  with both variants;
+  \code{Query\allowbreak{}Translation\allowbreak{}Tests.\allowbreak{}Inequality\allowbreak{}\_with\allowbreak{}\_Current\allowbreak{}Tenant\allowbreak{}\_…}
+  pins the safe direction.
 \end{failure}
 
 \section{A member translator}

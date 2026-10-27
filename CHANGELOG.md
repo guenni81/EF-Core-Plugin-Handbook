@@ -55,10 +55,11 @@ version of EF Core (10.x = EF Core 10).
 
 ### Fixed
 
-- `EF.Functions.CurrentTenant()` (PostgreSQL) declared its arguments as propagating
-  nullability, so EF treated the function as never NULL: `CurrentTenant() == null` became
-  `WHERE FALSE` and `TenantId != CurrentTenant()` lost its NULL handling. The handbook's
-  rule for `argumentsPropagateNullability` was wrong in the same way and is corrected.
+- The handbook's rule for `argumentsPropagateNullability` was wrong: a function with
+  propagating arguments gets its nullability from those arguments alone, so functions that
+  produce NULL themselves must not mark any argument. `CurrentTenantTranslator` now states
+  its nullability explicitly (never NULL for EF, matching the CLR type `TenantId`); the
+  generated SQL is unchanged.
 - The handbook said EF only warns after 20 internal service providers; by default it throws.
 - The old query pipeline diagram placed the NULL optimization in postprocessing and the
   query interceptor in preprocessing; the materialization chapter said the value converter

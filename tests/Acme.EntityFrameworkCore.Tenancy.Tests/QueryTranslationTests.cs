@@ -22,17 +22,17 @@ public class QueryTranslationTests
     }
 
     [Fact]
-    public void CurrentTenant_can_be_null_and_keeps_the_null_check()
+    public void Inequality_with_CurrentTenant_never_matches_without_a_tenant()
     {
-        // Regression: with a propagating argument EF treated the function as never NULL and
-        // turned "no current tenant" into WHERE FALSE (chapter "Translating methods and members")
+        // CurrentTenant() is not nullable for EF (CLR type TenantId). Without a tenant the SQL
+        // value is NULL and "<>" is not true: no rows instead of all rows wherever row level
+        // security does not apply (chapter "Translating methods and members")
         using var ctx = Contexts.Create();
 
-        var noTenant = ctx.Orders.Where(o => EF.Functions.CurrentTenant() == null).ToQueryString();
-        var other = ctx.Orders.Where(o => o.TenantId != EF.Functions.CurrentTenant()).ToQueryString();
+        var sql = ctx.Orders.Where(o => o.TenantId != EF.Functions.CurrentTenant()).ToQueryString();
 
-        Assert.EndsWith("WHERE nullif(current_setting('app.tenant_id', TRUE), '') IS NULL", noTenant);
-        Assert.Contains("OR nullif(current_setting('app.tenant_id', TRUE), '') IS NULL", other);
+        Assert.EndsWith("WHERE o.\"TenantId\" <> nullif(current_setting('app.tenant_id', TRUE), '')::uuid", sql);
+        Assert.DoesNotContain("IS NULL", sql);
     }
 
     [Fact]
