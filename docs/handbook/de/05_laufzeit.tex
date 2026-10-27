@@ -125,11 +125,17 @@ public class TenantSaveChangesInterceptor : SaveChangesInterceptor
                     break;
                 case EntityState.Added when currentValue != current:
                     throw Mismatch(entry, currentValue, current);
-                case EntityState.Modified when property.IsModified:
+                // Nur ein tatsächlicher Wertwechsel zählt, nicht die Markierung
+                case EntityState.Modified
+                    when property.IsModified && currentValue != originalValue:
                     throw new TenancyException("Mandanten-Property ist unveränderlich.");
-                case EntityState.Modified or EntityState.Deleted
-                    when originalValue != current:
-                    throw Mismatch(entry, originalValue, current);
+                case EntityState.Modified or EntityState.Deleted:
+                    if (entry.State == EntityState.Modified)
+                        property.IsModified = false;    // Spalte nicht schreiben
+                    // Leer = unbekannt (Shadow-Property): die Datenbank entscheidet
+                    if (!originalValue.IsEmpty && originalValue != current)
+                        throw Mismatch(entry, originalValue, current);
+                    break;
             }
         }
     }
@@ -165,6 +171,39 @@ public class TenantSaveChangesInterceptor : SaveChangesInterceptor
   \textbf{Test:}
   \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Interceptor\allowbreak{}\_with\allowbreak{}\_only\allowbreak{}\_the\allowbreak{}\_async\allowbreak{}\_variant\allowbreak{}\_…}.
 \end{failure}
+
+\section{Markierung, Wertwechsel und Datenbankschutz}\label{sec:tracking-flag-versus-value}
+
+Drei Dinge sehen beim Speichern ähnlich aus und bedeuten Verschiedenes:
+
+\begin{itemize}
+  \item \textbf{Die Tracking-Markierung.} \code{Db\allowbreak{}Context.\allowbreak{}Update} und
+    \code{Attach} einer nicht getrackten Entität setzen \code{Is\allowbreak{}Modified} für
+    \emph{jede} Property, auch für die Mandanten-Property. Original- und aktueller Wert sind
+    dabei gleich, nämlich der Wert, den die Entität mitbringt. Bis 10.0 lehnte der Interceptor
+    schon diese Markierung als Mandantenwechsel ab, und ein gewöhnliches Update aus einer API
+    scheiterte.
+  \item \textbf{Der tatsächliche Wertwechsel.} Nur wenn sich der Wert gegenüber dem
+    Originalwert ändert, wird eine Zeile umgehängt. Das lehnt der Interceptor ab, auch wenn
+    der neue Wert der aktive Mandant ist. Bei einem unveränderten Wert nimmt er die Markierung
+    zurück, sodass das \code{UPDATE} die Mandantenspalte nicht schreibt.
+  \item \textbf{Der Datenbankzustand.} Bei einer getrackten Entität stammt der Originalwert
+    aus der Datenbank. Bei einer abgekoppelten Entität ist er nur eine Behauptung des
+    Aufrufers. Eine manipulierte Entität mit dem eigenen Mandanten und der ID einer fremden Zeile
+    besteht deshalb jede Prüfung im Interceptor. Erst die Policy entscheidet: Das
+    \code{UPDATE} sieht die fremde Zeile nicht, ändert null Zeilen, und EF meldet eine
+    \code{Db\allowbreak{}Update\allowbreak{}Concurrency\allowbreak{}Exception}. Ein leerer
+    Originalwert (eine Shadow-Property, die die Entität nicht tragen kann) gilt als unbekannt,
+    nicht als fremd; auch hier entscheidet die Datenbank.
+\end{itemize}
+
+Der Interceptor verspricht also nur, was er ohne Datenbankzugriff wissen kann: keinen
+Mandantenwechsel im Change Tracker, keine bekannt fremden Werte, keine Änderung ohne aktiven
+Mandanten. Ob eine Zeile wirklich dem Mandanten gehört, prüft allein RLS.
+\code{Save\allowbreak{}Changes\allowbreak{}Interceptor\allowbreak{}Tests} deckt die Fälle
+ohne Datenbank ab, \code{Detached\allowbreak{}Update\allowbreak{}Tests} gegen PostgreSQL mit
+eingeschränkter Rolle: \code{Update} mit unverändertem Mandanten synchron und asynchron, die
+manipulierte fremde Zeilen-ID und das Umhängen einer getrackten Zeile.
 
 Die Logik liegt in einer \code{internal}-Methode \code{Apply\allowbreak{}Tenant}. Tests
 können sie über \code{Internals\allowbreak{}Visible\allowbreak{}To} direkt aufrufen, ohne

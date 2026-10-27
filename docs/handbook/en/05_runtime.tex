@@ -123,11 +123,17 @@ public class TenantSaveChangesInterceptor : SaveChangesInterceptor
                     break;
                 case EntityState.Added when currentValue != current:
                     throw Mismatch(entry, currentValue, current);
-                case EntityState.Modified when property.IsModified:
+                // Only an actual change of the value counts, not the flag
+                case EntityState.Modified
+                    when property.IsModified && currentValue != originalValue:
                     throw new TenancyException("The tenant property is immutable.");
-                case EntityState.Modified or EntityState.Deleted
-                    when originalValue != current:
-                    throw Mismatch(entry, originalValue, current);
+                case EntityState.Modified or EntityState.Deleted:
+                    if (entry.State == EntityState.Modified)
+                        property.IsModified = false;    // do not write the column
+                    // Empty = unknown (shadow property): the database decides
+                    if (!originalValue.IsEmpty && originalValue != current)
+                        throw Mismatch(entry, originalValue, current);
+                    break;
             }
         }
     }
@@ -164,6 +170,37 @@ public class TenantSaveChangesInterceptor : SaveChangesInterceptor
   \textbf{Test:}
   \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Interceptor\allowbreak{}\_with\allowbreak{}\_only\allowbreak{}\_the\allowbreak{}\_async\allowbreak{}\_variant\allowbreak{}\_…}.
 \end{failure}
+
+\section{Tracking flag, change of value and database protection}\label{sec:tracking-flag-versus-value}
+
+Three things look alike when saving and mean different things:
+
+\begin{itemize}
+  \item \textbf{The tracking flag.} \code{Db\allowbreak{}Context.\allowbreak{}Update} and
+    \code{Attach} of an untracked entity set \code{Is\allowbreak{}Modified} for \emph{every}
+    property, the tenant property included. Original and current value are the same: the value
+    the entity brings along. Up to 10.0 the interceptor already rejected this flag as a change of
+    tenant, and an ordinary update from an API failed.
+  \item \textbf{The actual change of value.} A row is only reassigned when the value differs from
+    the original value. The interceptor rejects that, even when the new value is the active
+    tenant. For an unchanged value it clears the flag, so that the \code{UPDATE} does not write
+    the tenant column.
+  \item \textbf{The state of the database.} For a tracked entity the original value comes from
+    the database. For a detached entity it is only a claim of the caller. A forged entity with
+    the own tenant and the ID of a foreign row therefore passes every check in the interceptor.
+    Only the policy decides: the \code{UPDATE} does not see the foreign row, changes zero rows,
+    and EF reports a \code{Db\allowbreak{}Update\allowbreak{}Concurrency\allowbreak{}Exception}.
+    An empty original value (a shadow property the entity cannot carry) counts as unknown, not
+    as foreign; here, too, the database decides.
+\end{itemize}
+
+The interceptor therefore only promises what it can know without accessing the database: no
+change of tenant in the change tracker, no values known to be foreign, no change without an
+active tenant. Whether a row really belongs to the tenant is checked by RLS alone.
+\code{Save\allowbreak{}Changes\allowbreak{}Interceptor\allowbreak{}Tests} covers the cases
+without a database, \code{Detached\allowbreak{}Update\allowbreak{}Tests} against PostgreSQL with
+a restricted role: \code{Update} with an unchanged tenant, synchronous and asynchronous, the
+forged foreign row ID and the reassignment of a tracked row.
 
 The logic lives in an \code{internal} method \code{Apply\allowbreak{}Tenant}. Tests can call
 it directly through \code{Internals\allowbreak{}Visible\allowbreak{}To} without needing a

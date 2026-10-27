@@ -101,15 +101,28 @@ public class TenantSaveChangesInterceptor : SaveChangesInterceptor
                     throw Mismatch(entry, currentValue, current);
 
                 // Reassigning a row to another tenant is never allowed, not even to the
-                // current one: it would move data across the isolation boundary.
-                case EntityState.Modified when property.IsModified:
+                // current one: it would move data across the isolation boundary. Only an actual
+                // change of the value counts, not the IsModified flag alone.
+                case EntityState.Modified when property.IsModified && currentValue != originalValue:
                     throw new TenancyException(
                         $"The tenant property of '{entry.Metadata.DisplayName()}' "
                         + "must not be changed.");
 
-                // The original value counts: it reflects the row as it is in the database
-                case EntityState.Modified or EntityState.Deleted when originalValue != current:
-                    throw Mismatch(entry, originalValue, current);
+                case EntityState.Modified or EntityState.Deleted:
+                    // Update() and Attach() of an untracked entity mark every property as
+                    // modified, the tenant property included. The value is unchanged, so the
+                    // UPDATE does not need to write the column.
+                    if (entry.State == EntityState.Modified)
+                        property.IsModified = false;
+
+                    // The original value is what the entity claims about its row. For a tracked
+                    // entity it was read from the database; for an untracked one it proves
+                    // nothing, which is why the database policy decides which row is affected.
+                    // An empty value (a shadow property the entity cannot carry) is unknown,
+                    // not foreign: the database decides as well.
+                    if (!originalValue.IsEmpty && originalValue != current)
+                        throw Mismatch(entry, originalValue, current);
+                    break;
             }
         }
     }

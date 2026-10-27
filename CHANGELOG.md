@@ -95,6 +95,14 @@ version of EF Core (10.x = EF Core 10).
 
 ### Fixed
 
+- `TenantSaveChangesInterceptor` rejected `DbContext.Update` of an untracked entity of the own
+  tenant, because EF marks every property as modified, the tenant property included. Only an
+  actual change of the value is rejected now; for an unchanged value the flag is cleared, so
+  the `UPDATE` does not write the tenant column. An empty original value (shadow tenant
+  property) is unknown and left to the database policy, which also stops forged entities with
+  the ID of a foreign row (0 rows, `DbUpdateConcurrencyException`). Unit tests and PostgreSQL
+  integration tests (sync and async).
+
 - SQL Server: changing `sessionKey` or `policySchema` produced no migration; the interceptor
   then set the new key while the predicate function kept reading the old one, and historical
   migrations generated objects from the current options. Both values are now recorded as
