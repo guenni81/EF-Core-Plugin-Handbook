@@ -11,19 +11,34 @@ public class Order : ITenantOwned
     public decimal Total { get; set; }
 }
 
-public class PgContext(DbContextOptions<PgContext> options) : DbContext(options)
+public class PgContext : DbContext
 {
+    public PgContext(DbContextOptions<PgContext> options)
+        : base(options)
+    {
+    }
+
     public DbSet<Order> Orders => Set<Order>();
 }
 
 /// <summary>Same model without the query filter: EF Core 10 compiles no model with query filters.</summary>
-public class CompiledPgContext(DbContextOptions<CompiledPgContext> options) : DbContext(options)
+public class CompiledPgContext : DbContext
 {
+    public CompiledPgContext(DbContextOptions<CompiledPgContext> options)
+        : base(options)
+    {
+    }
+
     public DbSet<Order> Orders => Set<Order>();
 }
 
-public class SqlContext(DbContextOptions<SqlContext> options) : DbContext(options)
+public class SqlContext : DbContext
 {
+    public SqlContext(DbContextOptions<SqlContext> options)
+        : base(options)
+    {
+    }
+
     public DbSet<Order> Orders => Set<Order>();
 }
 

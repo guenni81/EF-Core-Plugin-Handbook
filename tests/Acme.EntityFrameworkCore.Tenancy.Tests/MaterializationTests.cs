@@ -194,8 +194,13 @@ public class MaterializationTests
     }
 
     /// <summary>Context type for pooling: only the options constructor.</summary>
-    private sealed class PooledContext(DbContextOptions<PooledContext> options) : DbContext(options)
+    private sealed class PooledContext : DbContext
     {
+        public PooledContext(DbContextOptions<PooledContext> options)
+            : base(options)
+        {
+        }
+
         public DbSet<Order> Orders => Set<Order>();
     }
 

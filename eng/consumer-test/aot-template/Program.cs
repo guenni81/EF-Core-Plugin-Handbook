@@ -18,8 +18,13 @@ public sealed class Tenants : ITenantProvider
     public TenantId? CurrentTenantId { get; set; }
 }
 
-public class AotContext(DbContextOptions<AotContext> options) : DbContext(options)
+public class AotContext : DbContext
 {
+    public AotContext(DbContextOptions<AotContext> options)
+        : base(options)
+    {
+    }
+
     public DbSet<Order> Orders => Set<Order>();
 
     public static DbContextOptions<AotContext> Options(string cs, Tenants? tenants)
