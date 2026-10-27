@@ -66,10 +66,14 @@ public class TenantIsolationConvention : IModelFinalizingConvention
         IConventionModelBuilder modelBuilder,
         IConventionContext<IConventionModelBuilder> context)
     {
+        // TPT, TPC, entity splitting, owned types in their own table and implicit join tables
+        // would leave tenant data in tables without a tenant column: reject them first
+        TenantTableMappingValidator.Validate(modelBuilder.Metadata, e => e.IsRlsOptedOut());
+
         foreach (var entityType in modelBuilder.Metadata.GetEntityTypes())
         {
-            if (entityType.BaseType is not null       // root types of a hierarchy only
-                || entityType.IsOwned())              // owned types share the owner's table
+            if (entityType.BaseType is not null       // TPH: derived types share the root's table
+                || entityType.IsOwned())              // validated: in the owner's table or JSON
             {
                 continue;
             }

@@ -33,10 +33,12 @@ public class SqlServerTenancyAnnotationProvider : SqlServerAnnotationProvider
         if (!designTime)
             yield break;
 
-        // Only the first entity type mapped to the table is inspected (the convention annotates
-        // root types only)
-        var entityType = (IEntityType)table.EntityTypeMappings.First().TypeBase;
-        if (entityType.FindAnnotation(SqlServerRlsAnnotationNames.TenantColumn) is { } column)
+        // The convention annotates root types only; with table splitting the annotated type need
+        // not be the first mapping (TenantTableMappingValidator ensures that they agree)
+        var column = table.EntityTypeMappings
+            .Select(m => m.TypeBase.FindAnnotation(SqlServerRlsAnnotationNames.TenantColumn))
+            .FirstOrDefault(a => a is not null);
+        if (column is not null)
             yield return column;
     }
 }

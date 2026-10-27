@@ -2,3 +2,5 @@
 Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantMaterializationInterceptor
 Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantMaterializationInterceptor.TenantMaterializationInterceptor() -> void
 virtual Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantMaterializationInterceptor.CreatingInstance(Microsoft.EntityFrameworkCore.Diagnostics.MaterializationInterceptionData materializationData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<object!> result) -> Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<object!>
+Acme.EntityFrameworkCore.Tenancy.Metadata.TenantTableMappingValidator
+static Acme.EntityFrameworkCore.Tenancy.Metadata.TenantTableMappingValidator.Validate(Microsoft.EntityFrameworkCore.Metadata.IReadOnlyModel! model, System.Func<Microsoft.EntityFrameworkCore.Metadata.IReadOnlyEntityType!, bool>! isOptedOut) -> void

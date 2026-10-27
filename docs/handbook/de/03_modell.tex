@@ -327,10 +327,14 @@ public virtual void ProcessModelFinalizing(
     IConventionModelBuilder modelBuilder,
     IConventionContext<IConventionModelBuilder> context)
 {
+    // TPT, TPC, Entity Splitting, Owned Types in eigener Tabelle und implizite
+    // Join-Tabellen ließen Mandantendaten ohne Mandantenspalte zurück: zuerst ablehnen
+    TenantTableMappingValidator.Validate(modelBuilder.Metadata, e => e.IsRlsOptedOut());
+
     foreach (var entityType in modelBuilder.Metadata.GetEntityTypes())
     {
-        if (entityType.BaseType is not null       // nur Root-Typen einer Hierarchie
-            || entityType.IsOwned())              // Owned Types teilen die Tabelle
+        if (entityType.BaseType is not null       // TPH: Tabelle des Root-Typs
+            || entityType.IsOwned())              // geprüft: Eigentümertabelle oder JSON
             continue;
 
         // Markierte Property oder "TenantId" bei ITenantOwned (Kernpaket,
@@ -395,6 +399,90 @@ protected virtual void ApplyRowLevelSecurity(
   Ausdruck
   (\code{[a-z\_\allowbreak{}][a-z0-9\_\allowbreak{}]*\textbackslash{}.\allowbreak{}[a-z\_\allowbreak{}][a-z0-9\_\allowbreak{}]*}).
 \end{important}
+
+\section{Welche Tabellenabbildungen geschützt sind}\label{sec:supported-table-mappings}
+
+RLS schützt Tabellen, keine Entitäten. Die Policy vergleicht die Mandantenspalte \emph{derselben}
+Tabelle mit dem Session-Setting. Eine Tabelle mit Mandantendaten, aber ohne diese Spalte, lässt
+sich mit dieser Policy nicht schützen. Eine Entität kann mehrere Tabellen belegen, und mehrere
+Entitäten können sich eine Tabelle teilen. Deshalb prüft
+\code{Tenant\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Validator} aus dem Kernpaket
+vor jeder Annotation, ob jede Tabelle mit Mandantendaten die Mandantenspalte enthält. Beide
+Provider-Pakete rufen ihn auf, der Vertrag ist also für PostgreSQL und SQL Server gleich:
+
+\begin{datatable}{H{1.00}H{1.25}H{0.75}}
+  \textbf{Abbildung} & \textbf{Tabellen mit Mandantendaten} & \textbf{Verhalten} \\
+  \tablehead
+  Eine Tabelle pro Entität & die Tabelle, mit Mandantenspalte & geschützt \\
+  \tablerule
+  TPH (Standard) & eine Tabelle für die ganze Hierarchie & geschützt, Policy am Root-Typ \\
+  \tablerule
+  Mandantenbezogener abgeleiteter Typ unter einem Root ohne Mandant & dieselbe Tabelle, Zeilen
+  anderer Typen ohne Mandant & abgelehnt \\
+  \tablerule
+  TPT & je abgeleitetem Typ eine Tabelle \emph{ohne} Mandantenspalte & abgelehnt \\
+  \tablerule
+  TPC & je konkretem Typ eine Tabelle, die abstrakte Basis hat keine & abgelehnt (nicht
+  implementiert) \\
+  \tablerule
+  Owned Type in der Eigentümertabelle (\code{Owns\allowbreak{}One}) & Spalten der
+  Eigentümertabelle & geschützt \\
+  \tablerule
+  Owned Type als JSON (\code{To\allowbreak{}Json}) & eine Spalte der Eigentümertabelle &
+  geschützt \\
+  \tablerule
+  Owned Type in eigener Tabelle (\code{Owns\allowbreak{}Many}, \code{To\allowbreak{}Table})
+  & eigene Tabelle ohne Mandantenspalte & abgelehnt \\
+  \tablerule
+  Table Splitting & dieselben Zeilen für alle Typen & geschützt, wenn alle mandantenbezogenen
+  Typen dieselbe Spalte nutzen \\
+  \tablerule
+  Entity Splitting (\code{Split\allowbreak{}To\allowbreak{}Table}) & weitere Tabelle ohne
+  Mandantenspalte & abgelehnt \\
+  \tablerule
+  Implizite Many-to-many-Tabelle mit mandantenbezogener Seite & Join-Tabelle ohne
+  Mandantenspalte & abgelehnt \\
+  \tablerule
+  Join-Entität mit Mandanten-Property (\code{Using\allowbreak{}Entity}) & Join-Tabelle mit
+  Mandantenspalte & geschützt \\
+  \tablerule
+  View, \code{To\allowbreak{}Sql\allowbreak{}Query}, keyless ohne Tabelle & keine eigene
+  Tabelle & keine Policy; die Basistabellen tragen sie \\
+\end{datatable}
+
+Abgelehnt heißt: Das Modell wirft beim ersten Zugriff auf \code{Model} eine
+\code{Invalid\allowbreak{}Operation\allowbreak{}Exception}, die Tabelle, Typ und Ausweg nennt.
+Das passiert vor \code{Ensure\allowbreak{}Created}, vor jeder Migration und vor der ersten
+Abfrage. Eine scheinbare Unterstützung, die eine Policy auf eine Tabelle ohne passende Spalte
+schreibt, wäre schlimmer als die Ablehnung. TPC wäre grundsätzlich schützbar, weil jede
+konkrete Tabelle die Mandantenspalte erbt. Das Plugin unterstützt aber genau eine Tabelle pro
+Hierarchie, und eine halbe Umsetzung soll keine Sicherheit vortäuschen. Als Ausweg bleiben TPH
+oder eigenständige Entitäten.
+
+Bewusste Ausnahmen bleiben möglich: Eine mit \code{[No\allowbreak{}Tenant\allowbreak{}Isolation]}
+oder \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})}
+ausgenommene Entität wird nicht geprüft, und die Convention protokolliert die Ausnahme als
+Warnung. So unterscheidet das Modell eine Entscheidung von einem Versehen. Für die implizite
+Join-Tabelle gibt es im PostgreSQL-Paket
+\code{Using\allowbreak{}Entity(\allowbreak{}j => j.\allowbreak{}Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{}))};
+das SQL-Server-Paket kennt nur das Attribut und braucht dafür eine Join-Klasse. Besser ist
+fast immer eine Mandanten-Property an der Join-Entität:
+
+\begin{sourcecode}[Anwendung]{csharp}
+modelBuilder.Entity<Basket>()
+    .HasMany(b => b.Labels).WithMany(l => l.Baskets)
+    .UsingEntity("BasketLabel",
+        j => j.Property<TenantId>("TenantId").IsTenantProperty());   // Shadow-Property
+\end{sourcecode}
+
+Die Shadow-Property füllt der SaveChanges-Interceptor wie jede andere Mandanten-Property.
+\code{Mapping\allowbreak{}Isolation\allowbreak{}Tests} prüft beides gegen ein echtes
+PostgreSQL mit eingeschränkter Rolle: Ein TPC-Modell scheitert, bevor eine einzige Tabelle
+existiert. In einem Modell mit TPH, Owned Type, JSON-Spalte und dieser Join-Entität hat jede
+Tabelle RLS, und ohne Mandant ist in keiner Tabelle eine Zeile sichtbar.
+\code{Table\allowbreak{}Mapping\allowbreak{}Tests} und
+\code{Sql\allowbreak{}Server\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Tests} decken
+jede Zeile der Matrix ohne Datenbank ab.
 
 \section{Strukturelle Änderungen: Index und Query-Filter}
 

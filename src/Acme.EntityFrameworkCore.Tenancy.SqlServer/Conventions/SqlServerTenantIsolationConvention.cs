@@ -48,10 +48,14 @@ public class SqlServerTenantIsolationConvention : IModelFinalizingConvention
         IConventionModelBuilder modelBuilder,
         IConventionContext<IConventionModelBuilder> context)
     {
+        // Mappings that would leave tenant data in tables without a tenant column are rejected
+        // before any table is annotated (same contract as the PostgreSQL package)
+        TenantTableMappingValidator.Validate(modelBuilder.Metadata, IsOptedOut);
+
         foreach (var entityType in modelBuilder.Metadata.GetEntityTypes())
         {
-            // Derived types share the root's table (TPH) and owned types the owner's: one policy
-            // per table, attached to the root
+            // Derived types share the root's table (TPH) and owned types the owner's (validated
+            // above): one policy per table, attached to the root
             if (entityType.BaseType is not null || entityType.IsOwned())
                 continue;
 
@@ -63,7 +67,7 @@ public class SqlServerTenantIsolationConvention : IModelFinalizingConvention
                     $"Tenant property '{entityType.DisplayName()}.{property.Name}' must be of type TenantId.");
 
             // Opt-out via data annotation (only the PostgreSQL package offers the Fluent API variant)
-            if (entityType.ClrType.IsDefined(typeof(NoTenantIsolationAttribute), inherit: true))
+            if (IsOptedOut(entityType))
             {
                 _logger.TenantIsolationOptedOut(_loggingDefinitions, entityType);
                 continue;
@@ -90,4 +94,7 @@ public class SqlServerTenantIsolationConvention : IModelFinalizingConvention
             _logger.TenantIsolationApplied(_loggingDefinitions, entityType);
         }
     }
+
+    private static bool IsOptedOut(IReadOnlyEntityType entityType)
+        => entityType.ClrType.IsDefined(typeof(NoTenantIsolationAttribute), inherit: true);
 }

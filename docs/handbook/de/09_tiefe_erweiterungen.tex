@@ -682,6 +682,13 @@ Plugin pro Datenbank tatsächlich neu lösen muss:
   DDL in Batches & Transaktional, beliebig kombinierbar & \code{CREATE
   FUNCTION/\allowbreak{}SCHEMA} allein im Batch:
   \code{EXEC(\allowbreak{}N'.\allowbreak{}.\allowbreak{}.\allowbreak{}')} \\
+  \tablerule
+  Tabellenabbildungen & \multicolumn{2}{>{\RaggedRight\arraybackslash}p{0.6\linewidth}}{Gleicher
+  Vertrag aus dem Kernpaket (Kapitel~\ref{ch:conventions}, Seite~\pageref{sec:supported-table-mappings})} \\
+  \tablerule
+  Bewusste Ausnahme & Attribut oder
+  \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})}
+  & Nur das Attribut \\
 \end{datatable}
 
 \section{Aktivierung über den Provider-Builder}

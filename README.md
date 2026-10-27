@@ -217,6 +217,11 @@ the very top of `Up()`.
   `AddPooledDbContextFactory` or a singleton `AddDbContextFactory`, use a provider that
   determines the tenant on every access, or register the factory as scoped (chapters
   "Public API and integration into the application" and "Using the plugin in ASP.NET Core").
+* Isolation protects tables. Mappings that would put tenant data into a table without the
+  tenant column (TPT, TPC, entity splitting, owned types in their own table, implicit
+  many-to-many join tables) are rejected while the model is built; TPH, owned types in the
+  owner's table or as JSON, table splitting and join entities with a tenant property are
+  protected (chapter "Conventions", section "Which table mappings are protected").
 * Access across tenants (reports, maintenance) belongs in a separate database role, never
   in a switch the application role could flip (chapter "Row Level Security in production").
 

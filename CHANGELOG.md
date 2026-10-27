@@ -82,6 +82,18 @@ version of EF Core (10.x = EF Core 10).
 
 ### Fixed
 
+- Security: tenant isolation skipped derived and owned entity types without checking their
+  tables. A TPC hierarchy with an abstract `ITenantOwned` base created concrete tables without
+  RLS, and the restricted app role could read foreign rows without a tenant; TPT tables, owned
+  collections in their own table, entity splitting and implicit many-to-many join tables were
+  unprotected as well. The new `TenantTableMappingValidator` (core package, used by both
+  provider conventions) rejects these mappings while the model is built; TPH, owned types in
+  the owner's table or as JSON, table splitting and join entities with a tenant property stay
+  supported, deliberately excluded types are not checked. Both annotation providers now find
+  the annotated type of a shared table even if it is not the first mapping. Unit tests for
+  both providers and PostgreSQL integration tests with the restricted role; support matrix in
+  chapter "Conventions" and the README.
+
 - Trimming/AOT warnings that only showed in full builds: `AddAcmeTenancy<T>` now annotates
   its type parameter (IL2087); the query filter of the isolation convention suppresses IL3050
   with a justification (conventions do not run with the compiled model NativeAOT requires).

@@ -325,10 +325,14 @@ public virtual void ProcessModelFinalizing(
     IConventionModelBuilder modelBuilder,
     IConventionContext<IConventionModelBuilder> context)
 {
+    // TPT, TPC, entity splitting, owned types in their own table and implicit join
+    // tables would leave tenant data without a tenant column: reject them first
+    TenantTableMappingValidator.Validate(modelBuilder.Metadata, e => e.IsRlsOptedOut());
+
     foreach (var entityType in modelBuilder.Metadata.GetEntityTypes())
     {
-        if (entityType.BaseType is not null       // root types of a hierarchy only
-            || entityType.IsOwned())              // owned types share the table
+        if (entityType.BaseType is not null       // TPH: the root type's table
+            || entityType.IsOwned())              // validated: owner's table or JSON
             continue;
 
         // Marked property or "TenantId" with ITenantOwned (core package,
@@ -392,6 +396,88 @@ protected virtual void ApplyRowLevelSecurity(
   the options builder validates the name with a strict regular expression
   (\code{[a-z\_\allowbreak{}][a-z0-9\_\allowbreak{}]*\textbackslash{}.\allowbreak{}[a-z\_\allowbreak{}][a-z0-9\_\allowbreak{}]*}).
 \end{important}
+
+\section{Which table mappings are protected}\label{sec:supported-table-mappings}
+
+RLS protects tables, not entities. The policy compares the tenant column of the \emph{same} table
+with the session setting. A table that holds tenant data but lacks this column cannot be
+protected by this policy. One entity can occupy several tables, and several entities can share
+one table. That is why \code{Tenant\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Validator}
+from the core package checks, before any annotation, that every table with tenant data contains
+the tenant column. Both provider packages call it, so the contract is the same for PostgreSQL and
+SQL Server:
+
+\begin{datatable}{H{1.00}H{1.25}H{0.75}}
+  \textbf{Mapping} & \textbf{Tables with tenant data} & \textbf{Behavior} \\
+  \tablehead
+  One table per entity & the table, with tenant column & protected \\
+  \tablerule
+  TPH (default) & one table for the whole hierarchy & protected, policy on the root type \\
+  \tablerule
+  Tenant-owned derived type below a root without a tenant & the same table, rows of other types
+  without a tenant & rejected \\
+  \tablerule
+  TPT & one table per derived type \emph{without} tenant column & rejected \\
+  \tablerule
+  TPC & one table per concrete type, the abstract base has none & rejected (not
+  implemented) \\
+  \tablerule
+  Owned type in the owner's table (\code{Owns\allowbreak{}One}) & columns of the owner's
+  table & protected \\
+  \tablerule
+  Owned type as JSON (\code{To\allowbreak{}Json}) & one column of the owner's table &
+  protected \\
+  \tablerule
+  Owned type in its own table (\code{Owns\allowbreak{}Many}, \code{To\allowbreak{}Table}) &
+  own table without tenant column & rejected \\
+  \tablerule
+  Table splitting & the same rows for all types & protected if all tenant-owned types use the
+  same column \\
+  \tablerule
+  Entity splitting (\code{Split\allowbreak{}To\allowbreak{}Table}) & another table without
+  tenant column & rejected \\
+  \tablerule
+  Implicit many-to-many table with a tenant-owned side & join table without tenant column &
+  rejected \\
+  \tablerule
+  Join entity with a tenant property (\code{Using\allowbreak{}Entity}) & join table with
+  tenant column & protected \\
+  \tablerule
+  View, \code{To\allowbreak{}Sql\allowbreak{}Query}, keyless without a table & no table of
+  its own & no policy; the base tables carry it \\
+\end{datatable}
+
+Rejected means: the model throws an \code{Invalid\allowbreak{}Operation\allowbreak{}Exception}
+on the first access to \code{Model}, naming the table, the type and the way out. This happens
+before \code{Ensure\allowbreak{}Created}, before any migration and before the first query.
+Seeming support that writes a policy onto a table without a matching column would be worse than
+the rejection. TPC could be protected in principle, since every concrete table inherits the
+tenant column. The plugin, however, supports exactly one table per hierarchy, and a half-done
+implementation must not pretend to be secure. The ways out are TPH or independent entities.
+
+Deliberate exceptions remain possible: an entity excluded with
+\code{[No\allowbreak{}Tenant\allowbreak{}Isolation]} or
+\code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})}
+is not checked, and the convention logs the exception as a warning. That way the model tells a
+decision from an oversight. For the implicit join table the PostgreSQL package offers
+\code{Using\allowbreak{}Entity(\allowbreak{}j => j.\allowbreak{}Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{}))};
+the SQL Server package only knows the attribute and needs a join class for it. A tenant property
+on the join entity is almost always better:
+
+\begin{sourcecode}[Application]{csharp}
+modelBuilder.Entity<Basket>()
+    .HasMany(b => b.Labels).WithMany(l => l.Baskets)
+    .UsingEntity("BasketLabel",
+        j => j.Property<TenantId>("TenantId").IsTenantProperty());   // shadow property
+\end{sourcecode}
+
+The SaveChanges interceptor fills the shadow property like any other tenant property.
+\code{Mapping\allowbreak{}Isolation\allowbreak{}Tests} checks both against a real PostgreSQL
+with a restricted role: a TPC model fails before a single table exists. In a model with TPH, an
+owned type, a JSON column and this join entity, every table has RLS, and without a tenant no row
+is visible in any table. \code{Table\allowbreak{}Mapping\allowbreak{}Tests} and
+\code{Sql\allowbreak{}Server\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Tests} cover
+every row of the matrix without a database.
 
 \section{Structural changes: index and query filter}
 

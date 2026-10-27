@@ -674,6 +674,13 @@ has to solve anew per database:
   DDL in batches & Transactional, freely combinable & \code{CREATE
   FUNCTION/\allowbreak{}SCHEMA} alone in a batch:
   \code{EXEC(\allowbreak{}N'.\allowbreak{}.\allowbreak{}.\allowbreak{}')} \\
+  \tablerule
+  Table mappings & \multicolumn{2}{>{\RaggedRight\arraybackslash}p{0.6\linewidth}}{Same
+  contract from the core package (chapter~\ref{ch:conventions}, page~\pageref{sec:supported-table-mappings})} \\
+  \tablerule
+  Deliberate exception & Attribute or
+  \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})}
+  & Attribute only \\
 \end{datatable}
 
 \section{Activation through the provider builder}
