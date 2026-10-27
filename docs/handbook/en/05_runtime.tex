@@ -359,6 +359,17 @@ because the provider reads its settings from the internal service provider; that
 transaction: PostgreSQL is lenient here, SQL Server rejects a command that is not enlisted.
 The SQL Server tests check exactly this case; without the line they fail.
 
+In \code{Connection\allowbreak{}Opened} this assignment is missing on purpose. A local
+transaction requires an open connection, and EF opens the connection before it calls
+\code{Begin\allowbreak{}Transaction}; when the connection is opened there is no transaction yet.
+An ambient \code{Transaction\allowbreak{}Scope}, in turn, is joined by Npgsql and SqlClient
+themselves when the connection opens, and every command on the connection runs in it without a
+\code{Db\allowbreak{}Transaction} being assigned. \code{Transaction\allowbreak{}Context\allowbreak{}Tests}
+and the SQL Server tests check all three paths: the connection that
+\code{Begin\allowbreak{}Transaction\allowbreak{}Async} opens,
+\code{Apply\allowbreak{}Tenant\allowbreak{}Session} in an explicit transaction, and reading and
+writing under a \code{Transaction\allowbreak{}Scope}.
+
 \begin{important}[One context, one tenant]
   Isolation follows the connection, not the context. A context used for several tenants, or
   a connection that outlives a request, carries the tenant of the moment it was opened.

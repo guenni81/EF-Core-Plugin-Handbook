@@ -364,6 +364,17 @@ laufenden Transaktion anschließen: PostgreSQL ist hier nachsichtig, SQL Server 
 Befehl ab, der ihr nicht zugeordnet ist. Die SQL-Server-Tests prüfen genau diesen Fall; ohne
 die Zeile schlagen sie fehl.
 
+In \code{Connection\allowbreak{}Opened} fehlt diese Zuordnung mit Absicht. Eine lokale
+Transaktion setzt eine offene Verbindung voraus, und EF öffnet die Verbindung, bevor es
+\code{Begin\allowbreak{}Transaction} aufruft; beim Öffnen gibt es also noch keine Transaktion.
+Eine umgebende \code{Transaction\allowbreak{}Scope} wiederum übernehmen Npgsql und SqlClient
+beim Öffnen selbst, und jeder Befehl auf der Verbindung läuft darin, ohne dass ihm eine
+\code{Db\allowbreak{}Transaction} zugewiesen wird. \code{Transaction\allowbreak{}Context\allowbreak{}Tests}
+und die SQL-Server-Tests prüfen alle drei Wege: die Verbindung, die
+\code{Begin\allowbreak{}Transaction\allowbreak{}Async} öffnet,
+\code{Apply\allowbreak{}Tenant\allowbreak{}Session} in einer expliziten Transaktion und
+Lesen und Schreiben unter einer \code{Transaction\allowbreak{}Scope}.
+
 \begin{important}[Ein Context, ein Mandant]
   Die Isolation folgt der Verbindung, nicht dem Context. Ein Context, der für mehrere
   Mandanten verwendet wird, oder eine Verbindung, die eine Anfrage überdauert, trägt den

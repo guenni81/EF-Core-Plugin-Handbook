@@ -276,6 +276,42 @@ public class SqlServerIntegrationTests : IClassFixture<SqlServerFixture>
     }
 
     [Fact]
+    public async Task Ambient_TransactionScope_reads_and_writes_with_the_tenant()
+    {
+        var a = TenantId.New();
+        await using (var db = ContextFor(TenantId.New())) { db.Orders.Add(new Order { Total = 1 }); await db.SaveChangesAsync(); }
+
+        // SqlClient enlists the connection when EF opens it; the session command runs in the
+        // ambient transaction without an assigned DbTransaction
+        using (var scope = new System.Transactions.TransactionScope(
+                   System.Transactions.TransactionScopeAsyncFlowOption.Enabled))
+        {
+            await using var db = ContextFor(a);
+            Assert.Empty(await db.Orders.ToListAsync());
+            db.Orders.Add(new Order { Total = 2 });
+            await db.SaveChangesAsync();
+            scope.Complete();
+        }
+
+        await using var check = ContextFor(a);
+        Assert.Single(await check.Orders.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Connection_opened_by_BeginTransaction_gets_the_tenant()
+    {
+        var a = TenantId.New();
+        await using (var db = ContextFor(a)) { db.Orders.Add(new Order { Total = 1 }); await db.SaveChangesAsync(); }
+
+        await using var context = ContextFor(a);
+        await using var transaction = await context.Database.BeginTransactionAsync();
+        var orders = await context.Orders.ToListAsync();
+
+        Assert.Single(orders);
+        Assert.Equal(a, orders[0].TenantId);
+    }
+
+    [Fact]
     public async Task ApplyTenantSession_works_inside_a_transaction()
     {
         var a = TenantId.New();

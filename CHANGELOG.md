@@ -9,6 +9,11 @@ version is given by the dependency range and the compatibility table in the READ
 
 ### Added
 
+- Tests for the session interceptor and transactions against PostgreSQL and SQL Server:
+  connection opened by `BeginTransactionAsync`, `ApplyTenantSession` inside an explicit
+  transaction, reading and writing under an ambient `TransactionScope`. No code change was
+  needed: EF opens the connection before a local transaction exists, and both providers enlist
+  in an ambient transaction when the connection opens.
 - `TenantIdJsonConverter` (core package): `TenantId` serializes with System.Text.Json as a plain
   GUID string, also as a dictionary key, selected by an attribute on the type; invalid values
   throw `JsonException`. The ShopApi sample no longer needs its own converter.
