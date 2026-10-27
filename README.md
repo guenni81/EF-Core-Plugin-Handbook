@@ -13,8 +13,9 @@ implementation) and **SQL Server** (second provider).
 The handbook explains EF Core's extension points chapter by chapter: options extensions,
 internal services, conventions, type mappings, query translation, interceptors,
 diagnostics, migrations, design-time services, compiled models and custom SQL expression
-nodes. Every concept is shown in the plugin in this repository, and the behavior the book
-describes is backed by more than 100 tests.
+nodes. A decision guide leads from a concrete problem to the right extension point. Every
+concept is shown in the plugin in this repository, and the behavior the book describes is
+backed by more than 100 tests.
 
 > **Status:** `Acme.EntityFrameworkCore.Tenancy` is the reference implementation for the
 > handbook ("Acme" is a placeholder name). It is complete and tested, but deliberately not
@@ -28,7 +29,7 @@ describes is backed by more than 100 tests.
 | English | [EF-Core-Plugin-Handbook.pdf](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/docs/handbook/out/EF-Core-Plugin-Handbook.pdf) | [`docs/handbook/en`](https://github.com/guenni81/EF-Core-Plugin-Handbook/tree/main/docs/handbook/en) |
 | Deutsch | [EF-Core-Plugin-Handbuch.pdf](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/docs/handbook/out/EF-Core-Plugin-Handbuch.pdf) | [`docs/handbook/de`](https://github.com/guenni81/EF-Core-Plugin-Handbook/tree/main/docs/handbook/de) |
 
-42 chapters in 9 parts plus 4 appendices, about 120 pages, for developers who already use
+47 chapters in 9 parts plus 6 appendices, about 180 pages, for developers who already use
 EF Core and want to extend it. The PDFs are typeset with LaTeX (LuaLaTeX) so that text and
 code excerpts are versioned together with the code. See [`docs/handbook/README.md`](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/docs/handbook/README.md)
 for how to build them.
@@ -98,28 +99,33 @@ per table (FILTER and BLOCK predicates) and `SESSION_CONTEXT`.
 | Area | Implementation | Chapter |
 |---|---|---|
 | Minimal plugin | `EF.Functions.Reverse()` in five pieces as a warm-up | 2 |
-| Options extension | `TenancyOptionsExtension`: service provider hash, validation, debug info | 4 |
-| Internal services | Plugin interfaces, replacing and decorating provider services, `ISingletonOptions` | 5 |
-| Application DI | `AddAcmeTenancy<T>()`, interceptors that use application services | 6 |
-| Model building | Fluent API, data annotation, conventions, named query filter, index, validation | 7–9 |
-| Composability | Tested together with EFCore.NamingConventions | 8 |
-| Type mapping | `TenantId` → `uuid` via `IRelationalTypeMappingSourcePlugin`, JSON, compiled models | 10 |
-| Queries | `EF.Functions.CurrentTenant()`, `TenantId.IsEmpty`, `IEvaluatableExpressionFilterPlugin` | 11–14 |
-| Run time | SaveChanges and connection interceptors, `Database.ApplyTenantSession()` | 15 |
-| Diagnostics | Custom event IDs, `EventDefinition`, warning-as-error, `DiagnosticSource` | 16 |
-| Migrations | Annotation-driven RLS, custom operations (roles, privileges) | 17–19, 32 |
-| Design time | Annotation code generator, `[DesignTimeServicesReference]` | 20–22 |
-| Testing | Model, SQL, snapshot round-trip, compiled model and Testcontainers tests | 23 |
-| Shipping | Versioning, stable annotation formats, packaging, CI, Public API analyzer | 24–25, 36 |
-| Value generation | `TenantId` keys via convention and `HasValueGeneratorFactory(Type)` | 28 |
-| Operations | RLS pitfalls, PgBouncer, legitimate cross-tenant access | 33 |
-| Performance | BenchmarkDotNet project with measured overhead of the SaveChanges logic | 34 |
-| ASP.NET Core | `samples/ShopApi`, DbContext factories, background jobs | 35 |
-| Custom SQL nodes | `EF.Functions.IsNotDistinctFrom` with SQL generator and nullability processor | 37 |
-| Aggregates | `EF.Functions.Every` (`bool_and`) with FILTER/DISTINCT support | 38 |
-| Runtime annotations | Tenant property in the compiled model, design-time annotations filtered | 39 |
-| Scaffolding | RLS and policies are read back from the database | 40 |
-| Second provider | SQL Server: security policies and `SESSION_CONTEXT` on the same core | 41–42 |
+| Decision guide | From the problem to the extension point: simpler alternatives, public or internal API, lifetimes | 4 |
+| Options extension | `TenancyOptionsExtension`: service provider hash, validation, debug info | 5 |
+| Internal services | Plugin interfaces, replacing and decorating provider services, `ISingletonOptions`, compatibility matrix of two plugins | 6 |
+| Application DI | `AddAcmeTenancy<T>()`, interceptors that use application services | 7 |
+| State and lifetimes | Which state belongs where: app container vs. internal provider, pooling, factories, jobs; five failure cases as tests | 8 |
+| Model building | Fluent API, data annotation, conventions, named query filter, index, validation | 9–11 |
+| Composability | Tested together with EFCore.NamingConventions | 10 |
+| Type mapping | `TenantId` → `uuid` via `IRelationalTypeMappingSourcePlugin`, JSON, compiled models | 12 |
+| Queries | `EF.Functions.CurrentTenant()`, `TenantId.IsEmpty`, `IEvaluatableExpressionFilterPlugin` | 13–16 |
+| Materialization | Shaping, constructor binding, tracking; `VerifyMaterializedTenants()` checks every loaded entity in a singleton interceptor | 17 |
+| Run time | SaveChanges and connection interceptors, `Database.ApplyTenantSession()` | 18 |
+| Diagnostics | Custom event IDs, `EventDefinition`, warning-as-error, `DiagnosticSource` | 19 |
+| Migrations | Annotation-driven RLS, custom operations (roles, privileges) | 20–22, 35 |
+| Design time | Annotation code generator, `[DesignTimeServicesReference]` | 23–25 |
+| Testing | Model, SQL, snapshot round-trip, compiled model and Testcontainers tests | 26 |
+| Shipping | Versioning, stable annotation formats, packaging, CI, Public API analyzer | 27–28, 41 |
+| Value generation | `TenantId` keys via convention and `HasValueGeneratorFactory(Type)` | 31 |
+| Operations | RLS pitfalls, threat model, PgBouncer (`UseTransactionPooling()`), legitimate cross-tenant access | 36 |
+| Relationships | Composite foreign keys with the tenant, unique per tenant, shared master data, delete rules | 37 |
+| Retrofitting | From a table without a tenant to RLS, app versions during the change, retries and lost connections, deployment pipeline with separate roles (`docs/deployment`) | 38 |
+| Performance | BenchmarkDotNet project: overhead of the SaveChanges logic, of tenant verification on reading and of query compilation | 39 |
+| ASP.NET Core | `samples/ShopApi`, DbContext factories, background jobs | 40 |
+| Custom SQL nodes | `EF.Functions.IsNotDistinctFrom` with SQL generator and nullability processor; the pgvector operator `<=>` as a test example | 42 |
+| Aggregates | `EF.Functions.Every` (`bool_and`) with FILTER/DISTINCT support | 43 |
+| Runtime annotations | Tenant property in the compiled model, design-time annotations filtered | 44 |
+| Scaffolding | RLS and policies are read back from the database | 45 |
+| Second provider | SQL Server: security policies and `SESSION_CONTEXT` on the same core | 46–47 |
 | Debugging | Model debug view, resolved services, convention set, query trees, logging | App. D |
 
 ## Repository layout
@@ -154,10 +160,19 @@ dotnet test tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests     # requir
 dotnet test tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests      # requires Docker
 ```
 
-Micro benchmarks for the SaveChanges logic (BenchmarkDotNet, no database required):
+The packages as a customer gets them (pack, fresh application, `dotnet-ef`, compiled model;
+`--nativeaot` also publishes and runs a NativeAOT application, needs Docker and clang):
 
 ```bash
-dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks
+eng/consumer-test/run.sh --nativeaot
+```
+
+Micro benchmarks (BenchmarkDotNet): SaveChanges logic and query compilation without a
+database, materialization against PostgreSQL via Testcontainers (needs Docker). `--filter`
+selects classes, `--job dry` is a quick smoke test:
+
+```bash
+dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks -- --filter '*'
 ```
 
 ## The samples
@@ -213,15 +228,31 @@ the very top of `Up()`.
   `AddPooledDbContextFactory` or a singleton `AddDbContextFactory`, use a provider that
   determines the tenant on every access, or register the factory as scoped (chapters
   "Public API and integration into the application" and "Using the plugin in ASP.NET Core").
+* Isolation protects tables. Mappings that would put tenant data into a table without the
+  tenant column (TPT, TPC, entity splitting, owned types in their own table, implicit
+  many-to-many join tables) are rejected while the model is built; TPH, owned types in the
+  owner's table or as JSON, table splitting and join entities with a tenant property are
+  protected (chapter "Conventions", section "Which table mappings are protected").
 * Access across tenants (reports, maintenance) belongs in a separate database role, never
   in a switch the application role could flip (chapter "Row Level Security in production").
 
 ## Compatibility
 
-Package versions follow EF Core's major version (10.x = EF Core 10). The plugin uses some
+Package versions equal the handbook edition (packages 1.1.0 = edition 1.1).
+
+| Plugin | EF Core | Npgsql EF Core provider |
+|---|---|---|
+| 1.x | 10.0.x | 10.0.x |
+
+The plugin uses some
 internal EF Core and Npgsql APIs (namespaces `*.Internal`, warning EF1001); these places
 are commented in the code. The code is built and tested against EF Core 10.0 and
-Npgsql 10.0.
+Npgsql 10.0; a weekly [compatibility workflow](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/.github/workflows/compatibility.yml)
+also tests the newest stable 10.0.x patches. Upgrading to the next EF Core major version
+follows the upgrade playbook in chapter "Versioning and compatibility". NuGet advisories in the dependency graph
+are fixed, not suppressed; where no responsible dependency carries a fix yet, a documented
+minimum version in `Directory.Packages.props` closes the gap (the SQL Server package depends on
+`System.Security.Cryptography.Pkcs` 9.0.22 for that reason).
 
 ## Contributing
 

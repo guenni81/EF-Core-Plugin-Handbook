@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>MaterializationInterceptorBenchmark-20261028-002042</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.15.8, Linux Ubuntu 24.04.5 LTS (Noble Numbat)
+11th Gen Intel Core i9-11900H 2.50GHz (Max: 800.00GHz), 1 CPU, 16 logical and 8 physical cores
+.NET SDK 10.0.202
+  [Host]   : .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+  ShortRun : .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+</code></pre>
+<pre><code>Job=ShortRun  IterationCount=3  LaunchCount=1  
+WarmupCount=3  
+</code></pre>
+
+<table>
+<thead><tr><th>Method   </th><th>Rows</th><th>Mean</th><th>Error</th><th>StdDev</th><th>Ratio</th><th>RatioSD</th><th>Gen0</th><th>Gen1</th><th>Allocated</th><th>Alloc Ratio</th>
+</tr>
+</thead><tbody><tr><td>Read</td><td>10</td><td>199.6 &mu;s</td><td>679.17 &mu;s</td><td>37.23 &mu;s</td><td>1.02</td><td>0.22</td><td>0.9766</td><td>-</td><td>12.43 KB</td><td>1.00</td>
+</tr><tr><td>ReadIntercepted</td><td>10</td><td>210.2 &mu;s</td><td>36.27 &mu;s</td><td>1.99 &mu;s</td><td>1.08</td><td>0.16</td><td>1.4648</td><td>-</td><td>20.95 KB</td><td>1.69</td>
+</tr><tr><td>ReadAndVerify</td><td>10</td><td>219.5 &mu;s</td><td>144.93 &mu;s</td><td>7.94 &mu;s</td><td>1.12</td><td>0.17</td><td>1.4648</td><td>-</td><td>22.43 KB</td><td>1.80</td>
+</tr><tr><td>Read</td><td>100</td><td>278.3 &mu;s</td><td>559.03 &mu;s</td><td>30.64 &mu;s</td><td>1.01</td><td>0.13</td><td>2.9297</td><td>-</td><td>36.05 KB</td><td>1.00</td>
+</tr><tr><td>ReadIntercepted</td><td>100</td><td>764.3 &mu;s</td><td>1,734.66 &mu;s</td><td>95.08 &mu;s</td><td>2.77</td><td>0.39</td><td>9.7656</td><td>-</td><td>121.21 KB</td><td>3.36</td>
+</tr><tr><td>ReadAndVerify</td><td>100</td><td>740.5 &mu;s</td><td>1,715.26 &mu;s</td><td>94.02 &mu;s</td><td>2.68</td><td>0.39</td><td>9.7656</td><td>-</td><td>136.06 KB</td><td>3.77</td>
+</tr><tr><td>Read</td><td>1000</td><td>845.6 &mu;s</td><td>3,384.71 &mu;s</td><td>185.53 &mu;s</td><td>1.03</td><td>0.26</td><td>19.5313</td><td>3.9063</td><td>269 KB</td><td>1.00</td>
+</tr><tr><td>ReadIntercepted</td><td>1000</td><td>3,857.9 &mu;s</td><td>1,704.40 &mu;s</td><td>93.42 &mu;s</td><td>4.70</td><td>0.81</td><td>85.9375</td><td>7.8125</td><td>1119.73 KB</td><td>4.16</td>
+</tr><tr><td>ReadAndVerify</td><td>1000</td><td>4,288.2 &mu;s</td><td>990.50 &mu;s</td><td>54.29 &mu;s</td><td>5.22</td><td>0.89</td><td>101.5625</td><td>15.6250</td><td>1268.18 KB</td><td>4.71</td>
+</tr></tbody></table>
+</body>
+</html>

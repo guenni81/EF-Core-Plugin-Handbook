@@ -1,41 +1,326 @@
 % ============================================================
 \setpartpreamble{\partintro
-  {How LINQ becomes SQL and how a plugin translates its own functions and members.}
+  {How LINQ becomes SQL, how a plugin translates its own functions and members, and how rows
+  become objects again.}
   {
     \item Chapter~\ref{ch:the-query-pipeline}: The query pipeline
     \item Chapter~\ref{ch:translating-methods-and-members}: Translating methods and members
     \item Chapter~\ref{ch:preventing-client-side-evaluation}: Preventing client-side
     evaluation
     \item Chapter~\ref{ch:further-query-extension-points}: Further query extension points
+    \item Chapter~\ref{ch:materialization-from-rows-to-objects}: Materialization: from rows to objects
   }}
 \part{Queries}\label{part:IV}
 
 % ------------------------------------------------------------
 \chapter{The query pipeline}\label{ch:the-query-pipeline}
 
-A LINQ query passes through several stages in EF Core before SQL is produced. Knowing where
-each stage sits tells you where a plugin has to hook in:
+A LINQ query passes through a series of stages in EF Core before SQL is produced, and
+through another one before objects come back. Every query extension in this book sits at
+exactly one of these stages. This chapter is the map: it follows a concrete query through
+the pipeline, shows who is responsible at each stage and where a plugin can intervene, and
+helps to \emph{locate} a desired change first. Which mechanism is then the right one is
+decided by the “Queries” section of the decision guide (page~\pageref{sec:decide-queries});
+how it works is explained in the respective chapter.
+
+The stages at a glance:
 
 \begin{flowdiagram}
-  \flowstep{Funcletizer}{Evaluates sub-expressions without data reference in .NET and turns
-  them into parameters. Plugin: IEvaluatableExpressionFilterPlugin}
-  \flowstep{Preprocessing}{Expands navigations, inserts query filters, normalizes. Plugin:
-  IQueryExpressionInterceptor}
-  \flowstep{Queryable translation}{Where, Select, OrderBy etc. become a SelectExpression}
-  \flowstep{SQL translation}{Expressions become SqlExpressions. Plugins: method, member and
-  aggregate translators}
-  \flowstep{Postprocessing}{Nullability optimization, parameter-dependent adjustments}
-  \flowstep{SQL generation}{QuerySqlGenerator writes the SQL text}
-  \flowstep{Materialization}{Rows become objects. Plugin: IMaterializationInterceptor}
+  \flowstep{LINQ}{The compiler creates an expression tree; local variables are field
+  accesses on a closure in it}
+  \flowstep{Funcletizer}{Evaluates subexpressions without data reference, turns them into
+  parameters; then looks into the query cache}
+  \flowstep{Preprocessing}{Inserts query filters, expands navigations, normalizes}
+  \flowstep{Queryable translation}{Where, OrderBy, Select … become a SelectExpression with a
+  shaper}
+  \flowstep{SQL translation}{Lambdas inside become SqlExpressions; translators supply
+  functions and members}
+  \flowstep{Postprocessing}{The SelectExpression is finalized; the result is compiled with
+  the shaper and cached}
+  \flowstep{Parameter-based}{With the parameter values: NULL semantics, further
+  simplifications}
+  \flowstep{SQL generation}{The QuerySqlGenerator writes the provider's SQL text}
+  \flowstep{Execution}{Command, connection, DbDataReader}
+  \flowstep{Materialization}{Rows become objects
+  (chapter~\ref{ch:materialization-from-rows-to-objects})}
 \end{flowdiagram}
 
-The compiled query is cached. Translators therefore run only once per query shape, not on
-every execution. Values that change per execution (parameters, session settings) must
-therefore appear in SQL as parameters or as a database function, never as a constant
-inserted at translation time. That is exactly why the sample translates
-\code{Current\allowbreak{}Tenant(\allowbreak{})} into a call to
+\section{A query on its way}
+
+The sample query runs with the tenant query filter enabled
+(\code{Apply\allowbreak{}Query\allowbreak{}Filter(\allowbreak{})},
+chapter~\ref{ch:conventions}). The name comes from a request and may be missing:
+
+\begin{sourcecode}[Application]{csharp}
+string? name = filter.Name;                        // may be null
+
+var customers = await db.Customers
+    .Where(c => c.Name == name)
+    .OrderBy(c => c.Id)
+    .ToListAsync();
+\end{sourcecode}
+
+What happens to the sample query at the individual stages is shown by EF's debug logs
+(\code{Core\allowbreak{}Event\allowbreak{}Id.\allowbreak{}Query\allowbreak{}Compilation\allowbreak{}Starting}
+and \code{Query\allowbreak{}Execution\allowbreak{}Planned}) and
+\code{To\allowbreak{}Query\allowbreak{}String(\allowbreak{})}.
+
+\textbf{Funcletizer.} The local value \code{name} has no data reference. EF does not inline
+it as a constant but turns it into a parameter. Only this tree is the key for the query
+cache: the same query with a different name hits the same entry.
+
+\begin{sourcecode}[Log: Compiling query expression]{text}
+DbSet<Customer>()
+    .Where(c => c.Name == @name)
+    .OrderBy(c => c.Id)
+\end{sourcecode}
+
+\textbf{Preprocessing.} The plugin's named query filter is added, with
+\code{EF.\allowbreak{}Functions.\allowbreak{}Current\allowbreak{}Tenant(\allowbreak{})}.
+That this call is still a call here and was not executed in .NET beforehand is thanks to
+the plugin's evaluatable expression filter
+(chapter~\ref{ch:preventing-client-side-evaluation}).
+
+\textbf{Queryable and SQL translation.} Both stages interlock: for every queryable
+operator, EF translates its lambda into SQL expressions. \code{c.\allowbreak{}Name == @name}
+becomes a binary SQL comparison, and for
+\code{Current\allowbreak{}Tenant(\allowbreak{})} the plugin's method translator supplies a
+function expression. The result is a \code{Select\allowbreak{}Expression}, the relational
+representation of the query, still independent of the provider's SQL syntax:
+
+\begin{sourcecode}[Log: Generated query execution expression (\allowbreak{}excerpt)]{text}
+SELECT c.Id, c.Name, c.TenantId
+FROM Customers AS c
+WHERE (c.TenantId == CAST(nullif(current_setting('app.tenant_id', TRUE), '') AS uuid))
+    && (c.Name == @name)
+ORDER BY c.Id ASC
+\end{sourcecode}
+
+\textbf{Postprocessing and compilation.} The \code{Select\allowbreak{}Expression} is
+finalized and compiled into a delegate together with the shaper that will later build the
+objects. Up to here, everything runs once per query shape.
+
+\textbf{Parameter-based processing.} Only at execution time does EF know the parameter
+values. The
+\code{Relational\allowbreak{}Parameter\allowbreak{}Based\allowbreak{}Sql\allowbreak{}Processor}
+evaluates the NULL semantics. If \code{name} is null, \code{c.\allowbreak{}Name = NULL} can
+never be true for a required column, and the whole filter collapses to \code{FALSE}. With a
+value, the comparison stays.
+
+\textbf{SQL generation.} The provider's generator writes the text: Npgsql turns the
+\code{CAST} into the PostgreSQL notation \code{::\allowbreak{}uuid} and quotes identifiers.
+
+\begin{sourcecode}[To\allowbreak{}Query\allowbreak{}String(\allowbreak{}) with name = "Contoso" and with name = null]{sql}
+-- @name='Contoso'
+SELECT c."Id", c."Name", c."TenantId"
+FROM "Customers" AS c
+WHERE c."TenantId" = nullif(current_setting('app.tenant_id', TRUE), '')::uuid
+    AND c."Name" = @name
+ORDER BY c."Id"
+
+SELECT c."Id", c."Name", c."TenantId"
+FROM "Customers" AS c
+WHERE FALSE
+ORDER BY c."Id"
+\end{sourcecode}
+
+\textbf{Execution and materialization.} The command runs, and the shaper builds a
+\code{Customer} from every row; the tenant ID comes back through the value converter.
+Chapter~\ref{ch:materialization-from-rows-to-objects} describes this way back.
+
+\section{How often each stage runs}
+
+The pipeline has three points in time, and every mechanism belongs to exactly one of them.
+For the sample query, executed four times (twice with \code{"Contoso"}, once with null,
+once with \code{"Fabrikam"}), this gives:
+
+\begin{datatable}{H{0.90}H{1.35}H{0.75}}
+  \textbf{Point in time} & \textbf{Stages} & \textbf{In the sample} \\
+  \tablehead
+  Once per query shape & Preprocessing through postprocessing; query interceptor,
+  translators, compiling the shaper & once \\
+  \tablerule
+  Once per parameter constellation & Parameter-based processing and SQL generation, cached
+  by what influenced the decisions (here: null or not null) & twice \\
+  \tablerule
+  On every execution & Funcletizer (extracts the parameter values), command, command
+  interceptor, materialization & four times \\
+\end{datatable}
+
+This leads to the most important rule for query extensions: values that change per
+execution (parameters, tenant, time) must appear in the SQL as a parameter or database
+function, never as a constant inserted at translation time. That is exactly why the plugin
+translates \code{Current\allowbreak{}Tenant(\allowbreak{})} into
 \code{current\_\allowbreak{}setting(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}
-instead of inserting the current tenant.
+and does not insert the current tenant. With precompiled queries
+(chapter~\ref{ch:further-query-extension-points}) the first point in time even moves into
+the build.
+
+\section{The map}
+
+The following table assigns each stage the responsible EF component, the intervention a
+plugin has there, and the chapter that covers it. The grey labels follow the legend of the
+decision guide in chapter~\ref{ch:choosing-the-right-extension-point}.
+
+\begin{datatable}{H{0.93}H{1.40}H{1.33}H{0.34}}
+  \textbf{Stage} & \textbf{Responsible} & \textbf{Intervention} & \textbf{Ch.} \\
+  \tablehead
+  Funcletizer & \code{Expression\allowbreak{}Tree\allowbreak{}Funcletizer} (internal),
+  asks \code{IEvaluatable\allowbreak{}Expression\allowbreak{}Filter} &
+  \code{IEvaluatable\allowbreak{}Expression\allowbreak{}Filter\allowbreak{}Plugin}
+  \cellmeta{public · multiple · Singleton} &
+  \ref{ch:preventing-client-side-evaluation} \\
+  \tablerule
+  Query cache & \code{ICompiled\allowbreak{}Query\allowbreak{}Cache} (internal, singleton) &
+  No intervention & – \\
+  \tablerule
+  Before preprocessing & \code{Query\allowbreak{}Compilation\allowbreak{}Context} at the start
+  of compilation & \code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor}
+  \cellmeta{public · multiple · Singleton} &
+  \ref{ch:further-query-extension-points}, \ref{ch:bulk-operations-and-the-limits} \\
+  \tablerule
+  Preprocessing & \code{IQuery\allowbreak{}Translation\allowbreak{}Preprocessor\allowbreak{}Factory};
+  navigation expansion internal & Query filter in the model; otherwise replace a single
+  service
+  \cellmeta{public · single · Scoped} &
+  \ref{ch:conventions} \\
+  \tablerule
+  Queryable translation &
+  \code{IQueryable\allowbreak{}Method\allowbreak{}Translating\allowbreak{}Expression\allowbreak{}Visitor\allowbreak{}Factory};
+  Npgsql's implementation internal & Replace a single service
+  \cellmeta{provider base · single · Scoped} & – \\
+  \tablerule
+  SQL translation &
+  \code{IRelational\allowbreak{}Sql\allowbreak{}Translating\allowbreak{}Expression\allowbreak{}Visitor\allowbreak{}Factory},
+  \code{ISql\allowbreak{}Expression\allowbreak{}Factory}, translator providers &
+  Method, member, aggregate translator plugins
+  \cellmeta{public · multiple · Scoped} &
+  \ref{ch:translating-methods-and-members}, \ref{ch:aggregate-translators} \\
+  \tablerule
+  Postprocessing &
+  \code{IQuery\allowbreak{}Translation\allowbreak{}Postprocessor\allowbreak{}Factory};
+  Npgsql's implementation internal & Replace a single service
+  \cellmeta{provider base · single · Scoped} &
+  \ref{ch:further-query-extension-points} \\
+  \tablerule
+  Shaper & \code{IShaped\allowbreak{}Query\allowbreak{}Compiling\allowbreak{}Expression\allowbreak{}Visitor\allowbreak{}Factory}
+  & Through type mappings, constructor binding and
+  \code{IMaterialization\allowbreak{}Interceptor} & \ref{ch:materialization-from-rows-to-objects} \\
+  \tablerule
+  Parameter-based &
+  \code{IRelational\allowbreak{}Parameter\allowbreak{}Based\allowbreak{}Sql\allowbreak{}Processor\allowbreak{}Factory},
+  with \code{Sql\allowbreak{}Nullability\allowbreak{}Processor} inside; Npgsql internal &
+  Replace a single service, needed for custom nodes
+  \cellmeta{provider base · single · Scoped} &
+  \ref{ch:custom-sql-expression-nodes} \\
+  \tablerule
+  SQL generation & \code{IQuery\allowbreak{}Sql\allowbreak{}Generator\allowbreak{}Factory};
+  \code{Npgsql\allowbreak{}Query\allowbreak{}Sql\allowbreak{}Generator} internal &
+  Replace a single service, needed for custom nodes
+  \cellmeta{provider base · single · Singleton} &
+  \ref{ch:custom-sql-expression-nodes} \\
+  \tablerule
+  Execution & Relational commands and connection &
+  \code{IDb\allowbreak{}Command\allowbreak{}Interceptor}
+  \cellmeta{public · multiple · Scoped} & \ref{ch:interceptors} \\
+  \tablerule
+  Materialization & Compiled shaper, materializer &
+  \code{IMaterialization\allowbreak{}Interceptor}
+  \cellmeta{public · multiple · Singleton} &
+  \ref{ch:materialization-from-rows-to-objects} \\
+\end{datatable}
+
+\begin{important}[Where provider-internal API begins]
+  Up to and including SQL translation, a plugin gets by with public plugin interfaces. The
+  base classes of the later stages are public in EF
+  (\code{Relational\allowbreak{}Query\allowbreak{}Translation\allowbreak{}Postprocessor},
+  \code{Relational\allowbreak{}Parameter\allowbreak{}Based\allowbreak{}Sql\allowbreak{}Processor},
+  \code{Query\allowbreak{}Sql\allowbreak{}Generator}), but every provider derives its own
+  classes from them, with Npgsql all of them in
+  \code{Npgsql.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Postgre\allowbreak{}SQL.\allowbreak{}Query.\allowbreak{}Internal}.
+  Replacing one of these single services means deriving from the provider's class to keep
+  its behavior, and thus working against internal API
+  (chapter~\ref{ch:versioning-and-compatibility}).
+\end{important}
+
+\section{Six ways to intervene in a query}
+
+The mechanisms of the following chapters are easily confused because they all “change the
+query”. They differ in what they see and when they run:
+
+\begin{datatable}{H{0.78}H{1.12}H{1.10}}
+  \textbf{Mechanism} & \textbf{Works on} & \textbf{Right for} \\
+  \tablehead
+  Expression rewriting (\code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor}) & The
+  LINQ tree after the funcletizer: parameters instead of values, no SQL yet & Adding
+  conditions, replacing calls, rejecting operations; once per query shape \\
+  \tablerule
+  Method, member, aggregate translation & A single call, member or aggregate; builds from
+  existing SQL building blocks & New functions in LINQ; \code{null} for everything that does
+  not fit \\
+  \tablerule
+  Custom \code{Sql\allowbreak{}Expression} & A new node type in the
+  \code{Select\allowbreak{}Expression} & Syntax that is not a function call, or custom NULL
+  semantics; must be known in three places: translator, parameter-based processing,
+  generator \\
+  \tablerule
+  \code{Relational\allowbreak{}Parameter\allowbreak{}Based\allowbreak{}Sql\allowbreak{}Processor}
+  & The finished \code{Select\allowbreak{}Expression} \emph{with} parameter values &
+  Decisions that depend on a parameter's value, above all NULL semantics; cached per
+  constellation \\
+  \tablerule
+  \code{Query\allowbreak{}Sql\allowbreak{}Generator} & The final tree, only writes text & The
+  notation of a node; no longer makes decisions about content \\
+  \tablerule
+  Materialization (\code{IMaterialization\allowbreak{}Interceptor}) & The rows after
+  execution & Checking, completing, replacing objects; does not change SQL \\
+\end{datatable}
+
+Two confusions are particularly common. Rewriting conditions in the generator bypasses the
+NULL optimization that ran before and sees no parameter values. And trying to “translate”
+something with a query interceptor can only replace LINQ with other LINQ; only a translator
+creates an SQL node that does not exist yet.
+
+\section{Locate first, then choose}
+
+A desired change to a query can almost always be assigned to a stage by one question. Only
+then is it worth choosing the mechanism in the decision guide
+(page~\pageref{sec:decide-queries}).
+
+\begin{datatable}{H{1.25}H{0.80}H{0.95}}
+  \textbf{What should change?} & \textbf{Stage} & \textbf{Continue in} \\
+  \tablehead
+  A value without data reference is evaluated in .NET too early & Funcletizer &
+  chapter~\ref{ch:preventing-client-side-evaluation} \\
+  \tablerule
+  \emph{Which} query is asked: an additional condition, a replaced call & Before
+  preprocessing & Query filter (chapter~\ref{ch:conventions}) or
+  chapter~\ref{ch:further-query-extension-points} \\
+  \tablerule
+  How a .NET call, member or aggregate looks in SQL & SQL translation &
+  chapters~\ref{ch:translating-methods-and-members}, \ref{ch:aggregate-translators} \\
+  \tablerule
+  SQL needs a form that does not exist as a node & SQL translation through SQL generation &
+  chapter~\ref{ch:custom-sql-expression-nodes} \\
+  \tablerule
+  The form depends on a parameter's value & Parameter-based &
+  chapter~\ref{ch:custom-sql-expression-nodes} \\
+  \tablerule
+  Only the text: comment, hint, notation & SQL generation or execution &
+  \code{Tag\allowbreak{}With}, chapter~\ref{ch:interceptors} \\
+  \tablerule
+  The returned objects & Materialization &
+  chapter~\ref{ch:materialization-from-rows-to-objects} \\
+\end{datatable}
+
+\begin{tip}
+  Three tools are enough for locating: the debug log
+  \code{Query\allowbreak{}Compilation\allowbreak{}Starting} shows the tree after the
+  funcletizer, \code{Query\allowbreak{}Execution\allowbreak{}Planned} the
+  \code{Select\allowbreak{}Expression} including the shaper, and
+  \code{To\allowbreak{}Query\allowbreak{}String(\allowbreak{})} the final SQL
+  (appendix~\ref{app:D}). Where the difference between two of them shows, that is the stage.
+\end{tip}
 
 % ------------------------------------------------------------
 \chapter{Translating methods and members}\label{ch:translating-methods-and-members}
@@ -47,6 +332,7 @@ Database functions without a .NET counterpart are declared as extension methods 
 in case someone calls them outside of LINQ. The declaration lives in the core package, the
 translation in the provider package:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/TenancyDbFunctionsExtensions.cs (strings)
 \begin{sourcecode}[Tenancy\allowbreak{}Db\allowbreak{}Functions\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}core package)]{csharp}
 namespace Microsoft.EntityFrameworkCore;
 
@@ -64,7 +350,7 @@ An \code{IMethod\allowbreak{}Call\allowbreak{}Translator} receives every method 
 not know itself. It checks whether it is responsible and then builds a SQL expression tree
 using \code{ISql\allowbreak{}Expression\allowbreak{}Factory}:
 
-\begin{sourcecode}[Query/\allowbreak{}Current\allowbreak{}Tenant\allowbreak{}Translator.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Query/\allowbreak{}Current\allowbreak{}Tenant\allowbreak{}Translator.\allowbreak{}cs (\allowbreak{}simplified)]{csharp}
 public class CurrentTenantTranslator : IMethodCallTranslator
 {
     private static readonly MethodInfo CurrentTenantMethod =
@@ -97,6 +383,7 @@ public class CurrentTenantTranslator : IMethodCallTranslator
         var text = _typeMappingSource.FindMapping(typeof(string))!;
         var boolean = _typeMappingSource.FindMapping(typeof(bool))!;
 
+        // Returns NULL although no argument is NULL: no argument propagates
         var currentSetting = _sql.Function(
             "current_setting",
             [
@@ -104,14 +391,15 @@ public class CurrentTenantTranslator : IMethodCallTranslator
                 _sql.Constant(true, boolean),
             ],
             nullable: true,
-            argumentsPropagateNullability: [true, false],
+            argumentsPropagateNullability: [false, false],
             typeof(string), text);
 
+        // Deliberately never NULL for EF, matching the CLR type TenantId (see below)
         var nullIfEmpty = _sql.Function(
             "nullif",
             [currentSetting, _sql.Constant(string.Empty, text)],
-            nullable: true,
-            argumentsPropagateNullability: [true, false],
+            nullable: false,
+            argumentsPropagateNullability: [false, false],
             typeof(string), text);
 
         return _sql.Convert(nullIfEmpty, typeof(TenantId), TenantIdTypeMapping.Default);
@@ -123,7 +411,7 @@ This turns \code{o.\allowbreak{}Tenant\allowbreak{}Id ==
 EF.\allowbreak{}Functions.\allowbreak{}Current\allowbreak{}Tenant(\allowbreak{})} into:
 
 \begin{sourcecode}[Generated SQL (\allowbreak{}excerpt)]{sql}
-WHERE o."TenantId" = CAST(nullif(current_setting('app.tenant_id', TRUE), '') AS uuid)
+WHERE o."TenantId" = nullif(current_setting('app.tenant_id', TRUE), '')::uuid
 \end{sourcecode}
 
 \begin{datatable}{H{0.60}H{1.40}}
@@ -135,20 +423,60 @@ WHERE o."TenantId" = CAST(nullif(current_setting('app.tenant_id', TRUE), '') AS 
   \code{arguments} & For extension methods, \code{arguments[0]} is the \code{this} parameter
   (here \code{Db\allowbreak{}Functions}). \\
   \tablerule
-  \code{nullable} & Can the result be NULL? EF uses this to optimize \code{IS NULL} checks.
-  Wrong values lead to wrong results. \\
+  \code{nullable} & Can the result be NULL? EF uses this to optimize \code{IS NULL} checks
+  and to produce C\# NULL semantics. \code{Current\allowbreak{}Tenant} deliberately says
+  \code{false}: the CLR type \code{Tenant\allowbreak{}Id} is not nullable, and without a
+  tenant every comparison should be NULL, so that no row matches. \\
   \tablerule
-  \code{arguments\allowbreak{}Propagate\allowbreak{}Nullability} & Is the result NULL when
-  this argument is NULL? For \code{nullif(\allowbreak{}x,\allowbreak{} '')}: yes for x, no
-  for the empty string. \\
+  \code{arguments\allowbreak{}Propagate\allowbreak{}Nullability} & “The result is NULL
+  exactly when this argument is NULL.” If there are such arguments, EF derives the
+  nullability from them alone. Functions that produce NULL themselves (\code{nullif},
+  \code{current\_\allowbreak{}setting(\allowbreak{}…,\allowbreak{} true)}) therefore use
+  \code{false} everywhere; \code{reverse(\allowbreak{}x)} or \code{upper(\allowbreak{}x)}
+  use \code{true}. \\
   \tablerule
   Type mappings & Every SQL expression needs a mapping. It determines literals, parameters
-  and casts. \code{Convert} with the TenantId mapping produces
-  \code{CAST(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{} AS uuid)}. \\
+  and casts. \code{Convert} with the TenantId mapping produces a cast that Npgsql writes as
+  \code{::\allowbreak{}uuid}. \\
   \tablerule
   \code{Constant(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})} & Constants
   become literals via the mapping and are escaped correctly, including the setting name. \\
 \end{datatable}
+
+The nullability details are the most treacherous part of a translator, because a mistake
+only shows in certain queries. An example is a function
+\code{EF.\allowbreak{}Functions.\allowbreak{}Empty\allowbreak{}As\allowbreak{}Null(\allowbreak{}c.\allowbreak{}Name)}
+that turns an empty string into NULL and returns \code{string?}:
+
+\begin{sourcecode}[Translator (\allowbreak{}WRONG)]{csharp}
+_sql.Function("nullif", [arguments[1], _sql.Constant("", arguments[1].TypeMapping)],
+    nullable: true,                                   // right: can be NULL ...
+    argumentsPropagateNullability: [true, false],     // ... but this overrides it for EF
+    typeof(string), arguments[1].TypeMapping);
+\end{sourcecode}
+
+\begin{failure}[What happens if a translator declares the wrong nullability?]
+  \textbf{Observable.}
+  \code{Where(\allowbreak{}c => EF.\allowbreak{}Functions.\allowbreak{}Empty\allowbreak{}As\allowbreak{}Null(\allowbreak{}c.\allowbreak{}Name) == null)}
+  becomes \code{WHERE FALSE}: the query never finds customers with an empty name, without an
+  error or a warning. With a nullable column as the argument the result would be right; the
+  mistake only shows with required columns.
+
+  \textbf{Cause.} If a function has propagating arguments, EF's nullability processor
+  determines its nullability from these alone. If the argument is not nullable (a required
+  column, a constant), the function counts as never NULL, whatever \code{nullable} says.
+
+  \textbf{Solution.} An argument propagates only if “the argument is NULL” is the
+  \emph{only} thing that makes the result NULL. Functions that produce NULL themselves mark no
+  argument. And \code{nullable} follows the CLR type: if it is nullable, EF may expect NULL;
+  if it is not, as with \code{Tenant\allowbreak{}Id}, \code{false} is the honest statement.
+
+  \textbf{Test:}
+  \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Nullable\allowbreak{}\_function\allowbreak{}\_…}
+  with both variants;
+  \code{Query\allowbreak{}Translation\allowbreak{}Tests.\allowbreak{}Inequality\allowbreak{}\_with\allowbreak{}\_Current\allowbreak{}Tenant\allowbreak{}\_…}
+  pins the safe direction.
+\end{failure}
 
 \section{A member translator}
 
@@ -156,6 +484,7 @@ For properties and fields there is \code{IMember\allowbreak{}Translator}. The sa
 translates \code{tenant\allowbreak{}Id.\allowbreak{}Is\allowbreak{}Empty}. The constant gets
 the column's type mapping so that the literal comes out in the right format:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Query/TenantIdMemberTranslator.cs
 \begin{sourcecode}[Query/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Member\allowbreak{}Translator.\allowbreak{}cs]{csharp}
 public class TenantIdMemberTranslator : IMemberTranslator
 {
@@ -189,7 +518,7 @@ Translators are not registered directly, but through plugin classes that return 
 plugins are \textbf{scoped} (appendix~\ref{app:A}) and can therefore inject scoped services
 such as \code{ISql\allowbreak{}Expression\allowbreak{}Factory}:
 
-\begin{sourcecode}[Query/\allowbreak{}Tenancy\allowbreak{}Translator\allowbreak{}Plugins.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Query/\allowbreak{}Tenancy\allowbreak{}Translator\allowbreak{}Plugins.\allowbreak{}cs (\allowbreak{}simplified)]{csharp}
 public class TenancyMethodCallTranslatorPlugin : IMethodCallTranslatorPlugin
 {
     public TenancyMethodCallTranslatorPlugin(
@@ -262,15 +591,40 @@ attribute. A single plugin thus also covers the PostgreSQL-specific functions fr
 chapters~\ref{ch:custom-sql-expression-nodes} and \ref{ch:aggregate-translators} and every
 future provider package, without the core having to know these classes.
 
-\begin{important}[When the plugin is needed]
-  Whether a custom EF.Functions method needs this plugin depends on whether it has arguments
-  referencing data.
-  \code{EF.\allowbreak{}Functions.\allowbreak{}Soundex(\allowbreak{}c.\allowbreak{}Name)} is
-  harmless because \code{c.\allowbreak{}Name} points to a column. Methods without arguments
-  or only with constants (\code{Current\allowbreak{}Tenant(\allowbreak{})},
-  \code{Random(\allowbreak{})}, \code{Server\allowbreak{}Time(\allowbreak{})}) always need
-  it. Without it, the exception comes from the method body, which is hard to diagnose.
-\end{important}
+Whether a custom EF.Functions method needs this plugin depends on whether it has arguments
+referencing data.
+\code{EF.\allowbreak{}Functions.\allowbreak{}Soundex(\allowbreak{}c.\allowbreak{}Name)} is
+harmless because \code{c.\allowbreak{}Name} points to a column. Methods without arguments or
+only with constants (\code{Current\allowbreak{}Tenant(\allowbreak{})},
+\code{Random(\allowbreak{})}, \code{Server\allowbreak{}Time(\allowbreak{})}) always need it:
+
+\begin{sourcecode}[Custom function class (\allowbreak{}WRONG)]{csharp}
+public static class ShopDbFunctionsExtensions          // without [TenancyDbFunctions]
+{
+    public static DateTime ServerTime(this DbFunctions _)
+        => throw new InvalidOperationException("Only in LINQ queries.");
+}
+\end{sourcecode}
+
+\begin{failure}[What happens if the evaluatable filter is missing?]
+  \textbf{Observable.} Every query with the function throws
+  \code{Invalid\allowbreak{}Operation\allowbreak{}Exception}: “An exception was thrown
+  while attempting to evaluate a LINQ query parameter expression”, with the message from the
+  method body inside. It looks as if the method were called outside of LINQ, although the
+  translator is registered and correct.
+
+  \textbf{Cause.} The funcletizer runs before any translator and evaluates expressions
+  without data reference in .NET. EF only knows exceptions for its own class
+  \code{Db\allowbreak{}Functions\allowbreak{}Extensions}.
+
+  \textbf{Solution.} An
+  \code{IEvaluatable\allowbreak{}Expression\allowbreak{}Filter\allowbreak{}Plugin}, in the
+  sample through the attribute on the function class.
+
+  \textbf{Test:}
+  \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Function\allowbreak{}\_without\allowbreak{}\_data\allowbreak{}\_reference\allowbreak{}\_…},
+  with and without the attribute.
+\end{failure}
 
 % ------------------------------------------------------------
 \chapter{Further query extension points}\label{ch:further-query-extension-points}
@@ -290,7 +644,8 @@ an overview with classification:
   tree before translation & Singleton interceptor; ideal for query rewrites, tags, hints \\
   \tablerule
   \code{IMaterialization\allowbreak{}Interceptor} & Create, initialize or check objects
-  during materialization & Singleton interceptor; must be stateless and thread-safe \\
+  during materialization & Singleton interceptor; must be stateless and thread-safe;
+  implemented in chapter~\ref{ch:materialization-from-rows-to-objects} \\
   \tablerule
   \code{IMethod\allowbreak{}Call\allowbreak{}Translator\allowbreak{}Provider} etc. & Replace
   translator infrastructure & Single provider services; only in exceptional cases \\
@@ -314,3 +669,415 @@ an overview with classification:
   depend on options and model, never on runtime state. The sample meets this: the setting
   name is an option; the tenant itself is only evaluated in the database session.
 \end{note}
+
+% ------------------------------------------------------------
+\chapter{Materialization: from rows to objects}\label{ch:materialization-from-rows-to-objects}
+
+The previous chapters of this part describe the way there: LINQ becomes SQL.
+Chapter~\ref{ch:the-update-pipeline} describes the way from entities to INSERT, UPDATE and
+DELETE. This chapter closes the circle and describes the way back: how do the rows the
+database returns become objects, and where can a plugin intervene?
+
+\section{The way back at a glance}
+
+\begin{flowdiagram}
+  \flowstep{SQL execution}{The command runs; a command interceptor sees it before and
+  after. Plugin: IDbCommandInterceptor}
+  \flowstep{DbDataReader}{One row after the other, columns in the order of the projection.
+  EF internal}
+  \flowstep{Shaping}{The compiled shaper reads the columns, converts values through the type
+  mapping and builds the result. EF internal, driven by model and type mappings}
+  \flowstep{Identity check}{With tracking: if the entity is already in the change tracker,
+  the existing instance is used. EF internal}
+  \flowstep{Materializer}{Call the constructor, set properties and fields. Plugin:
+  IMaterializationInterceptor; model: constructor binding}
+  \flowstep{CLR instance}{The finished object}
+  \flowstep{Tracking}{The instance becomes Unchanged in the change tracker; event
+  ChangeTracker.Tracked. Application}
+  \flowstep{Relationship fixup}{Navigations to entities already loaded are connected. EF
+  internal}
+  \flowstep{Query result}{List, enumerator or single value}
+\end{flowdiagram}
+
+The identity check comes \emph{before} the materializer: an entity the context already
+tracks is not created a second time. The following overview shows where a plugin can
+intervene and what EF keeps to itself:
+
+\begin{datatable}{H{0.62}H{1.24}H{1.14}}
+  \textbf{Stage} & \textbf{Intervention for plugins} & \textbf{EF internal} \\
+  \tablehead
+  Execution & \code{IDb\allowbreak{}Command\allowbreak{}Interceptor} can change the command or
+  supply its own \code{Db\allowbreak{}Data\allowbreak{}Reader} (chapter~\ref{ch:interceptors})
+  & Connection, execution strategy, retries \\
+  \tablerule
+  Shaping & Indirectly: type mapping and value converter determine how values are read and
+  converted (chapter~\ref{ch:type-mappings-and-value-converters}) & Building and compiling
+  the shaper \\
+  \tablerule
+  Materializer & \code{IMaterialization\allowbreak{}Interceptor} with four hooks; constructor
+  binding through the model & How EF combines constructor and values \\
+  \tablerule
+  Tracking & The change tracker's \code{Tracked} and \code{State\allowbreak{}Changed} events
+  (application) & Identity map, states, snapshots for change detection \\
+  \tablerule
+  Fixup & No hook & Navigation fixer \\
+\end{datatable}
+
+\section{Shaping: the compiled way back}
+
+Translating a query produces not only SQL but also a \textbf{shaper}: an expression tree
+that describes how a row of the \code{Db\allowbreak{}Data\allowbreak{}Reader} becomes the
+result. EF compiles it into a delegate and caches it together with the SQL per query shape
+(chapter~\ref{ch:the-query-pipeline}). Per row, only this delegate runs, without looking
+anything up in the model.
+
+This has an important consequence: everything that shapes the shaper is decided at
+translation time, not at execution time. That includes the type mapping's reader method,
+the value converter, the chosen constructor and the registered materialization
+interceptors. For \code{Tenant\allowbreak{}Id}, the shaper reads the provider value with
+\code{Get\allowbreak{}Guid} and calls the compiled conversion delegate of the
+\code{Tenant\allowbreak{}Id\allowbreak{}Converter}
+(\code{Convert\allowbreak{}From\allowbreak{}Provider\allowbreak{}Typed}). Values in JSON
+columns are read through the mapping's
+\code{Json\allowbreak{}Value\allowbreak{}Reader\allowbreak{}Writer}. Apart from the converter
+itself, no plugin code runs for this; that is why a value converter is cheaper for pure
+value conversion than an interceptor that is called for every entity.
+
+A projection such as \code{Select(\allowbreak{}o => o.\allowbreak{}Total)} produces a shaper
+that only reads that column. No entity is created and no materializer runs.
+
+\section{The materializer: instance, constructor, fields}
+
+For an entity, the shaper first creates an instance and then sets the remaining values.
+Which constructor it uses is determined by the model (constructor binding):
+
+\begin{datatable}{H{0.65}H{1.35}}
+  \textbf{Rule} & \textbf{Behavior in EF Core 10} \\
+  \tablehead
+  Candidates & All declared instance constructors, whatever their accessibility. \\
+  \tablerule
+  Bindable & Every parameter matches a mapped property by name and type, or a service.
+  EF does not set properties bound through the constructor a second time. \\
+  \tablerule
+  Services as parameters & \code{Db\allowbreak{}Context} (also the derived type),
+  \code{ILazy\allowbreak{}Loader}, the lazy-loading delegate
+  \code{Action<\allowbreak{}object,\allowbreak{} string>} and \code{IEntity\allowbreak{}Type};
+  more through custom \code{IParameter\allowbreak{}Binding\allowbreak{}Factory} plugins. \\
+  \tablerule
+  Selection & EF goes through the bindable constructors in order. A constructor replaces
+  the current favorite if it has more service parameters or fewer property parameters; a tie
+  in both stops model building. A parameterless constructor therefore wins against property
+  constructors, but not against one with a \code{Db\allowbreak{}Context} parameter. If
+  constructors mix services and properties, the order of declaration can decide. \\
+  \tablerule
+  Other properties & EF writes them through the backing field if there is one. Logic in the
+  setter therefore does \emph{not} run when loading. \\
+  \tablerule
+  Shadow properties & Have no field; with tracking their values live in the change tracker.
+  \\
+  \tablerule
+  Owned types & Are entity types and are materialized individually. \\
+  \tablerule
+  Complex types & Belong to the entity and are materialized with it, without a pass of
+  their own. \\
+\end{datatable}
+
+The selection is implemented in
+\href{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore/Metadata/Internal/ConstructorBindingFactory.cs}{\code{Constructor\allowbreak{}Binding\allowbreak{}Factory} (EF Core 10.0.0)}.
+\code{Constructor\allowbreak{}Binding\allowbreak{}Tests} records both cases: without
+services the parameterless constructor wins, next to a constructor with a
+\code{Db\allowbreak{}Context} it loses.
+
+That setters do not run when loading is intentional: loading is not creating. Checks that
+should apply when creating or changing belong in the domain's constructors and methods. What
+holds when loading is guaranteed by the database.
+
+\section{Tracking, identity resolution and fixup}
+
+What happens after the materializer depends on the query's tracking behavior:
+
+\begin{datatable}{H{0.80}H{1.10}H{1.10}}
+  \textbf{Mode} & \textbf{Identity} & \textbf{Fixup} \\
+  \tablehead
+  Tracking (default) & Before the materializer, EF looks up the key in the change tracker.
+  On a hit it returns the existing instance unchanged: local changes stay, new values from
+  the database are discarded. & New instances become Unchanged; EF connects navigations to
+  all tracked entities, including those from earlier queries. \\
+  \tablerule
+  \code{As\allowbreak{}No\allowbreak{}Tracking} & Every row yields a new instance, even the
+  same entity several times. & Only within the result: the shaper connects what was loaded
+  with \code{Include}. \\
+  \tablerule
+  \code{As\allowbreak{}No\allowbreak{}Tracking\allowbreak{}With\allowbreak{}Identity\allowbreak{}Resolution}
+  & An identity map for this query only: the same entity is materialized once. & As without
+  tracking; afterwards nobody tracks the instances. \\
+\end{datatable}
+
+\textbf{Relationship fixup} is EF internal. A plugin cannot influence it; an application can
+observe it through \code{Change\allowbreak{}Tracker.\allowbreak{}Tracked} and
+\code{State\allowbreak{}Changed}.
+
+\begin{important}[IIdentityResolutionInterceptor is not a materialization hook]
+  The name suggests otherwise, but \code{IIdentity\allowbreak{}Resolution\allowbreak{}Interceptor}
+  (scoped, multiple) never runs for queries. It applies when \code{Attach}, \code{Update} or
+  \code{Add} want to attach an instance with a key the context already tracks, and decides
+  what happens to the tracked instance. EF ships
+  \code{Ignoring\allowbreak{}Identity\allowbreak{}Resolution\allowbreak{}Interceptor} and
+  \code{Updating\allowbreak{}Identity\allowbreak{}Resolution\allowbreak{}Interceptor} for this.
+  Queries resolve identity without it: with tracking through the change tracker, otherwise as
+  in the table above.
+\end{important}
+
+\section{IMaterializationInterceptor in detail}
+
+\code{IMaterialization\allowbreak{}Interceptor} has four hooks that EF calls for every entity
+in this order. All of them have a default implementation; a plugin only overrides what it
+needs.
+
+\begin{datatable}{H{0.75}H{1.05}H{1.20}}
+  \textbf{Method} & \textbf{When} & \textbf{Options} \\
+  \tablehead
+  \code{Creating\allowbreak{}Instance} & Before the constructor & Read the row's values,
+  including shadow properties; supply your own instance with
+  \code{Suppress\allowbreak{}With\allowbreak{}Result} \\
+  \tablerule
+  \code{Created\allowbreak{}Instance} & After the constructor & Values set through the
+  constructor are present; return a different instance \\
+  \tablerule
+  \code{Initializing\allowbreak{}Instance} & Before the remaining values are set & Take over
+  setting them with \code{Suppress} \\
+  \tablerule
+  \code{Initialized\allowbreak{}Instance} & All values set & Check, complete or return a
+  different instance \\
+\end{datatable}
+
+Every method receives \code{Materialization\allowbreak{}Interception\allowbreak{}Data}: the
+context, the \code{IEntity\allowbreak{}Type}, the query's tracking behavior and
+\code{Get\allowbreak{}Property\allowbreak{}Value} for the row's values. Because the type is
+an \code{IEntity\allowbreak{}Type}, complex types do not pass through the interceptor
+individually, while owned types do. The struct's constructor is EF internal; tests therefore
+do not call the hooks but the logic behind them (see below).
+
+\begin{important}[Lifetime: a singleton, compiled into the shaper]
+  The interceptor is an \code{ISingleton\allowbreak{}Interceptor}. EF builds it into the
+  shaper at translation time, and the shaper is cached per internal service provider. One
+  instance therefore serves all contexts and all threads at the same time; it must be
+  stateless and thread-safe. It gets the data of a request on every call through
+  \code{materialization\allowbreak{}Data.\allowbreak{}Context}.
+
+  Singleton interceptor instances are also part of the internal provider's cache key.
+  Passing a new instance per context through \code{Add\allowbreak{}Interceptors} creates a
+  new internal provider including model for every context; from the 21st on, EF throws by
+  default with
+  \code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}.
+  A plugin registers it in \code{Apply\allowbreak{}Services}; an application always passes
+  the same instance.
+\end{important}
+
+\section{Example: checking tenants while loading}
+
+Chapter~\ref{ch:interceptors} shows a real gap: if the application passes a connection that
+is already open, the connection interceptor does not run, and a query silently returns the
+rows of the tenant whose value is still in the session. The same happens if the application
+accidentally connects with a role that bypasses RLS. The plugin offers an optional check for
+this that sits exactly in the right place: every tenant-owned entity a query materializes
+must belong to the context's tenant.
+
+\begin{sourcecode}[Application]{csharp}
+options.UseNpgsql(connectionString)
+       .UseAcmeTenancy(sp, tenancy => tenancy.VerifyMaterializedTenants());
+\end{sourcecode}
+
+\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Materialization\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}core package,\allowbreak{} shortened, simplified)]{csharp}
+public class TenantMaterializationInterceptor : IMaterializationInterceptor
+{
+    // Provider per context instance, held weakly: goes away with the context
+    private static readonly ConditionalWeakTable<DbContext, ITenantProvider> Providers =
+        new();
+
+    public virtual InterceptionResult<object> CreatingInstance(
+        MaterializationInterceptionData materializationData,
+        InterceptionResult<object> result)
+    {
+        Verify(materializationData.Context, materializationData.EntityType,
+            materializationData.GetPropertyValue);
+
+        return result;
+    }
+
+    internal static void Verify(
+        DbContext context, IEntityType entityType, Func<string, object?> readValue)
+    {
+        // Runtime annotation of the isolation convention; without it, no isolation
+        if (entityType.GetTenantPropertyName() is not { } propertyName)
+            return;
+
+        // The tenant is read for every row: this instance is shared by all contexts, every
+        // context can have a different tenant, and a pooled context changes it between leases
+        var current = FindTenantProvider(context).CurrentTenantId;
+        var value = (TenantId)readValue(propertyName)!;
+
+        if (value != current)
+            throw new TenancyException("... Row level security did not take effect ...");
+    }
+
+    // Once per context through its interceptors (like ApplyTenantSession) to the
+    // ITenantProvider of the SaveChanges interceptor, from the table afterwards
+    internal static ITenantProvider FindTenantProvider(DbContext context)
+        => Providers.GetValue(context, LookUpTenantProvider);
+}
+\end{sourcecode}
+
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Infrastructure/TenancyOptionsExtension.cs
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Apply\allowbreak{}Services (\allowbreak{}addition)]{csharp}
+// Optional materialization check (chapter "Materialization: from rows to objects"). A
+// singleton interceptor belongs in the internal provider: one instance per provider,
+// never a new instance per context. The setting is part of the hash.
+if (Settings.VerifyMaterializedTenants)
+    new EntityFrameworkServicesBuilder(services)
+        .TryAdd<ISingletonInterceptor, TenantMaterializationInterceptor>();
+\end{sourcecode}
+
+\begin{datatable}{H{0.70}H{1.30}}
+  \textbf{Decision} & \textbf{Reason} \\
+  \tablehead
+  \code{Creating\allowbreak{}Instance} instead of \code{Initialized\allowbreak{}Instance} &
+  The check reads the value from the row. A foreign row never becomes an object, and the
+  tenant property may be a shadow property. \\
+  \tablerule
+  Runtime annotation & Which entity is isolated and what its tenant property is called has
+  been on the entity type since model building
+  (chapter~\ref{ch:property-level-fluent-api-and}). No guessing at run time. \\
+  \tablerule
+  Tenant per call & Through the context to this context's
+  \code{ITenant\allowbreak{}Provider}; the provider is cached per context, the tenant is read
+  and compared per entity. That still costs per row, which is why the check is optional. \\
+  \tablerule
+  No tenant & Without a tenant, RLS returns no rows. If one arrives anyway, RLS is not in
+  effect and the check fires. \\
+  \tablerule
+  In the core package & The check knows neither SQL nor provider types
+  (chapter~\ref{ch:what-belongs-in-the-core}); both provider packages activate it with one
+  line. \\
+\end{datatable}
+
+The integration tests reproduce the gap from chapter~\ref{ch:interceptors}: a context for
+tenant A over a connection whose session still carries tenant B. Without the check, the
+query returns B's rows; with the check, it throws a
+\code{Tenancy\allowbreak{}Exception}. Own rows pass with and without tracking and through
+\code{From\allowbreak{}Sql}.
+
+\section{The failure case: request data in a singleton}
+
+The obvious first design passes the tenant to the interceptor's constructor and creates it
+per context like the other interceptors. That fails because of the cache key: every context
+gets an internal provider of its own. The obvious second design shares one instance and
+remembers the tenant on the first call to save the lookup per row:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests/MaterializationTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Materialization\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}WRONG,\allowbreak{} shortened)]{csharp}
+private sealed class RememberingTenantInterceptor : IMaterializationInterceptor
+{
+    private TenantId? _tenant;                       // per-request state in a singleton
+
+    public InterceptionResult<object> CreatingInstance(
+        MaterializationInterceptionData materializationData,
+        InterceptionResult<object> result)
+    {
+        // "Optimization": look up the tenant only once
+        _tenant ??= _tenantOf(materializationData.Context);
+
+        if (materializationData.GetPropertyValue<TenantId>(nameof(Order.TenantId)) != _tenant)
+            throw new TenancyException("Row of another tenant.");
+
+        return result;
+    }
+}
+\end{sourcecode}
+
+The test shows both consequences. The second request for tenant B gets an error for its own
+rows, because the interceptor remembered tenant A. Worse: a context for B over a connection
+whose session still carries A returns A's rows, and the remembered tenant A lets them
+through. The check does not prevent the leak, it hides it. Under load there is also a race
+condition, because all threads write the same field.
+
+\begin{tip}
+  A singleton interceptor has only two sources of data: what belongs to the configuration
+  (through the constructor or singleton options, the same for all contexts) and what the call
+  brings along (\code{Context}, entity type, the row's values). Everything else belongs in
+  the application or in a scoped service the interceptor reaches through the context
+  (chapter~\ref{ch:state-lifetimes-and-thread-safety}).
+\end{tip}
+
+The right optimization does not remember the tenant but the way to it. Finding the
+\code{ITenant\allowbreak{}Provider} for every row through
+\code{Get\allowbreak{}Service<\allowbreak{}IDb\allowbreak{}Context\allowbreak{}Options>}, the
+extension and a LINQ search in the interceptors costs the same thing a thousand times for a
+thousand rows. The sample therefore keeps the provider in a static
+\code{Conditional\allowbreak{}Weak\allowbreak{}Table<\allowbreak{}Db\allowbreak{}Context,
+ITenant\allowbreak{}Provider>}. It holds its keys weakly: a context that is released disappears
+together with its entry, without the interceptor learning about it. With pooling the entry stays
+correct across leases, because a context keeps its options and therefore its interceptors for
+its whole life; the tenant itself is still read on every row. If the lookup fails, the table
+stores nothing, and the configuration error stays visible on every call.
+\code{Materialization\allowbreak{}Tests} checks repeated rows in one context, contexts with
+different tenants and a pooled context across two leases.
+
+\section{Limits}
+
+\begin{datatable}{H{0.65}H{1.35}}
+  \textbf{Limit} & \textbf{Consequence} \\
+  \tablehead
+  Entities only & Projections of individual columns or into DTOs do not pass through the
+  materializer. An integration test shows that
+  \code{Select(\allowbreak{}o => o.\allowbreak{}Total)} returns values of another tenant
+  unchecked; only the database can protect here. \\
+  \tablerule
+  No tracked entities & If an entity is already tracked, it is not materialized again; the
+  interceptor only sees the first query. \\
+  \tablerule
+  No filter & The interceptor cannot skip rows, only throw or replace the instance.
+  Filtering is the job of query filters or the database. \\
+  \tablerule
+  No SQL & It sees the result, not the query; \code{Execute\allowbreak{}Update},
+  \code{Execute\allowbreak{}Delete} and scalar queries materialize nothing. \\
+  \tablerule
+  Hot path & It runs for every entity of every query (chapter~\ref{ch:plugin-performance});
+  expensive work multiplies with the size of the result. \\
+  \tablerule
+  An exception aborts the query & All other rows are lost as well. That is right for a
+  security check, not for a convenience feature. \\
+\end{datatable}
+
+\section{When materialization, when something else?}
+
+The interceptor is the right place for cross-cutting tasks that concern \emph{every} loaded
+entity, across all queries, with and without tracking, even with raw SQL. For almost
+everything else there is a simpler and cheaper way:
+
+\begin{datatable}{H{1.00}H{0.95}H{1.05}}
+  \textbf{Goal} & \textbf{Better} & \textbf{Why} \\
+  \tablehead
+  Store a value differently than it is presented (format, type, encryption) & Value
+  converter & Works in both directions and in parameters, directly in the shaper instead of
+  through an interceptor \\
+  \tablerule
+  Immutable objects, invariants & Constructor binding & EF calls the constructor itself \\
+  \tablerule
+  Only some columns or a DTO & Projection with \code{Select} & No entity, no tracking, less
+  data \\
+  \tablerule
+  The same setting for many types (converter, field access) & Convention & Once during model
+  building instead of for every row \\
+  \tablerule
+  Derived values, business rules & Domain logic (method, computed property) & Loading is not
+  a business event \\
+  \tablerule
+  React when an application loads entities &
+  \code{Change\allowbreak{}Tracker.\allowbreak{}Tracked} & Public API without a plugin; only
+  with tracking \\
+  \tablerule
+  Check or complete every loaded entity, even without tracking &
+  \code{IMaterialization\allowbreak{}Interceptor} & The only hook that sees every way to the
+  entity \\
+\end{datatable}

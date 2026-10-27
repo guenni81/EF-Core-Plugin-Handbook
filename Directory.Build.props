@@ -13,6 +13,9 @@
          chapter "Custom SQL expression nodes") -->
     <NoWarn>$(NoWarn);EF9100</NoWarn>
     <Deterministic>true</Deterministic>
+    <!-- Public API analyzer (src projects): a changed public API breaks the build instead of
+         ending up as one of many warnings (chapter "CI and API stability") -->
+    <WarningsAsErrors>$(WarningsAsErrors);RS0016;RS0017</WarningsAsErrors>
   </PropertyGroup>
 
   <!-- NuGet metadata for all packable projects (IsPackable=true in the src projects) -->
@@ -25,7 +28,7 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>entity-framework-core;efcore;postgresql;sqlserver;multi-tenancy;row-level-security</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <VersionPrefix>10.0.0</VersionPrefix>
+    <VersionPrefix>1.1.0</VersionPrefix>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <!-- SourceLink is built into the .NET 8+ SDK; these two settings enable it -->

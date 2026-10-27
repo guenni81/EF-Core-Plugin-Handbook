@@ -57,6 +57,7 @@ Entity-Typen. Welche Annotations eine Tabelle trägt, entscheidet der
 \code{IRelational\allowbreak{}Annotation\allowbreak{}Provider}. Den gibt es pro Context
 einmal, und er gehört dem Provider; das Plugin erbt deshalb von der Npgsql-Implementierung:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Metadata/Internal/TenancyAnnotationProvider.cs
 \begin{sourcecode}[Metadata/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Annotation\allowbreak{}Provider.\allowbreak{}cs]{csharp}
 public class TenancyAnnotationProvider : NpgsqlAnnotationProvider
 {
@@ -73,7 +74,11 @@ public class TenancyAnnotationProvider : NpgsqlAnnotationProvider
         if (!designTime)          // nur für Migrations: Laufzeitmodell bleibt schlank
             yield break;
 
-        var entityType = (IEntityType)table.EntityTypeMappings.First().TypeBase;
+        // TPH/Table Splitting: der Typ mit RLS-Konfiguration, nicht einfach der erste
+        var entityType = table.EntityTypeMappings
+            .Select(m => (IEntityType)m.TypeBase)
+            .FirstOrDefault(e => e.HasRlsConfiguration())
+            ?? (IEntityType)table.EntityTypeMappings.First().TypeBase;
         foreach (var annotation in entityType.GetAnnotations())
         {
             if (!annotation.Name.StartsWith(RlsAnnotationNames.Prefix,
@@ -98,12 +103,42 @@ migrationBuilder.AlterTable(name: "Orders")
     .OldAnnotation("Acme:Rls:Policy:tenant_isolation", "{...alt...}");
 \end{sourcecode}
 
+Weil der Annotation-Provider die Annotations nur für \code{design\allowbreak{}Time} weitergibt,
+fehlen sie in einem Modell: dem Laufzeitmodell, das \code{context.\allowbreak{}Model}
+liefert.
+
+\begin{sourcecode}[Startprüfung eines Plugins (\allowbreak{}FALSCH)]{csharp}
+// Hat jede isolierte Tabelle RLS? Gelesen aus dem Laufzeitmodell
+var table = context.Model.GetRelationalModel().FindTable("Orders", null);
+var enabled = table?[RlsAnnotationNames.Enabled];          // immer null
+\end{sourcecode}
+
+\begin{failure}[Was passiert, wenn Plugin-Code das Laufzeitmodell statt des Design-Time-Modells liest?]
+  \textbf{Beobachtbar.} Code, der Schema-Annotations des Plugins aus dem relationalen
+  Laufzeitmodell liest, findet keine: Eine Prüfung meldet nichts, ein selbst erzeugtes Skript
+  enthält keine Policies. Den Differ schützt EF selbst:
+  \code{Get\allowbreak{}Differences} mit dem Laufzeitmodell bricht mit dem Hinweis auf
+  \code{IDesign\allowbreak{}Time\allowbreak{}Model} ab.
+
+  \textbf{Ursache.} Das Laufzeitmodell ist schlank. Der Annotation-Provider gibt Annotations
+  für Tabellen nur zur Design-Zeit weiter, damit sie die Laufzeit nicht belasten.
+
+  \textbf{Lösung.} Für alles, was mit dem Schema zu tun hat,
+  \code{context.\allowbreak{}Get\allowbreak{}Service<\allowbreak{}IDesign\allowbreak{}Time\allowbreak{}Model>(\allowbreak{}).\allowbreak{}Model}
+  verwenden.
+
+  \textbf{Test:}
+  \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Table\allowbreak{}\_annotations\allowbreak{}\_of\allowbreak{}\_the\allowbreak{}\_runtime\allowbreak{}\_model\allowbreak{}\_…}
+  und \code{Differ\allowbreak{}\_rejects\allowbreak{}\_the\allowbreak{}\_runtime\allowbreak{}\_model\allowbreak{}\_…}.
+\end{failure}
+
 \section{Der SQL-Generator}
 
 Auch den \code{IMigrations\allowbreak{}Sql\allowbreak{}Generator} gibt es nur einmal. Das
 Plugin erbt vom Npgsql-Generator und ergänzt \code{Create\allowbreak{}Table} und
 \code{Alter\allowbreak{}Table}:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Migrations/Internal/TenancyMigrationsSqlGenerator.cs (strings)
 \begin{sourcecode}[Migrations/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 protected override void Generate(
     CreateTableOperation operation, IModel? model,
@@ -129,7 +164,7 @@ protected override void Generate(
 }
 \end{sourcecode}
 
-\begin{sourcecode}[Migrations/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+\begin{sourcecode}[Migrations/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}gekürzt, vereinfacht)]{csharp}
 protected virtual void GenerateRowLevelSecurity(string tableName, string? schema,
     IReadOnlyAnnotatable? previous, IReadOnlyAnnotatable current,
     MigrationCommandListBuilder builder)
@@ -189,6 +224,7 @@ Daten-Backfills. Dafür bietet das Plugin eigene Operationen an. Sie bestehen au
 Teilen: der Operationsklasse, einer Extension-Method auf
 \code{Migration\allowbreak{}Builder} und der SQL-Erzeugung im Generator.
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Migrations/Operations/TenancyOperations.cs
 \begin{sourcecode}[Migrations/\allowbreak{}Operations/\allowbreak{}Tenancy\allowbreak{}Operations.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 public class CreateApplicationRoleOperation : MigrationOperation
 {
@@ -197,6 +233,7 @@ public class CreateApplicationRoleOperation : MigrationOperation
 }
 \end{sourcecode}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Migrations/Operations/TenancyMigrationBuilderExtensions.cs (strings)
 \begin{sourcecode}[Migrations/\allowbreak{}Operations/\allowbreak{}Tenancy\allowbreak{}Migration\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 namespace Microsoft.EntityFrameworkCore.Migrations;      // in Migrationen immer importiert
 
@@ -221,7 +258,7 @@ Der Generator verteilt Operationen über die zentrale
 .\allowbreak{}.\allowbreak{}.\allowbreak{})}-Methode. Unbekannte Typen gehen an die
 Basisklasse:
 
-\begin{sourcecode}[Migrations/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+\begin{sourcecode}[Migrations/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}Auszug, vereinfacht)]{csharp}
 protected override void Generate(
     MigrationOperation operation, IModel? model, MigrationCommandListBuilder builder)
 {
@@ -312,6 +349,7 @@ Damit Nutzer nichts konfigurieren müssen, verweist ein Assembly-Attribut auf di
 Tooling findet es in jeder Assembly, die das Startprojekt referenziert. Das zweite Argument
 beschränkt das Laden auf Contexts mit dem passenden Provider:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Properties/AssemblyInfo.cs
 \begin{sourcecode}[Properties/\allowbreak{}Assembly\allowbreak{}Info.\allowbreak{}cs]{csharp}
 [assembly: DesignTimeServicesReference(
     "Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Design.TenancyDesignTimeServices, "
@@ -319,6 +357,7 @@ beschränkt das Laden auf Contexts mit dem passenden Provider:
     "Npgsql.EntityFrameworkCore.PostgreSQL")]
 \end{sourcecode}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Design/TenancyDesignTimeServices.cs
 \begin{sourcecode}[Design/\allowbreak{}Tenancy\allowbreak{}Design\allowbreak{}Time\allowbreak{}Services.\allowbreak{}cs]{csharp}
 public class TenancyDesignTimeServices : IDesignTimeServices
 {
@@ -359,7 +398,7 @@ EF Core 10 schreibt Erweiterungsmethoden im Snapshot als statische Aufrufe
 vermeidet Mehrdeutigkeiten, wenn mehrere Provider oder Plugins gleichnamige Methoden
 definieren. Tests, die den erzeugten Code prüfen, sollten diese Form erwarten.
 
-\begin{sourcecode}[Design/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+\begin{sourcecode}[Design/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}Auszug, vereinfacht)]{csharp}
 public override IReadOnlyList<MethodCallCodeFragment> GenerateFluentApiCalls(
     IEntityType entityType, IDictionary<string, IAnnotation> annotations)
 {
@@ -439,7 +478,8 @@ Plugin muss dafür an vier Stellen vorbereitet sein:
   Type Mappings & Öffentlicher Typ mit öffentlicher statischer Property \code{Default} (für
   NativeAOT genutzt); Konverter/Comparer als gemeinsame Instanzen &
   \code{Tenant\allowbreak{}Id\allowbreak{}Type\allowbreak{}Mapping.\allowbreak{}Default},
-  \code{Tenant\allowbreak{}Id\allowbreak{}Converter.\allowbreak{}Instance} \\
+  \code{Tenant\allowbreak{}Id\allowbreak{}Converter.\allowbreak{}Instance},
+  \code{Tenant\allowbreak{}Id\allowbreak{}Value\allowbreak{}Comparer} \\
   \tablerule
   JSON-Reader/Writer & Statische \code{Instance} und
   \code{Constructor\allowbreak{}Expression} &
@@ -469,16 +509,24 @@ Kapitel~\ref{ch:property-level-fluent-api-and} zeigt beides im Beispiel.
 
 \section{Trimming und AOT}
 
-Beide Pakete setzen
+Alle drei Pakete setzen
 \code{<\allowbreak{}Is\allowbreak{}Aot\allowbreak{}Compatible>true<\allowbreak{}/\allowbreak{}Is\allowbreak{}Aot\allowbreak{}Compatible>}.
 Der Compiler meldet dann Code, der Reflection ohne Annotationen nutzt. Die
 JSON-Serialisierung der Policies verwendet einen Source-Generator statt Reflection:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Metadata/RlsPolicy.cs
 \begin{sourcecode}[Metadata/\allowbreak{}Rls\allowbreak{}Policy.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 [JsonSourceGenerationOptions(UseStringEnumConverter = true)]
 [JsonSerializable(typeof(RlsPolicy))]
 internal partial class RlsJsonContext : JsonSerializerContext;
 \end{sourcecode}
+
+Wo Dynamik unvermeidbar ist, wird die Warnung mit Begründung unterdrückt statt übergangen. Die
+Isolations-Convention baut den Query-Filter als Expression Tree, was dynamischen Code
+braucht. Conventions laufen aber nur beim Modellbau, und NativeAOT setzt ein Compiled Model
+voraus, in dem sie nicht mehr laufen; die Unterdrückung nennt genau diesen Grund. Die
+Warnungen erscheinen nur bei einem vollständigen Build zuverlässig, inkrementelle Builds
+verschweigen sie (Upgrade-Playbook in Kapitel~\ref{ch:versioning-and-compatibility}).
 
 \begin{note}
   Conventions, Snapshots und Migrations laufen nur zur Design-Zeit oder beim Modellbau; mit
@@ -486,6 +534,73 @@ internal partial class RlsJsonContext : JsonSerializerContext;
   sind deshalb vor allem Type Mappings, Konverter, Translators (laufen beim Build) und
   Interceptors.
 \end{note}
+
+\section{Was als Verbraucher tatsächlich geprüft ist}\label{sec:consumer-test}
+
+\code{Is\allowbreak{}Aot\allowbreak{}Compatible} lässt Analyzer laufen, beweist aber nichts zur
+Laufzeit. Auch ein Unit-Test, der Compiled-Model-Code erzeugt und Textstellen prüft
+(\code{Compiled\allowbreak{}Model\allowbreak{}Tests}), kompiliert und lädt das Modell nicht.
+Deshalb prüft \code{eng/\allowbreak{}consumer-\allowbreak{}test/\allowbreak{}run.\allowbreak{}sh}
+das Plugin so, wie eine Anwendung es bekommt, in einem temporären Verzeichnis, das am Ende
+gelöscht wird:
+
+\begin{datatable}{H{0.55}H{1.45}}
+  \textbf{Schritt} & \textbf{Prüfung} \\
+  \tablehead
+  Pakete & \code{dotnet pack} der drei Bibliotheken in eine lokale Quelle; ein frisches
+  Projekt referenziert die Pakete, nicht die Projekte. Eigener NuGet-Cache, Paketquellen-Zuordnung
+  \code{Acme.*} nur aus der lokalen Quelle und ein SHA-512-Vergleich belegen, dass genau die
+  eben gebauten Pakete aufgelöst werden. \\
+  \tablerule
+  Tooling & \code{dotnet-ef} als lokales Tool. Die Design-Time-Dienste werden ohne Zutun
+  gefunden. Migration und SQL-Skript enthalten RLS, \code{FORCE}, Policy und Index
+  (PostgreSQL) sowie Security Policy und Session-Schlüssel (SQL Server).
+  \code{has-\allowbreak{}pending-\allowbreak{}model-\allowbreak{}changes} meldet danach keine
+  Änderung. \\
+  \tablerule
+  Laufzeitmodell & \code{TenantId} wird \code{uuid}, die Laufzeit-Annotation nennt die
+  Property, \code{Current\allowbreak{}Tenant(\allowbreak{})} und der Query-Filter werden
+  übersetzt. \\
+  \tablerule
+  Compiled Model & \code{dotnet ef dbcontext optimize}, kompilieren, mit
+  \code{Use\allowbreak{}Model} laden, dieselben Prüfungen. \\
+  \tablerule
+  NativeAOT (\code{-\allowbreak{}-nativeaot}) & Veröffentlichen mit
+  \code{Publish\allowbreak{}Aot} und vorkompilierten Abfragen, dann gegen PostgreSQL in Docker
+  starten: zwei Mandanten schreiben über die Interceptors, einer liest, RLS liefert nur seine
+  Zeilen. Keine Trim- oder AOT-Warnung darf aus einer Acme-Assembly stammen. \\
+\end{datatable}
+
+Die CI führt den Ablauf in einem eigenen Job mit dem neuesten stabilen 10.0.x-Patch für das
+Tooling aus und gibt die Versionen aus. Der Test hat dabei Dinge gefunden, die die Unit-Tests
+nicht zeigen konnten:
+
+\begin{itemize}
+  \item \textbf{Query-Filter und Compiled Models schließen sich aus.} EF Core~10 lehnt
+    \code{optimize} ab: „Compiled model can't be generated, because query filters are not
+    supported.“ Wer den optionalen Filter des Plugins einschaltet, verzichtet auf Compiled
+    Model und NativeAOT; der Schutz kommt dann allein von RLS. Der Test erwartet diesen Fehler
+    ausdrücklich, damit eine spätere EF-Version, die Filter kann, auffällt.
+  \item \textbf{Value Comparer per Reflection.} Das Type Mapping für \code{TenantId} brachte
+    keine eigenen Comparer mit. Das Compiled Model verweist dann nur auf
+    \code{Tenant\allowbreak{}Id\allowbreak{}Type\allowbreak{}Mapping.\allowbreak{}Default}, und
+    EF erzeugt den Comparer beim ersten Tracking mit \code{Make\allowbreak{}Generic\allowbreak{}Method},
+    was die NativeAOT-Anwendung abbrechen ließ. Seitdem tragen beide Mappings gemeinsame
+    Instanzen aus \code{Tenant\allowbreak{}Id\allowbreak{}Value\allowbreak{}Comparer}, so wie
+    Konverter und JSON-Reader.
+  \item \textbf{Grenzen von EF selbst.} Vorkompilierte Abfragen und NativeAOT sind in EF
+    Core~10 experimentell (Warnung EF9100). \code{Publish\allowbreak{}Aot} darf nicht im
+    Projekt stehen, weil EF sonst schon zur Design-Zeit den Modellbau verweigert. Das Paket
+    \code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tasks}
+    erzeugt Modell und Abfragen beim Veröffentlichen, ein zusätzlich manuell erzeugtes Modell
+    stört es. Die Vorkompilierung lehnt \code{o.\allowbreak{}Total > 0} bei einer
+    \code{decimal}-Property ab, \code{0m} geht. EF, EF Relational und Npgsql melden selbst
+    Trim- und AOT-Warnungen (IL2104, IL3053).
+\end{itemize}
+
+Nicht geprüft ist SQL Server unter NativeAOT; das Paket ist dafür markiert, ein Lauf mit
+einer echten Datenbank fehlt.
+
 
 % ------------------------------------------------------------
 \chapter{Scaffolding (Reverse Engineering)}\label{ch:scaffolding-reverse-engineering}

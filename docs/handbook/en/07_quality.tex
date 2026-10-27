@@ -38,7 +38,7 @@ that is what
 \code{Enable\allowbreak{}Service\allowbreak{}Provider\allowbreak{}Caching(\allowbreak{}false)}
 is for:
 
-\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Test\allowbreak{}Model.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Test\allowbreak{}Model.\allowbreak{}cs (\allowbreak{}shortened, simplified)]{csharp}
 public static TestContext Create(
     Action<TenancyOptionsBuilder>? tenancy = null,
     Action<ModelBuilder>? model = null,
@@ -69,7 +69,8 @@ public static IReadOnlyList<string> MigrationSql(DbContext? source, DbContext ta
   Always use the \textbf{design-time model} for migration tests
   (\code{IDesign\allowbreak{}Time\allowbreak{}Model}). \code{context.\allowbreak{}Model} is
   the lean runtime model; annotations that the annotation provider only passes on at design
-  time are missing from it.
+  time are missing from it (failure case in
+  chapter~\ref{ch:declarative-sql-from-annotations}).
 \end{important}
 
 \begin{note}[Why not SQLite or InMemory?]
@@ -121,9 +122,9 @@ public static IReadOnlyList<string> MigrationSql(DbContext? source, DbContext ta
   ExecuteUpdate and raw SQL against RLS, value generation, JSON columns, compiled model,
   idempotent script. \\
   \tablerule
-  Composability & Decorator around the migrations generator
-  (chapter~\ref{ch:registering-services}), EFCore.NamingConventions in both orders
-  (chapter~\ref{ch:conventions}). \\
+  Composability & Decorator around the migrations generator and the composition matrix of
+  two plugins (chapter~\ref{ch:registering-services}), EFCore.NamingConventions in both
+  orders (chapter~\ref{ch:conventions}). \\
   \tablerule
   Annotation format & Serialized policies stay identical; tolerant reading
   (chapter~\ref{ch:versioning-and-compatibility}). \\
@@ -141,6 +142,7 @@ The most valuable test for design-time code: generate the snapshot, compile it w
 build the model from it and diff it against the original. Any discrepancy between code
 generator and Fluent API would otherwise produce a phantom migration for every user:
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/SnapshotTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Snapshot\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 [Fact]
 public void Snapshot_roundtrip_produces_no_differences()
@@ -168,6 +170,7 @@ container, creates the schema with \code{Ensure\allowbreak{}Created} (including 
 chapter~\ref{ch:how-migrations-work}), executes the custom migration operations for real and
 connects the tests with a restricted role:
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests/PostgresFixture.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Postgres\allowbreak{}Fixture.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 await owner.Database.EnsureCreatedAsync();          // RLS, policies, index
 
@@ -181,7 +184,7 @@ await owner.GetService<IMigrationCommandExecutor>().ExecuteNonQueryAsync(
     new MigrationExecutionState(), commitTransaction: true);
 \end{sourcecode}
 
-\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}excerpt, simplified)]{csharp}
 [Fact]
 public async Task Database_rejects_rows_of_other_tenant()
 {
@@ -206,15 +209,26 @@ public async Task Database_rejects_rows_of_other_tenant()
 % ------------------------------------------------------------
 \chapter{Versioning and compatibility}\label{ch:versioning-and-compatibility}
 
-\section{Align versions with EF Core}
+\section{Package version and supported EF version}
 
-The plugin's major version follows EF Core's: version 10.x for EF Core 10. Users immediately
-see which combination fits, and the plugin can adopt breaking changes with every EF major
-version. Dependencies are limited to this major version:
+The sample versions plugin and handbook together: the package version equals the book
+edition, packages 1.1.0 belong to edition~1.1. That way every code excerpt belongs to exactly
+one package state. Which EF version a state supports is therefore not part of the version
+number but of the packages' dependency range and the compatibility table in the README: plugin
+1.x supports EF Core~10. Moving to a new EF major version is a breaking change for users and
+gets a new major version, 2.0 for EF Core~11, together with a new book edition. Many plugins
+tie their major version to EF Core's instead (10.x for EF Core~10); that shows the matching
+combination in the number. Both ways work as long as the dependencies are limited to one EF
+major version. A property keeps the range in one place so that CI can override it for the
+patch channel (section “Patches and previews in CI”):
 
 \begin{sourcecode}[Directory.\allowbreak{}Packages.\allowbreak{}props (\allowbreak{}excerpt)]{xml}
-<PackageVersion Include="Microsoft.EntityFrameworkCore" Version="[10.0.0,11.0.0)" />
-<PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="[10.0.0,11.0.0)" />
+<PropertyGroup>
+  <EFCoreVersion Condition="'$(EFCoreVersion)' == ''">[10.0.0,11.0.0)</EFCoreVersion>
+  <CentralPackageFloatingVersionsEnabled>true</CentralPackageFloatingVersionsEnabled>
+</PropertyGroup>
+<PackageVersion Include="Microsoft.EntityFrameworkCore" Version="$(EFCoreVersion)" />
+<PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="$(EFCoreVersion)" />
 \end{sourcecode}
 
 \section{Dealing with internal APIs}
@@ -223,8 +237,10 @@ Plugins rarely get by without internal APIs: the sample derives from
 \code{Npgsql\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator},
 \code{Npgsql\allowbreak{}Annotation\allowbreak{}Provider} and
 \code{Npgsql\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator} and uses
-\code{Npgsql\allowbreak{}Options\allowbreak{}Extension}. Such types can change even in minor
-versions. EF reports their use with warning \textbf{EF1001}.
+\code{Npgsql\allowbreak{}Options\allowbreak{}Extension}; in total, the PostgreSQL package
+touches 13 internal types, the SQL Server package 2 and the core none (inventory in the
+upgrade playbook). Such types can change even in minor versions. EF reports their use with
+warning \textbf{EF1001}.
 
 \begin{datatable}{H{0.80}H{1.20}}
   \textbf{Measure} & \textbf{Effect} \\
@@ -239,7 +255,8 @@ versions. EF reports their use with warning \textbf{EF1001}.
   \tablerule
   Limit the version range & Prevents users from getting untested combinations. \\
   \tablerule
-  CI against previews & A build against the next EF preview shows breaks months earlier. \\
+  CI against the newest patches and previews & Shows breaks before users report them; the
+  channels are described in section “Patches and previews in CI”. \\
   \tablerule
   Round trip and SQL tests & Detect behavior changes the compiler does not see. \\
 \end{datatable}
@@ -276,6 +293,7 @@ the public API, just like the methods.
   EF major upgrade, when users expect migrations anyway. \\
 \end{datatable}
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/AnnotationFormatTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Annotation\allowbreak{}Format\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 [Fact]
 public void Serialized_policy_format_is_stable()
@@ -296,6 +314,292 @@ chapter~\ref{ch:test-strategy} complements them: the round trip shows that the c
 generator and Fluent API agree, the golden value shows that the next version still agrees
 with the snapshots users already have.
 
+\section{Failure classes in an upgrade}
+
+An upgrade to a new EF major version rarely breaks a plugin in just one place, and not every
+break announces itself. Knowing the failure classes tells you which test finds them, and
+above all which one does not:
+
+\begin{datatable}{H{0.70}H{1.10}H{1.20}}
+  \textbf{Failure class} & \textbf{Typical example} & \textbf{Detected in the sample by} \\
+  \tablehead
+  Compile-time break & A provider class's constructor has a new parameter, an internal type
+  has moved & Build; \code{Public\allowbreak{}API} files for the plugin's own API
+  (chapter~\ref{ch:ci-and-api-stability}) \\
+  \tablerule
+  Runtime break & A service changes its lifetime, a registration fails &
+  \code{Service\allowbreak{}Registration\allowbreak{}Tests},
+  \code{Design\allowbreak{}Time\allowbreak{}Services\allowbreak{}Tests},
+  \code{Options\allowbreak{}Tests}, \code{Composition\allowbreak{}Tests} \\
+  \tablerule
+  Silent behavioral change & An order, a precedence or a nullability rule of EF changes &
+  \code{Failure\allowbreak{}Case\allowbreak{}Tests},
+  \code{Composition\allowbreak{}Matrix\allowbreak{}Tests},
+  \code{State\allowbreak{}And\allowbreak{}Lifetime\allowbreak{}Tests},
+  \code{Save\allowbreak{}Changes\allowbreak{}Interceptor\allowbreak{}Tests}; with a database
+  \code{Materialization\allowbreak{}Tests}, \code{Connection\allowbreak{}Lifetime\allowbreak{}Tests} \\
+  \tablerule
+  SQL change & The provider writes an expression differently or optimizes a condition away
+  & \code{Query\allowbreak{}Translation\allowbreak{}Tests},
+  \code{Deep\allowbreak{}Query\allowbreak{}Tests}, \code{Debugging\allowbreak{}Tests} \\
+  \tablerule
+  Model change & A convention runs earlier, a default configuration changes &
+  \code{Convention\allowbreak{}Tests}, \code{Tenant\allowbreak{}Property\allowbreak{}Tests},
+  \code{Validation\allowbreak{}Tests}, \code{Type\allowbreak{}Mapping\allowbreak{}Tests},
+  \code{Json\allowbreak{}Tests}, \code{Value\allowbreak{}Generation\allowbreak{}Tests},
+  \code{Naming\allowbreak{}Convention\allowbreak{}Tests} \\
+  \tablerule
+  Snapshot/migration change & The code generator or the differ behaves differently; every
+  user would get a phantom migration & \code{Snapshot\allowbreak{}Tests} (round trip),
+  \code{Migration\allowbreak{}Sql\allowbreak{}Tests},
+  \code{Migration\allowbreak{}Script\allowbreak{}Tests},
+  \code{Annotation\allowbreak{}Format\allowbreak{}Tests},
+  \code{Compiled\allowbreak{}Model\allowbreak{}Tests}, consumer test \\
+  \tablerule
+  Performance regression & A hot path allocates more or becomes slower & The benchmark
+  project (chapter~\ref{ch:plugin-performance}) \\
+\end{datatable}
+
+The third row is the most dangerous. Many of the sample's tests do not check the plugin but
+the behavior of EF that the plugin and this book rely on. In an upgrade they are more
+valuable than any other test, because they report exactly what no compiler sees.
+
+\section{The upgrade playbook}
+
+The workflow is described for the move from EF Core~10 to EF Core~11, but it applies to every
+major version: the numbers are interchangeable, the order is not. Beforehand, the previous
+line is frozen in a release branch; it keeps getting patches for its EF version while
+\code{main} moves to the new one.
+
+\begin{sourcecode}[Step~1: branch and versions]{text}
+git switch -c release/1.x main && git push -u origin release/1.x
+git switch main
+
+global.json               "version": "11.0.100"
+Directory.Build.props     <TargetFramework>net11.0</TargetFramework>
+                          <VersionPrefix>2.0.0</VersionPrefix>
+Directory.Packages.props  <EFCoreVersion ...>[11.0.0,12.0.0)</EFCoreVersion>
+\end{sourcecode}
+
+Which target framework an EF version requires follows no fixed rule: EF Core~9 targets
+\code{net8.\allowbreak{}0}, EF Core~10 \code{net10.\allowbreak{}0}, the release
+candidates of EF Core~11 \code{net11.\allowbreak{}0}
+(\href{https://learn.microsoft.com/en-us/ef/core/what-is-new/}{EF Core releases and planning}). Before upgrading, look into the packages of
+EF \emph{and} the provider: which frameworks do they offer, which SDK do they need? In the
+sample EF Core~11 requires \code{net11.\allowbreak{}0}, so target framework, SDK and
+packages change together; a new EF package could not even be restored on the old target
+framework.
+
+\begin{datatable}{H{0.24}H{1.27}H{1.76}H{0.73}}
+  \textbf{No.} & \textbf{Step} & \textbf{Approach} & \textbf{In the sample} \\
+  \tablehead
+  1 & Update packages & As above, plus companion packages released with EF
+  (\code{Microsoft.\allowbreak{}Extensions.\allowbreak{}*}); pinned companion packages
+  already block the restore & \code{EFCore\allowbreak{}Version} \\
+  \tablerule
+  2 & Classify compiler errors & Count by error code: moved types (CS0234, CS0246), changed
+  constructors and dependencies (CS1729, CS7036), removed overrides (CS0115) & Command
+  below \\
+  \tablerule
+  3 & Investigate internal API & Compare the EF1001 inventory (below) against the sources of
+  both versions; every place individually, including those that still compile & Core: 0,
+  PostgreSQL: 13, SQL Server: 2 internal types \\
+  \tablerule
+  4 & Compare registrations and lifetimes & Compare EF's service tables of both versions;
+  the plugin's own \code{Replace} calls fix lifetimes &
+  \code{Service\allowbreak{}Registration\allowbreak{}Tests} \\
+  \tablerule
+  5 & Check derived provider classes & The compiler reports removed methods, but not new
+  virtual overloads the base now calls instead: read the base class in the diff &
+  \code{Migration\allowbreak{}Sql\allowbreak{}Tests},
+  \code{Deep\allowbreak{}Query\allowbreak{}Tests} \\
+  \tablerule
+  6 & Check model and conventions & Model tests; also compare
+  \code{To\allowbreak{}Debug\allowbreak{}String} of the design-time model of both versions
+  (appendix~\ref{app:D}) & \code{Convention\allowbreak{}Tests} etc. \\
+  \tablerule
+  7 & Check annotation formats & The plugin's own format must not change; EF's own
+  annotations the plugin reads may & \code{Annotation\allowbreak{}Format\allowbreak{}Tests} \\
+  \tablerule
+  8 & Test query SQL & All \code{To\allowbreak{}Query\allowbreak{}String} tests; explain every
+  deviation instead of just adjusting the expectation &
+  \code{Query\allowbreak{}Translation\allowbreak{}Tests} etc. \\
+  \tablerule
+  9 & Compare migration SQL & The generated SQL of the tests; for sample applications,
+  compare the script of \code{dotnet ef migrations script} before and after the upgrade &
+  \code{Migration\allowbreak{}Sql\allowbreak{}Tests},
+  \code{Migration\allowbreak{}Script\allowbreak{}Tests} \\
+  \tablerule
+  10 & Snapshot round trip & Generate the snapshot, compile it, compare; a new migration on an
+  existing project must be empty & \code{Snapshot\allowbreak{}Tests} \\
+  \tablerule
+  11 & Compiled models & Generate, compile, load with \code{Use\allowbreak{}Model}, including the
+  runtime annotations & \code{Compiled\allowbreak{}Model\allowbreak{}Tests},
+  \code{run.\allowbreak{}sh} (page~\pageref{sec:consumer-test}) \\
+  \tablerule
+  12 & Trimming and NativeAOT & Read new IL warnings (IL2xxx, IL3xxx) in the build and start a
+  NativeAOT application; the experimental API for precompiled queries (EF9100) changes
+  particularly often & \code{Is\allowbreak{}Aot\allowbreak{}Compatible},
+  \code{run.\allowbreak{}sh -\allowbreak{}-nativeaot} \\
+  \tablerule
+  13 & Integration tests & Against real databases, with the provider versions of the new line
+  & Integration and SQL Server tests \\
+  \tablerule
+  14 & Compare the plugin's public API & The public API analyzer breaks the build on every
+  deviation; enter intended breaks deliberately &
+  \code{Public\allowbreak{}API.\allowbreak{}*.\allowbreak{}txt} \\
+  \tablerule
+  15 & Compare benchmarks & The same benchmark on both lines; compare ratio and allocations,
+  not absolute times & Benchmark project \\
+  \tablerule
+  16 & Document breaking changes & CHANGELOG, compatibility table (plugin~2.x for
+  EF~Core~11), notes for users, support period of the old line & \code{CHANGELOG.\allowbreak{}md} \\
+\end{datatable}
+
+Two commands are enough for steps 2 and 3. The second lifts the project-wide suppression of
+EF1001 for this build only and thus shows every place where the plugin touches internal
+API:
+
+\begin{sourcecode}[Steps~2 and 3]{text}
+# Compiler errors by code
+dotnet build -c Release 2>&1 | grep -oE "error [A-Z]+[0-9]+" | sort | uniq -c | sort -rn
+
+# Inventory of internal API: NoWarn without EF1001 (EF9100 stays suppressed)
+dotnet build -c Release --no-incremental -p:NoWarn=EF9100 2>&1 \
+  | grep -oE "EF1001: [A-Za-z.]+" | sort | uniq -c | sort -rn
+\end{sourcecode}
+
+\begin{tip}[Explain deviations, do not test them away]
+  If an SQL or behavior test fails after the upgrade, it is tempting to just adjust the
+  expectation. Every deviation must be explained first, though: is it an improvement in EF,
+  a break in the plugin, or changed semantics that affect users? Only the answer decides
+  whether the test, the code or the documentation changes.
+\end{tip}
+
+\section{Patches and previews in CI}
+
+Version ranges solve only part of the problem. NuGet takes the \emph{lowest} version of a
+range that satisfies all dependencies; the regular CI therefore tests against the beginning
+of the line, while users get newer patches. The sample's CI therefore works with three
+channels:
+
+\begin{datatable}{H{0.87}H{1.27}H{1.07}H{0.79}}
+  \textbf{Channel} & \textbf{Trigger and packages} & \textbf{Purpose} & \textbf{On failure} \\
+  \tablehead
+  Regular (\code{ci.\allowbreak{}yml}) & Every push and pull request; lowest version of the
+  range & The line the plugin is built against & Required check \\
+  \tablerule
+  Patches (\code{compatibility.\allowbreak{}yml}) & Weekly and manually;
+  \code{-p:EFCore\allowbreak{}Version=10.0.*}, stable packages only & Newest patches of the
+  plugin's own line & Investigate, patch release \\
+  \tablerule
+  Next major version & Separate job, scheduled; previews and RCs & See breaks months before
+  the release & Not a required check \\
+\end{datatable}
+
+The patch channel is active in the sample. Its first run already showed a real finding: the
+plugin itself ran with EF Core~10.0.14, but test and sample projects could not be restored
+because they had pinned companion packages to 10.0.0 and a Roslyn version of their own.
+Since then, these packages follow \code{EFCore\allowbreak{}Version}.
+
+A channel for the next major version is deliberately not active in the sample: it works with
+prereleases. Whoever sets one up follows four rules so that regular releases are never
+coupled to preview packages:
+
+\begin{datatable}{H{0.85}H{1.15}}
+  \textbf{Rule} & \textbf{Why} \\
+  \tablehead
+  Switch everything through global properties of this job: SDK, target framework and
+  \code{EFCore\allowbreak{}Version} & The defaults in the project files stay stable; a
+  preview package can never get into a regular build \\
+  \tablerule
+  Change SDK, target framework and packages together & With the old target framework the
+  restore already fails; such a job can never turn green \\
+  \tablerule
+  Never pack or publish & Releases come only from regular builds of the release branches \\
+  \tablerule
+  Not a required check & Previews break regularly; the job is an early warning that opens an
+  issue, not a gate for pull requests \\
+\end{datatable}
+
+\begin{sourcecode}[Job for the next EF version (\allowbreak{}sketch,\allowbreak{} not in the repository)]{text}
+  ef-next:
+    runs-on: ubuntu-latest
+    continue-on-error: true                 # early warning, not a required check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: 11.0.x, dotnet-quality: preview }
+      - run: dotnet new globaljson --sdk-version "$(dotnet --version)" --force
+      - name: Build against the next EF Core version (never packed or published)
+        run: dotnet build -c Release -p:TargetFramework=net11.0 -p:EFCoreVersion=11.0.0-*
+      - run: >
+          dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Tests -c Release --no-build
+          -p:TargetFramework=net11.0
+\end{sourcecode}
+
+Third-party test dependencies such as EFCore.NamingConventions often ship later for the new
+version and can block this job's restore. Exclude such tests in the preview channel instead
+of switching the channel off.
+
+\section{NuGet advisories and transitive dependencies}\label{sec:nuget-advisories}
+
+A plugin ships not only its own code but also its dependency graph. NuGet audit reports known
+vulnerabilities as warnings NU1901 to NU1904
+(\href{https://learn.microsoft.com/en-us/nuget/concepts/auditing-packages}{NuGet: Auditing package dependencies}).
+What matters is \emph{whom} a finding affects. \code{dotnet nuget why} finds out, showing the path
+from the direct dependency to the affected package. The sample had three cases:
+
+\begin{datatable}{H{0.75}H{1.05}H{0.70}H{1.50}}
+  \textbf{Package} & \textbf{Origin} & \textbf{Affects} & \textbf{Decision} \\
+  \tablehead
+  \code{System.\allowbreak{}Security.\allowbreak{}Cryptography.\allowbreak{}Pkcs} 9.0.4 &
+  EF Core SqlServer → \code{Microsoft.\allowbreak{}Data.\allowbreak{}SqlClient} 6.1 & Consumers of
+  the SQL Server package & No patch and no SqlClient version (not even 7.x) brings 9.0.21 yet.
+  Hence a direct dependency on 9.0.22 in the SQL Server package; it ends up in the nuspec and
+  fixes the application's graph. \\
+  \tablerule
+  \code{Cryptography.\allowbreak{}Xml}/\code{Pkcs} 9.0.0 & EF Core Design 10.0.0 → MSBuild
+  17.14, Workspaces.MSBuild 4.14 & Tooling only: tests, sample & Newer Design patches need other
+  MSBuild packages but would pull EF itself along and end the test of the minimum version.
+  Hence \code{Xml} 9.0.22 in test and sample projects only. \\
+  \tablerule
+  \code{SSH.\allowbreak{}NET} 2024.2.0 & Testcontainers 4.6 & Tests only & Testcontainers 4.16
+  within the same major version; brings 2026.0.0. \\
+\end{datatable}
+
+Every direct dependency on what is really a transitive package is listed in
+\code{Directory.\allowbreak{}Packages.\allowbreak{}props} with its origin, the advisory and the
+criterion for when it can go again. Nothing is suppressed: neither \code{NoWarn} nor a disabled
+audit makes a dependency safe, they only hide the finding. Both CI channels also run
+\code{dotnet list package -\allowbreak{}-vulnerable -\allowbreak{}-include-transitive} and fail on
+any finding. The regular run still builds against EF Core 10.0.0, the compatibility run against
+the newest 10.0.x patch; the fixes are minimum versions and apply in both. For tooling there is an
+interaction: \code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tasks}
+treats the audit warnings as errors on publish, so NativeAOT fails with EF Design 10.0.0
+(page~\pageref{sec:consumer-test}).
+
+\section{Upgrade checklist}
+
+\begin{checklist}
+  \item Create a release branch for the old line; move \code{main} to the new version.
+  \item Change SDK, target framework, \code{EFCore\allowbreak{}Version}, companion packages and
+    \code{Version\allowbreak{}Prefix} together.
+  \item Count compiler errors by code and work through them class by class.
+  \item Create the EF1001 inventory and check every place against the new sources, including
+    those that compile.
+  \item Check lifetimes against EF's service table; read derived provider classes for new
+    virtual overloads.
+  \item Model, SQL, migration, snapshot and compiled model tests green; every deviation
+    explained.
+  \item Annotation formats unchanged (golden-value tests).
+  \item New IL warnings for trimming and AOT read.
+  \item Integration tests against real databases with the new providers.
+  \item Public API diff checked; intended breaks entered.
+  \item Benchmarks of both lines compared.
+  \item CHANGELOG, compatibility table and support period of the old line documented.
+\end{checklist}
+
 % ------------------------------------------------------------
 \chapter{Packaging and documentation}\label{ch:packaging-and-documentation}
 
@@ -310,11 +614,12 @@ Package Management):
   <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   <NoWarn>$(NoWarn);EF1001</NoWarn>
   <Deterministic>true</Deterministic>
+  <WarningsAsErrors>$(WarningsAsErrors);RS0016;RS0017</WarningsAsErrors>
 </PropertyGroup>
 <PropertyGroup>
   <PackageLicenseExpression>MIT</PackageLicenseExpression>
   <PackageReadmeFile>README.md</PackageReadmeFile>
-  <VersionPrefix>10.0.0</VersionPrefix>
+  <VersionPrefix>1.1.0</VersionPrefix>       <!-- = book edition -->
   <IncludeSymbols>true</IncludeSymbols>
   <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   <PublishRepositoryUrl>true</PublishRepositoryUrl>      <!-- SourceLink -->
@@ -327,6 +632,9 @@ Package Management):
   \tablehead
   \code{Generate\allowbreak{}Documentation\allowbreak{}File} & XML docs in the package:
   users see explanations in the IDE. \\
+  \tablerule
+  \code{Warnings\allowbreak{}As\allowbreak{}Errors} RS0016, RS0017 & A changed public API
+  breaks the build (chapter~\ref{ch:ci-and-api-stability}). \\
   \tablerule
   \code{Is\allowbreak{}Aot\allowbreak{}Compatible} & Analyzers report AOT and trimming
   problems at build time. \\
@@ -353,17 +661,23 @@ limitations apply (pooling) and which security assumptions hold (database roles)
 % ------------------------------------------------------------
 \chapter{The checklist from A to Z}\label{ch:the-checklist-from-a-to}
 
-For every new plugin, in the order of development:
+For every new plugin, in the order of development. Each item sums up a rule; the reasoning is in the chapters named under each heading.
 
 \section{Architecture}
+
+\noindent Details: chapters~\ref{ch:the-sample-scenario}, \ref{ch:choosing-the-right-extension-point}.
 
 \begin{checklist}
   \item Decide the level: helpers, model helpers, real plugin or provider?
   \item Separate core and provider packages; types for entity assemblies go into the core.
   \item For every extension point, look for a plugin interface first, replace only then.
+  \item Check every mechanism against the simpler alternative with the decision guide
+    (chapter~\ref{ch:choosing-the-right-extension-point}).
 \end{checklist}
 
 \section{Options}
+
+\noindent Details: chapter~\ref{ch:the-options-extension}.
 
 \begin{checklist}
   \item Extension immutable with copy constructor and virtual Clone.
@@ -375,16 +689,23 @@ For every new plugin, in the order of development:
 
 \section{Services}
 
+\noindent Details: chapters~\ref{ch:registering-services}, \ref{ch:state-lifetimes-and-thread-safety}.
+
 \begin{checklist}
   \item Registration through the services builder (lifetimes from EF's table).
   \item Decorate single services where the public interface suffices
     (chapter~\ref{ch:registering-services}).
   \item Otherwise Replace, and offer the logic publicly and virtually.
   \item ISingletonOptions for singleton services, registered twice.
+  \item Classify every piece of state according to chapter~\ref{ch:state-lifetimes-and-thread-safety}: request data never
+    in options, hash, model, singleton or translated query.
+  \item Reset scoped services with state for pooling (IResettableService).
   \item App dependencies via AddInterceptors, document pooling behavior.
 \end{checklist}
 
 \section{Model}
+
+\noindent Details: chapters~\ref{ch:annotations-and-fluent-api}, \ref{ch:conventions}, \ref{ch:model-validation}.
 
 \begin{checklist}
   \item Annotations with a prefix, simple values only, no stored defaults.
@@ -394,18 +715,25 @@ For every new plugin, in the order of development:
   \item Attributes in the core package, attribute conventions in the provider package.
   \item Validation as IModelFinalizedConvention: throw on errors, warn on questionable
     cases.
+  \item Check table mappings against the support matrix and reject unsupported ones while the
+    model is built (page~\pageref{sec:supported-table-mappings}).
 \end{checklist}
 
 \section{Type mappings}
+
+\noindent Details: chapter~\ref{ch:type-mappings-and-value-converters}.
 
 \begin{checklist}
   \item Protected parameter constructor and Clone override.
   \item Literal generation for model and provider type.
   \item Public static Default property, shared converter instance.
+  \item Shared value comparer instances, otherwise EF creates them through reflection (NativeAOT).
   \item JsonValueReaderWriter with Instance and ConstructorExpression.
 \end{checklist}
 
 \section{Queries}
+
+\noindent Details: chapters~\ref{ch:the-query-pipeline}, \ref{ch:translating-methods-and-members}.
 
 \begin{checklist}
   \item EF.Functions methods in the core, translation in the provider package.
@@ -416,9 +744,15 @@ For every new plugin, in the order of development:
 
 \section{Run time}
 
+\noindent Details: chapters~\ref{ch:interceptors}, \ref{ch:diagnostics-and-logging}.
+
 \begin{checklist}
   \item Implement interceptors synchronously and asynchronously.
+  \item Tell the tracking flag from an actual change of value
+    (page~\pageref{sec:tracking-flag-versus-value}).
   \item Singleton interceptors stateless and thread-safe.
+  \item Register singleton interceptors in ApplyServices or pass one shared instance, never a
+    new one per context; get per-request data on every call through the context.
   \item Own event IDs in an own range, EventDefinitions cached.
   \item Security-relevant cases as warnings, escalatable via ConfigureWarnings.
   \item Where hooks cannot run, offer an explicit API (e.g. ApplyTenantSession).
@@ -426,26 +760,38 @@ For every new plugin, in the order of development:
 
 \section{Migrations \& design time}
 
+\noindent Details: chapters~\ref{ch:how-migrations-work}, \ref{ch:design-time-services}.
+
 \begin{checklist}
   \item Declarative via annotation provider (design time only) and SQL generator.
   \item Escape identifiers, literals via type mappings, validate self-generated SQL.
   \item Custom operations idempotent, extensions in the migrations namespace.
+  \item Remove schema-bound objects before renames and recreate them with the final names
+    afterwards (page~\pageref{sec:sqlserver-schema-bound-changes}).
   \item DesignTimeServicesReference with forProvider; code generator removes annotations.
   \item Check compiled models: Default, Instance, runtime annotations.
 \end{checklist}
 
 \section{Quality}
 
+\noindent Details: chapters~\ref{ch:test-strategy}, \ref{ch:versioning-and-compatibility}, \ref{ch:packaging-and-documentation}.
+
 \begin{checklist}
   \item Model, SQL, snapshot round trip and integration tests.
   \item Caching test with different options; test for no phantom migration.
-  \item Version range per EF major, CI against previews, EF1001 deliberately.
+  \item Version range per EF major, CI against the newest patches and previews, EF1001
+    deliberately; upgrades following the playbook (chapter~\ref{ch:versioning-and-compatibility}).
   \item XML docs, SourceLink, symbols, README, CHANGELOG, limitations documented.
+  \item Check the packages as a consumer: tooling, compiled model, NativeAOT
+    (page~\pageref{sec:consumer-test}).
   \item Pin serialized annotation formats with golden-value tests.
-  \item Test together with popular plugins (naming conventions, decorators).
+  \item Test together with popular plugins (naming conventions, decorators) and check the
+    coexistence with a second plugin in both orders (chapter~\ref{ch:registering-services}).
 \end{checklist}
 
 \section{Advanced (part~\ref{part:VIII})}
+
+\noindent Details: chapters~\ref{ch:row-level-security-in-production}, \ref{ch:tenant-safe-relationships}, \ref{ch:retrofitting-and-operating}.
 
 \begin{checklist}
   \item Document paths that bypass interceptors (ExecuteUpdate, raw SQL).
@@ -456,11 +802,18 @@ For every new plugin, in the order of development:
   \item Document operational assumptions (roles, pooling, transaction pooling).
   \item Document context lifetimes: factories, background jobs, open connections.
   \item Cross-tenant access only through separate roles, never through app switches.
+  \item Document the threat model: what is protected and what is not
+    (page~\pageref{sec:threat-model}).
+  \item Tenant-safe relationships: composite foreign keys, unique per tenant.
+  \item Retrofit existing tables in two migrations with a guard.
   \item Measure hot paths (interceptors), do not guess.
-  \item CI with preview build and public API analyzer.
+  \item CI with a patch channel, a preview channel only as an early warning, public API
+    analyzer as errors.
 \end{checklist}
 
 \section{Deep extensions (part~\ref{part:IX})}
+
+\noindent Details: chapters~\ref{ch:custom-sql-expression-nodes}, \ref{ch:a-second-provider-sql-server}.
 
 \begin{checklist}
   \item Custom SQL nodes: VisitChildren, Update, Quote, Print, Equals/GetHashCode.

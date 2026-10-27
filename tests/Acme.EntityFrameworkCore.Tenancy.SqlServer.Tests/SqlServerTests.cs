@@ -1,9 +1,11 @@
 using Acme.EntityFrameworkCore.Tenancy.Interceptors;
+using Acme.EntityFrameworkCore.Tenancy.SqlServer.Infrastructure;
 using Acme.EntityFrameworkCore.Tenancy.SqlServer.Metadata;
 using Acme.EntityFrameworkCore.Tenancy.SqlServer.Runtime;
 using Acme.EntityFrameworkCore.Tenancy.SqlServer.Storage;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -95,6 +97,50 @@ public class SqlServerUnitTests
     }
 
     [Fact]
+    public void Every_registered_ef_service_uses_the_lifetime_and_cardinality_of_efs_table()
+    {
+        // Upgrade guard, as for the PostgreSQL package (chapter "Versioning and compatibility")
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        new SqlServerTenancyOptionsExtension()
+            .WithSettings(SqlServerTenancySettings.Default with { VerifyMaterializedTenants = true })
+            .ApplyServices(services);
+        var table = new Dictionary<Type, ServiceCharacteristics>();
+        foreach (var (type, characteristics) in EntityFrameworkServicesBuilder.CoreServices
+                     .Concat(EntityFrameworkRelationalServicesBuilder.RelationalServices))
+            table[type] = characteristics;
+
+        var compared = 0;
+        foreach (var group in services.GroupBy(d => d.ServiceType))
+        {
+            if (!table.TryGetValue(group.Key, out var expected))
+                continue;
+
+            compared++;
+            Assert.All(group, d => Assert.True(d.Lifetime == expected.Lifetime,
+                $"{group.Key.Name}: registered as {d.Lifetime}, EF expects {expected.Lifetime}"));
+            if (!expected.MultipleRegistrations)
+                Assert.True(group.Count() == 1, $"{group.Key.Name} is a single service");
+        }
+
+        Assert.True(compared >= 6, $"Only {compared} EF services compared");
+    }
+
+    [Fact]
+    public void Materialization_check_is_opt_in_and_registered_as_singleton_interceptor()
+    {
+        using var off = Contexts.Create(NoDatabase);
+        using var on = new ShopContext(new DbContextOptionsBuilder<ShopContext>()
+            .UseSqlServer(NoDatabase, sql => sql.UseAcmeTenancy().VerifyMaterializedTenants())
+            .EnableServiceProviderCaching(false)
+            .Options);
+
+        Assert.Empty(off.GetService<IEnumerable<ISingletonInterceptor>>()
+            .OfType<TenantMaterializationInterceptor>());
+        Assert.Single(on.GetService<IEnumerable<ISingletonInterceptor>>()
+            .OfType<TenantMaterializationInterceptor>());
+    }
+
+    [Fact]
     public void CurrentTenant_uses_session_context()
     {
         using var ctx = Contexts.Create(NoDatabase);
@@ -112,9 +158,9 @@ public class SqlServerUnitTests
 
         var sql = Contexts.CreateSql(ctx);
 
-        Assert.Contains(sql, s => s.StartsWith("CREATE SECURITY POLICY [acme].[tenant_Orders]")
+        Assert.Contains(sql, s => s.StartsWith("CREATE SECURITY POLICY [acme].[tenant_dbo_Orders]")
                                   && s.Contains("AFTER INSERT") && s.Contains("AFTER UPDATE"));
-        Assert.DoesNotContain(sql, s => s.Contains("[tenant_AuditEntries]"));
+        Assert.DoesNotContain(sql, s => s.Contains("AuditEntries]", StringComparison.Ordinal) && s.Contains("SECURITY POLICY", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -133,7 +179,9 @@ public class SqlServerUnitTests
 
         var sql = Contexts.Sql(ctx, [new DropTableOperation { Name = "Orders" }]);
 
-        Assert.StartsWith("DROP SECURITY POLICY IF EXISTS [acme].[tenant_Orders]", sql[0]);
+        // Found by the table it is bound to, so the pre-1.1 name tenant_Orders is covered too
+        Assert.Contains("s.target_object_id = OBJECT_ID(N'[dbo].[Orders]')", sql[0]);
+        Assert.Contains("EXEC(N'DROP SECURITY POLICY ' + @policy)", sql[0]);
         Assert.Contains("DROP TABLE", sql[1]);
     }
 }
@@ -142,9 +190,17 @@ public class SqlServerUnitTests
 public sealed class SqlServerFixture : IAsyncLifetime
 {
     private const string AppPassword = "Acme!App#2026";
-    private readonly MsSqlContainer _container = new MsSqlBuilder().Build();
+    // The image Testcontainers 4.6 used by default, now named explicitly
+    private readonly MsSqlContainer _container =
+        new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04").Build();
 
     public string AppConnectionString { get; private set; } = "";
+
+    /// <summary>The server administrator's connection (master); tests create their own databases.</summary>
+    public string AdminConnectionString => _container.GetConnectionString();
+
+    /// <summary>Password of the server login <c>shop_app</c>.</summary>
+    public static string AppLoginPassword => AppPassword;
 
     public async Task InitializeAsync()
     {
@@ -217,6 +273,42 @@ public class SqlServerIntegrationTests : IClassFixture<SqlServerFixture>
             $"INSERT INTO [Orders] ([TenantId], [Total]) VALUES ({Guid.NewGuid()}, 1)"));
 
         Assert.Equal(33504, ex.Number);   // violation of a BLOCK PREDICATE
+    }
+
+    [Fact]
+    public async Task Ambient_TransactionScope_reads_and_writes_with_the_tenant()
+    {
+        var a = TenantId.New();
+        await using (var db = ContextFor(TenantId.New())) { db.Orders.Add(new Order { Total = 1 }); await db.SaveChangesAsync(); }
+
+        // SqlClient enlists the connection when EF opens it; the session command runs in the
+        // ambient transaction without an assigned DbTransaction
+        using (var scope = new System.Transactions.TransactionScope(
+                   System.Transactions.TransactionScopeAsyncFlowOption.Enabled))
+        {
+            await using var db = ContextFor(a);
+            Assert.Empty(await db.Orders.ToListAsync());
+            db.Orders.Add(new Order { Total = 2 });
+            await db.SaveChangesAsync();
+            scope.Complete();
+        }
+
+        await using var check = ContextFor(a);
+        Assert.Single(await check.Orders.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Connection_opened_by_BeginTransaction_gets_the_tenant()
+    {
+        var a = TenantId.New();
+        await using (var db = ContextFor(a)) { db.Orders.Add(new Order { Total = 1 }); await db.SaveChangesAsync(); }
+
+        await using var context = ContextFor(a);
+        await using var transaction = await context.Database.BeginTransactionAsync();
+        var orders = await context.Orders.ToListAsync();
+
+        Assert.Single(orders);
+        Assert.Equal(a, orders[0].TenantId);
     }
 
     [Fact]

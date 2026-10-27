@@ -10,7 +10,7 @@
   zwei Beispiel-Apps, Unit- und Integrationstests \\
   Geprüft & Der Beispielcode wird gegen EF Core 10 und Npgsql 10 gebaut; Unit- und
   Integrationstests laufen gegen echtes PostgreSQL und SQL Server. \\
-  Aufbau & 9 Teile, 42 Kapitel, 4 Anhänge \\
+  Aufbau & 9 Teile, 45 Kapitel, 4 Anhänge \\
   Lizenz & MIT-Lizenz, © 2026 guenni81. Frei nutzbar, kopierbar, veränderbar und
   weitergebbar, auch kommerziell; siehe letzte Seite. \\
 \end{handbookmeta}
@@ -28,8 +28,10 @@ Dieses Buch erklärt jeden dieser Bausteine in zwei Schichten. Zuerst kommt das
 \textbf{Prinzip}: Wie funktioniert der Mechanismus in EF Core, welche Varianten gibt es,
 worauf muss man achten? Danach folgt die \textbf{Umsetzung} im Beispiel-Plugin, mit dem
 Code, der auch im Repository steht. Die Kapitel bauen aufeinander auf, lassen sich aber auch
-einzeln als Nachschlagewerk lesen. Die Codeauszüge dieser deutschen Fassung haben deutsche
-Kommentare; im Repository sind Kommentare und Meldungen englisch, der Code ist sonst
+einzeln als Nachschlagewerk lesen. Wer mit einem konkreten Problem kommt und den passenden
+Mechanismus sucht, beginnt am besten mit der Entscheidungshilfe in
+Kapitel~\ref{ch:choosing-the-right-extension-point}. Die Codeauszüge dieser deutschen
+Fassung haben deutsche Kommentare; im Repository sind Kommentare und Meldungen englisch, der Code ist sonst
 identisch. Das Label jedes Auszugs nennt die Datei.
 
 \begin{datatable}{H{0.50}H{1.50}}
@@ -43,10 +45,14 @@ identisch. Das Label jedes Auszugs nennt die Datei.
   \tablerule
   \textcolor[HTML]{1D4E89}{\textbf{Hinweis}} & Hintergrund, Einordnung und Verweise auf
   andere Kapitel. \\
+  \tablerule
+  \textcolor[HTML]{B3261E}{\textbf{Was passiert, wenn …?}} & Ein plausibler Fehler: was man
+  beobachtet, warum es passiert, wie es richtig geht und welcher Test ihn absichert. Der
+  falsche Code steht direkt davor. \\
 \end{datatable}
 
 \begin{note}[Öffentliche und interne APIs]
-  Einige APIs, die Plugins brauchen, liegen in Namespaces mit \code{.\allowbreak{}Internal}.
+  Einige APIs, die Plugins brauchen, liegen in Namespaces mit \code{.Internal}.
   EF Core nennt sie „pubternal“: öffentlich sichtbar, aber ohne Kompatibilitätsgarantie. Das
   Buch kennzeichnet diese Stellen und erklärt in
   Kapitel~\ref{ch:versioning-and-compatibility}, wie man damit umgeht.
@@ -56,13 +62,15 @@ identisch. Das Label jedes Auszugs nennt die Datei.
 
 % ============================================================
 \setpartpreamble{\partintro
-  {Was ein Plugin ist, wie EF Core intern aufgebaut ist und welches Szenario uns durch das
-  Buch begleitet.}
+  {Was ein Plugin ist, wie EF Core intern aufgebaut ist, welches Szenario uns durch das
+  Buch begleitet und welcher Erweiterungspunkt zu welchem Problem passt.}
   {
     \item Kapitel~\ref{ch:what-is-an-ef-core}: Was ist ein EF-Core-Plugin?
     \item Kapitel~\ref{ch:ef-core-s-architecture-from}: Die Architektur von EF Core aus
     Plugin-Sicht
     \item Kapitel~\ref{ch:the-sample-scenario}: Das Beispielszenario
+    \item Kapitel~\ref{ch:choosing-the-right-extension-point}: Den passenden
+    Erweiterungspunkt finden
   }}
 \part{Grundlagen}\label{part:I}
 
@@ -106,6 +114,41 @@ Erfahrung mit PostgreSQL hilft beim Beispiel, aber jedes SQL-Konstrukt wird beim
 Auftreten erklärt. Kapitel~\ref{ch:ef-core-s-architecture-from} endet mit einem
 vollständigen Mini-Plugin, das alle Bausteine auf einer Seite zeigt, bevor das große
 Beispiel beginnt.
+
+\section{Zwei Lesepfade}\label{sec:reading-paths}
+
+Das Buch ist Lehrbuch und Nachschlagewerk zugleich. Zwei Wege führen gezielt hindurch; beide
+enden mit einem Ergebnis, das sich überprüfen lässt:
+
+\begin{datatable}{H{0.62}H{1.19}H{1.19}}
+  & \textbf{Mein erstes Plugin} & \textbf{Referenz für Fortgeschrittene} \\
+  \tablehead
+  Vorkenntnisse & EF Core als Anwender: \code{Db\allowbreak{}Context}, Migrationen, LINQ,
+  Dependency Injection & Der erste Pfad oder ein eigenes Plugin in Betrieb \\
+  \tablerule
+  Kapitel & \ref{ch:what-is-an-ef-core}, \ref{ch:ef-core-s-architecture-from} (mit dem
+  Mini-Plugin), \ref{ch:the-sample-scenario}, \ref{ch:the-options-extension},
+  \ref{ch:registering-services}, \ref{ch:public-api-and-integration-into},
+  \ref{ch:conventions}, \ref{ch:translating-methods-and-members}, \ref{ch:interceptors},
+  \ref{ch:test-strategy}, \ref{ch:packaging-and-documentation} &
+  \ref{ch:choosing-the-right-extension-point} und Anhang~\ref{app:A} als Einstieg, dann nach
+  Bedarf \ref{ch:state-lifetimes-and-thread-safety}, \ref{ch:the-query-pipeline},
+  \ref{ch:materialization-from-rows-to-objects}, \ref{ch:how-migrations-work},
+  \ref{ch:versioning-and-compatibility}, \ref{ch:row-level-security-in-production}--%
+  \ref{ch:retrofitting-and-operating} und Teil~\ref{part:IX} \\
+  \tablerule
+  Ergebnis & Ein eigenes Plugin mit Options-Extension, einer Convention, einem Translator und
+  einem Interceptor, das als Paket baut & Eine begründete Entscheidung für einen
+  Erweiterungspunkt: Lebensdauer, Kombinierbarkeit, API-Status und Upgrade-Risiko \\
+  \tablerule
+  Überprüfbar durch & \code{Minimal\allowbreak{}Plugin\allowbreak{}Tests} als Vorlage für die
+  eigenen Tests, dazu der Verbrauchertest (Seite~\pageref{sec:consumer-test}) auf das eigene
+  Paket übertragen & Die Kompatibilitätsmatrix in Kapitel~\ref{ch:registering-services}, die
+  Prüfung der Lebensdauern gegen EFs Service-Tabellen und die Checkliste für das Upgrade \\
+\end{datatable}
+
+Die Übungen in Anhang~\ref{app:E} gehören zu beiden Pfaden: Jede knüpft an einen Test des
+Beispiels an, mit dem sich die Lösung nachprüfen lässt.
 
 \section{Was ein Plugin der Stufe 3 leisten kann}
 
@@ -158,7 +201,8 @@ Jeder EF-Dienst hat eine feste Lebensdauer. \textbf{Singleton} heißt hier: einm
 internem Service Provider, nicht pro Anwendung. \textbf{Scoped} heißt: einmal pro
 Context-Instanz. Ein Singleton darf keinen Scoped-Dienst halten, und ein Dienst, der pro
 Context unterschiedliche Daten braucht, darf kein Singleton sein. Anhang~\ref{app:A} listet
-die Lebensdauern aller Erweiterungspunkte.
+die Lebensdauern aller Erweiterungspunkte; Kapitel~\ref{ch:state-lifetimes-and-thread-safety} fasst zusammen,
+welcher Zustand wohin gehört.
 
 \section{Das Dependencies-Muster}
 
@@ -169,6 +213,7 @@ Wer von einem EF-Dienst erbt, übernimmt dieses Objekt im Konstruktor und reicht
 Neue Abhängigkeiten fügt EF Core dem Objekt hinzu, ohne Konstruktoren zu brechen. Für
 Plugins ist das ein Segen: Abgeleitete Dienste bleiben über Minor-Versionen kompatibel.
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Migrations/Internal/TenancyMigrationsSqlGenerator.cs
 \begin{sourcecode}[Migrations/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}Kopf)]{csharp}
 public class TenancyMigrationsSqlGenerator : NpgsqlMigrationsSqlGenerator
 {
@@ -210,6 +255,10 @@ gewinnen.
   bleibt.
 \end{important}
 
+Für jeden einzelnen Erweiterungspunkt ordnet
+Kapitel~\ref{ch:choosing-the-right-extension-point} ein, ob er ein Plugin-Interface oder ein Einzeldienst ist und welche einfachere Alternative
+zuerst in Frage kommt.
+
 \section{Zum Aufwärmen: ein vollständiges Plugin in fünf Teilen}
 
 Vor dem großen Beispiel kommt hier das kleinste Plugin, das trotzdem vollständig ist. Es
@@ -217,6 +266,7 @@ macht PostgreSQLs \code{reverse(\allowbreak{})} in LINQ als
 \code{EF.\allowbreak{}Functions.\allowbreak{}Reverse(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}
 verfügbar. Jedes spätere Kapitel vertieft einen seiner fünf Teile:
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/MinimalPluginTests.cs
 \begin{sourcecode}[tests/\allowbreak{}Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Tests/\allowbreak{}Minimal\allowbreak{}Plugin\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}1/\allowbreak{}2,\allowbreak{} gekürzt)]{csharp}
 // 1. Die Funktion, die Anwender in LINQ aufrufen; sie wird nie ausgeführt
 public static class ReverseDbFunctionsExtensions
@@ -253,6 +303,7 @@ public class ReverseTranslatorPlugin : IMethodCallTranslatorPlugin
 }
 \end{sourcecode}
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/MinimalPluginTests.cs
 \begin{sourcecode}[tests/\allowbreak{}Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Tests/\allowbreak{}Minimal\allowbreak{}Plugin\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}2/\allowbreak{}2,\allowbreak{} gekürzt)]{csharp}
 // 4. Die Options-Extension registriert das Plugin im internen Provider
 //    (Kapitel „Die Options-Extension“ und „Dienste registrieren“)
@@ -305,9 +356,13 @@ besteht aus genau diesen Teilen, nur aus sehr viel mehr davon.
 
 Das Beispiel-Plugin \textbf{Acme.EntityFrameworkCore.Tenancy} macht EF Core mit PostgreSQL
 mandantenfähig. Die Trennung der Mandanten erzwingt die Datenbank selbst über \textbf{Row
-Level Security} (RLS): Jede Tabelle bekommt eine Policy, die nur Zeilen des Mandanten zeigt,
-dessen ID in der aktuellen Datenbank-Session gesetzt ist. Selbst eine fehlerhafte Abfrage
-oder rohes SQL kann so keine fremden Daten lesen.
+Level Security} (RLS): Jede Tabelle mit Mandantendaten bekommt eine Policy, die nur Zeilen des
+Mandanten zeigt, dessen ID in der aktuellen Datenbank-Session gesetzt ist. Abbildungen, bei
+denen eine solche Tabelle keine Mandantenspalte hätte, lehnt das Plugin beim Modellbau ab
+(Seite~\pageref{sec:supported-table-mappings}). Selbst eine fehlerhafte LINQ-Abfrage oder
+rohes SQL sieht so nur die Zeilen des gesetzten Mandanten. Wer allerdings beliebiges SQL unter
+der Anwendungsrolle ausführen kann, kann auch das Session-Setting ändern; diese Grenze
+behandelt Kapitel~\ref{ch:row-level-security-in-production}.
 
 Aus Sicht des Anwenders sieht das so aus:
 
@@ -346,7 +401,7 @@ Damit das funktioniert, nutzt das Plugin jeden Erweiterungspunkt dieses Buchs:
   \code{tenant\allowbreak{}Id.\allowbreak{}Is\allowbreak{}Empty} in LINQ & Member-Translator
   & \ref{ch:translating-methods-and-members} \\
   \tablerule
-  RLS für alle \code{ITenant\allowbreak{}Owned}-Entitäten & Convention mit Index und
+  RLS für alle Tabellen mit \code{ITenant\allowbreak{}Owned}-Entitäten & Convention mit Index und
   optionalem Query-Filter & \ref{ch:conventions} \\
   \tablerule
   Fluent API, Attribut \code{[No\allowbreak{}Tenant\allowbreak{}Isolation]} & Annotations,
@@ -423,3 +478,556 @@ Acme.EntityFrameworkCore.Tenancy.SqlServer     zweiter Provider
   Migrations, Design). Wer EF Core kennt, findet sich sofort zurecht, und beim Nachschlagen
   im EF-Quellcode weiß man, wo das Gegenstück liegt.
 \end{tip}
+
+% ------------------------------------------------------------
+\chapter{Den passenden Erweiterungspunkt finden}\label{ch:choosing-the-right-extension-point}
+
+Die Teile dieses Buchs folgen der Architektur von EF Core: Infrastruktur, Modell, Abfragen,
+Laufzeit, Migrations. Ein konkretes Problem folgt ihr selten. „Jede Zeile gehört einem
+Mandanten“ lässt sich mit einem Query-Filter, einem SaveChanges-Interceptor, einer
+Convention oder mit Policies aus Migrationen lösen, und jede dieser Lösungen hat einen
+anderen Preis und andere Lücken. Das Beispiel-Plugin aus
+Kapitel~\ref{ch:the-sample-scenario} kombiniert deshalb mehrere davon.
+
+Dieses Kapitel geht vom Problem aus und führt zum passenden Mechanismus. Es ist eine
+Landkarte, keine Referenz: Wie ein Mechanismus funktioniert, steht
+im genannten Kapitel. Den umgekehrten Weg geht Anhang~\ref{app:A}: Er führt vom
+Mechanismus zu Lebensdauer, Kardinalität, API-Status, Registrierung und Kombinierbarkeit. Wer das Buch zum ersten Mal liest, überfliegt das Kapitel und kommt mit
+einem konkreten Problem zurück.
+
+\section{Die geringste Eingriffstiefe}
+
+Die wichtigste Regel ist dieselbe wie in „Erweitern oder ersetzen?“
+(Kapitel~\ref{ch:ef-core-s-architecture-from}), nur weiter gefasst:
+\textbf{Die geringste Eingriffstiefe wählen, die das Problem vollständig löst.} Jede Stufe
+der folgenden Tabelle kostet mehr Kompatibilität als die vorherige:
+
+\begin{datatable}{H{0.62}H{1.28}H{1.10}}
+  \textbf{Eingriffstiefe} & \textbf{Mittel} & \textbf{Preis} \\
+  \tablehead
+  Anwendung & \code{On\allowbreak{}Model\allowbreak{}Creating},
+  \code{Configure\allowbreak{}Conventions}, \code{Has\allowbreak{}Db\allowbreak{}Function},
+  \code{migration\allowbreak{}Builder.\allowbreak{}Sql(\allowbreak{})},
+  \code{Save\allowbreak{}Changes} überschreiben & Kein Plugin; jede Anwendung wiederholt den
+  Code \\
+  \tablerule
+  Metadaten & Annotations und Fluent-API-Erweiterungen & Wirken erst, wenn ein Dienst sie
+  liest \\
+  \tablerule
+  Plugin-Interface & Conventions, Translator-, Type-Mapping- und Filter-Plugins,
+  Interceptors & Mehrfach registrierbar, verträgt sich mit anderen Plugins \\
+  \tablerule
+  Dekorieren & Einen Einzeldienst umhüllen und an ihn delegieren & Nur, wenn die öffentliche
+  Schnittstelle genügt; die Aktivierungsreihenfolge zählt \\
+  \tablerule
+  Ersetzen & Einen Einzeldienst durch eine Ableitung der Provider-Klasse ersetzen & Ein
+  Gewinner pro Context; bindet an den Provider und oft an interne API \\
+  \tablerule
+  Tiefer Eingriff & Eigene SQL-Knoten, eigener Differ, Postprocessor & Mehrere Einzeldienste
+  zugleich; mit ähnlichen Plugins kaum kombinierbar \\
+\end{datatable}
+
+„Vollständig“ ist dabei wörtlich gemeint. Ein Query-Filter ist einfacher als Row Level
+Security, schützt aber nicht vor rohem SQL (Kapitel~\ref{ch:bulk-operations-and-the-limits}).
+Die einfachere Lösung gewinnt nur, wenn sie dieselbe Garantie gibt. Ob sie das tut, klären
+fünf Fragen:
+
+\begin{datatable}{H{0.70}H{1.30}}
+  \textbf{Frage} & \textbf{Warum sie zählt} \\
+  \tablehead
+  Wann läuft der Mechanismus? & Beim Modellbau einmal pro internem Provider, bei der
+  Übersetzung einmal pro Abfrageform, bei der Ausführung jedes Mal, zur Design-Zeit nur in
+  \code{dotnet ef}. Daraus folgt, welchen Zustand er verwenden darf
+  (Kapitel~\ref{ch:plugin-performance}). \\
+  \tablerule
+  Gibt es eine einfachere Alternative? & Die geringere Eingriffstiefe gewinnt, wenn sie
+  dieselbe Garantie gibt. \\
+  \tablerule
+  Öffentlich oder intern? & Interne API (EF1001) kann sich in jeder Minor-Version ändern
+  (Kapitel~\ref{ch:versioning-and-compatibility}). \\
+  \tablerule
+  Mehrfach oder einzeln? & Mehrfach registrierbare Dienste vertragen sich mit anderen
+  Plugins; bei einem Einzeldienst gewinnt genau einer. \\
+  \tablerule
+  Welche Lebensdauer? & Ein Singleton darf weder Scoped-Dienste halten noch Daten pro
+  Context; ein Scoped-Dienst darf beides (Kapitel~\ref{ch:state-lifetimes-and-thread-safety}). \\
+\end{datatable}
+
+\section{Der zuständige Bereich}
+
+Der erste Schritt ist fast immer die Frage, \emph{wo} das Problem liegt. Der folgende
+Entscheidungsbaum führt zum zuständigen Bereich; jeder Bereich hat danach einen eigenen
+Abschnitt mit einer Tabelle.
+
+\begin{decisiontree}
+  \decision{Soll der Anwender das Plugin einschalten, einstellen oder mit Diensten seiner
+    Anwendung verbinden?}
+    {Options-Extension, Dienste, Interceptors aus der Anwendung (Seite~\pageref{sec:decide-configuration})}
+  \decision{Soll das Modell Metadaten tragen, sich automatisch anpassen oder geprüft
+    werden?}
+    {Annotations, Fluent API, Conventions, Validierung (Seite~\pageref{sec:decide-model})}
+  \decision{Geht es um einen neuen Spaltentyp oder um Werte, die EF umwandelt oder erzeugt?}
+    {Type Mapping, Value Converter, Value Generation (Seite~\pageref{sec:decide-model})}
+  \decision{Soll sich das SQL einer LINQ-Abfrage ändern oder das geladene Objekt?}
+    {Translators, Filter, Query-Interceptor, Materialisierung
+    (Seite~\pageref{sec:decide-queries}, Kapitel~\ref{ch:materialization-from-rows-to-objects})}
+  \decision{Soll beim Speichern, Verbinden oder Ausführen eingegriffen werden?}
+    {SaveChanges-, Connection-, Command- und Transaction-Interceptor, Update-Pipeline
+    (Seite~\pageref{sec:decide-runtime})}
+  \decision{Geht es um Schema-Änderungen, Snapshots, Compiled Models oder Scaffolding?}
+    {Migrations und Design-Time-Dienste (Seite~\pageref{sec:decide-tooling})}
+  \decisionend{Kein Eingriff in EF nötig: eine Hilfsmethode oder Code in der Anwendung
+    (Stufe~1 aus Kapitel~\ref{ch:what-is-an-ef-core}).}
+\end{decisiontree}
+
+Jede Zeile der Bereichstabellen beschreibt ein Problem, den Mechanismus dafür, die
+einfachere Alternative, die zuerst geprüft werden sollte, und die typische Fehlentscheidung.
+Unter dem Mechanismus stehen in grauer Schrift seine Eigenschaften:
+
+\begin{datatable}{H{0.55}H{1.45}}
+  \textbf{Angabe} & \textbf{Bedeutung} \\
+  \tablehead
+  öffentlich & Kommt mit der öffentlichen API von EF Core aus. \\
+  \tablerule
+  Provider-Basis & Erbt von der Implementierung des Providers. Bindet an diesen Provider;
+  bei Npgsql liegen die Basisklassen oder ihre Abhängigkeiten meist in
+  \code{.Internal}-Namespaces (EF1001). \\
+  \tablerule
+  pubternal & Schon EFs eigener Typ liegt in einem \code{.Internal}-Namespace.
+  \\
+  \tablerule
+  mehrfach, einzeln & Kardinalität laut den Service-Tabellen von EF Core 10
+  (Anhang~\ref{app:A}). \\
+  \tablerule
+  kein Dienst & Wirkt über Modell oder Options, nicht über den internen Service Provider. \\
+  \tablerule
+  Singleton, Scoped & Lebensdauer im internen Provider; mit „Design-Time“ im Service
+  Provider von \code{dotnet ef} (Kapitel~\ref{ch:design-time-services}). \\
+\end{datatable}
+
+\section{Konfiguration und Dienste}\phantomsection\label{sec:decide-configuration}
+
+Jedes Plugin der Stufe~3 beginnt mit einer Options-Extension. Die eigentliche Entscheidung
+fällt bei jedem einzelnen Dienst: Wie kommt er in den internen Provider? Der Baum folgt der
+Rangfolge aus „Erweitern oder ersetzen?“ (Kapitel~\ref{ch:ef-core-s-architecture-from}):
+
+\begin{decisiontree}
+  \decision{Gibt es für den Zweck ein Plugin-Interface oder einen Interceptor?}
+    {\code{Try\allowbreak{}Add} über den Services-Builder bzw.
+    \code{Add\allowbreak{}Interceptors}: mehrfach, kombinierbar}
+  \decision{Ist es ein eigener Dienst, den EF nicht kennt?}
+    {\code{Try\allowbreak{}Add\allowbreak{}Provider\allowbreak{}Specific\allowbreak{}Services};
+    Lebensdauer selbst wählen}
+  \decision{Genügt die öffentliche Schnittstelle des Einzeldienstes, um das Ergebnis zu
+    ergänzen?}
+    {Dekorieren: vorhandene Registrierung umhüllen, ihre Lebensdauer übernehmen}
+  \decisionend{Ersetzen mit \code{Replace}: von der Provider-Klasse erben, die Logik
+    öffentlich und virtuell anbieten, die Ersetzung dokumentieren.}
+\end{decisiontree}
+
+\begin{datatable}{H{1.35}H{1.05}H{1.25}H{0.35}}
+  \textbf{Problem und Mechanismus} & \textbf{Zuerst prüfen} & \textbf{Typische
+  Fehlentscheidung} & \textbf{Kap.} \\
+  \tablehead
+  \textbf{Das Plugin soll sich einschalten und einstellen lassen.}
+  \code{IDb\allowbreak{}Context\allowbreak{}Options\allowbreak{}Extension},
+  \code{Use}-Methode, Options-Builder
+  \cellmeta{öffentlich · kein Dienst, Teil der Options} &
+  Braucht das Plugin eigene Dienste? Reine Modellkonfiguration kommt mit einer
+  Fluent-API-Erweiterung aus (Stufe~2). &
+  Werte, die pro Context wechseln (Mandant, Benutzer), in Options oder Hash legen; die
+  Extension nach dem Hinzufügen verändern. &
+  \ref{ch:the-options-extension}, \ref{ch:public-api-and-integration-into} \\
+  \tablerule
+  \textbf{Ein Singleton-Dienst braucht die Einstellungen.}
+  \code{ISingleton\allowbreak{}Options}
+  \cellmeta{öffentlich · mehrfach · Singleton} &
+  Scoped-Dienste können \code{IDb\allowbreak{}Context\allowbreak{}Options} direkt
+  injizieren. &
+  Nur unter dem eigenen Interface registrieren: Dann initialisiert EF die Instanz nie. &
+  \ref{ch:registering-services} \\
+  \tablerule
+  \textbf{Das Plugin bringt eigene Dienste mit.} \code{Apply\allowbreak{}Services} mit dem
+  Services-Builder
+  \cellmeta{öffentlich · Lebensdauer aus EFs Tabelle oder selbst gewählt} &
+  Der Entscheidungsbaum oben: Plugin-Interface vor Ersetzen. &
+  EF-Dienste mit \code{Add\allowbreak{}Singleton} und falscher Lebensdauer registrieren;
+  Plugin-Dienste in den App-Container statt in den internen Provider. &
+  \ref{ch:registering-services} \\
+  \tablerule
+  \textbf{Ein Einzeldienst soll zusätzlich etwas tun.} Decorator um die registrierte
+  Implementierung
+  \cellmeta{öffentlich · einzeln · Lebensdauer des Originals} &
+  Gibt es ein Plugin-Interface für denselben Zweck? &
+  \code{Replace}, obwohl die öffentliche Schnittstelle genügt; den Decorator vor dem
+  Provider aktivieren. &
+  \ref{ch:registering-services} \\
+  \tablerule
+  \textbf{Das Plugin braucht Dienste der Anwendung (Mandant, Benutzer, Uhr).}
+  Interceptor-Instanzen aus dem App-Container über \code{Add\allowbreak{}Interceptors}
+  \cellmeta{öffentlich · mehrfach · Scoped bzw. Singleton} &
+  Steht der Wert beim Konfigurieren fest? Dann genügt eine Option. &
+  App-Dienste im internen Provider auflösen wollen; Scoped-Interceptors mit
+  DbContext-Pooling, die den Mandanten der ersten Anfrage behalten. &
+  \ref{ch:public-api-and-integration-into}, \ref{ch:using-the-plugin-in-asp} \\
+\end{datatable}
+
+\section{Modell, Typen und Werte}\phantomsection\label{sec:decide-model}
+
+Alles in diesem Bereich läuft beim Modellbau, also einmal pro internem Provider, und landet
+im gecachten Modell. Laufzeitwerte haben hier deshalb nichts zu suchen.
+
+\begin{datatable}{H{1.35}H{1.05}H{1.25}H{0.35}}
+  \textbf{Problem und Mechanismus} & \textbf{Zuerst prüfen} & \textbf{Typische
+  Fehlentscheidung} & \textbf{Kap.} \\
+  \tablehead
+  \textbf{Das Plugin muss sich Konfiguration am Modell merken.} Annotations mit eigenem
+  Präfix
+  \cellmeta{öffentlich · kein Dienst} &
+  Deckt eine vorhandene Konfiguration von EF oder Provider den Bedarf (Kommentar,
+  Check-Constraint, Index-Methode)? &
+  Objekte statt einfacher Werte speichern; Default-Werte speichern, was leere Migrationen
+  erzeugt. &
+  \ref{ch:annotations-and-fluent-api} \\
+  \tablerule
+  \textbf{Anwender sollen das Plugin pro Entität oder Property konfigurieren.}
+  Fluent-API-Erweiterung, Convention-Builder-Überladung, Attribut mit Attribut-Convention
+  \cellmeta{öffentlich · kein Dienst} &
+  Genügt eine globale Einstellung im Options-Builder? &
+  Die Logik in die generische statt in die nicht-generische Variante legen (der Snapshot
+  nutzt diese); in Conventions an den Metadaten statt über den Convention-Builder
+  schreiben, der als einziger stärkere Konfigurationsquellen respektiert. &
+  \ref{ch:annotations-and-fluent-api}, \ref{ch:conventions},
+  \ref{ch:property-level-fluent-api-and} \\
+  \tablerule
+  \textbf{Das Modell soll sich automatisch anpassen.} Convention über
+  \code{IConvention\allowbreak{}Set\allowbreak{}Plugin}
+  \cellmeta{öffentlich · mehrfach · Scoped} &
+  Betrifft es nur eine Anwendung? Dann genügen \code{On\allowbreak{}Model\allowbreak{}Creating}
+  oder \code{Configure\allowbreak{}Conventions}. &
+  Eine reaktive Convention, die von Namen oder Basistypen abhängt, statt
+  \code{Model\allowbreak{}Finalizing}; \code{IModel\allowbreak{}Customizer} ersetzen
+  (einzeln, Singleton). &
+  \ref{ch:conventions} \\
+  \tablerule
+  \textbf{Fehlkonfiguration soll früh auffallen.}
+  \code{IModel\allowbreak{}Finalized\allowbreak{}Convention}, Warnungen mit eigenen
+  Event-IDs
+  \cellmeta{öffentlich · über das Convention-Set-Plugin} &
+  Kann schon die Fluent API die Eingabe prüfen (wie der Policy-Builder)? &
+  \code{IModel\allowbreak{}Validator} ersetzen (einzeln, Singleton, Provider-Basis);
+  Fragwürdiges als Exception statt als Warnung melden. &
+  \ref{ch:model-validation}, \ref{ch:diagnostics-and-logging} \\
+  \tablerule
+  \textbf{Das Modell hängt von Laufzeitdaten ab (Schema pro Mandant).}
+  \code{IModel\allowbreak{}Cache\allowbreak{}Key\allowbreak{}Factory}
+  \cellmeta{öffentlich · einzeln · Singleton} &
+  Lässt sich der Wert zur Laufzeit in SQL auswerten (Parameter, Session-Setting)? Dann
+  bleibt es bei einem Modell. &
+  Laufzeitdaten in den Options-Hash legen (ein interner Provider pro Wert); ungeprüfte
+  Eingaben als Schlüssel. &
+  \ref{ch:models-per-runtime-context} \\
+  \tablerule
+  \textbf{Laufzeitcode braucht Informationen aus dem Modell.} Annotation mit einfachem Wert,
+  die im Laufzeitmodell bleibt (Laufzeit-Annotation); für abgeleitete, zwischengespeicherte
+  Werte EFs Runtime-Annotation-API
+  (\code{Get\allowbreak{}Or\allowbreak{}Add\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Value})
+  \cellmeta{öffentlich · kein Dienst} &
+  Nichts weiter: Einfache Werte übernimmt EF selbst ins Laufzeit- und Compiled Model. &
+  Einen eigenen Code-Generator schreiben, „damit die Annotation erhalten bleibt“;
+  abgeleitete Werte bei jedem Zugriff neu berechnen. &
+  \ref{ch:property-level-fluent-api-and} \\
+  \tablerule
+  \textbf{Ein eigener CLR-Typ soll ohne Konfiguration als Spalte funktionieren.}
+  \code{IRelational\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source\allowbreak{}Plugin}
+  mit eigenem \code{Relational\allowbreak{}Type\allowbreak{}Mapping}
+  \cellmeta{öffentlich · mehrfach · Singleton} &
+  Reicht ein Value Converter, den Anwender per \code{Has\allowbreak{}Conversion} oder
+  \code{Configure\allowbreak{}Conventions} setzen? &
+  \code{IRelational\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source} ersetzen
+  (einzeln, Provider-Basis); \code{Clone} oder die statische \code{Default}-Property
+  vergessen. &
+  \ref{ch:type-mappings-and-value-converters} \\
+  \tablerule
+  \textbf{Werte sollen beim Lesen und Schreiben umgewandelt werden.}
+  \code{Value\allowbreak{}Converter}
+  \cellmeta{öffentlich · kein Dienst} &
+  Soll der Typ überall gelten, eigene Literale oder einen eigenen Spaltentyp haben? Dann
+  gehört der Konverter in ein Type Mapping (Zeile oben). &
+  Erwarten, dass Member des Modelltyps in Abfragen übersetzt werden, obwohl die Datenbank
+  nur den Providerwert kennt; pro Mapping eine neue Konverter-Instanz statt einer
+  gemeinsamen. &
+  \ref{ch:type-mappings-and-value-converters}, \ref{ch:compiled-models-trimming-and-nativeaot} \\
+  \tablerule
+  \textbf{EF soll Werte für neue Entitäten erzeugen.} \code{Value\allowbreak{}Generator}
+  mit Factory, gesetzt von einer Convention per
+  \code{Has\allowbreak{}Value\allowbreak{}Generator\allowbreak{}Factory(\allowbreak{}Type)}
+  \cellmeta{öffentlich · kein Dienst} &
+  Kann die Datenbank den Wert erzeugen (Identity, Sequenz,
+  \code{Has\allowbreak{}Default\allowbreak{}Value\allowbreak{}Sql})? &
+  \code{Has\allowbreak{}Value\allowbreak{}Generator} statt der Factory-Variante (Compiled
+  Models brechen ab); \code{IValue\allowbreak{}Generator\allowbreak{}Selector} ersetzen
+  (einzeln, Scoped, Provider-Basis). &
+  \ref{ch:value-generation} \\
+\end{datatable}
+
+\section{Abfragen}\phantomsection\label{sec:decide-queries}
+
+An welcher Stufe der Pipeline eine gewünschte Änderung sitzt, zeigt die Landkarte in
+Kapitel~\ref{ch:the-query-pipeline}; dieser Abschnitt wählt dann den Mechanismus. Die
+meisten Abfrage-Erweiterungen laufen einmal pro Abfrageform, und das Ergebnis wird gecacht.
+Werte, die sich pro Ausführung ändern, gehören deshalb als Parameter oder Datenbankfunktion
+ins SQL, nie als Konstante. Der folgende Baum
+ist nach steigender Eingriffstiefe geordnet; eine Frage betrifft jede eigene Funktion und
+steht deshalb vor ihm:
+
+\begin{important}[Methoden ohne Datenbezug]
+  Hat eine eigene Methode kein Argument, das auf eine Spalte zeigt
+  (\code{Current\allowbreak{}Tenant(\allowbreak{})}, Session- oder Zeitfunktionen), braucht
+  sie zusätzlich zum Translator ein
+  \code{IEvaluatable\allowbreak{}Expression\allowbreak{}Filter\allowbreak{}Plugin}. Sonst
+  wertet EF sie vorab in .NET aus.
+\end{important}
+
+\begin{decisiontree}
+  \decision{Braucht nur eine Anwendung eine Datenbankfunktion in LINQ?}
+    {\code{Has\allowbreak{}Db\allowbreak{}Function} bzw. \code{[Db\allowbreak{}Function]}
+    im Modell der Anwendung; kein Plugin}
+  \decision{Soll ein Methodenaufruf zu einer SQL-Funktion werden?}
+    {\code{EF.\allowbreak{}Functions}-Methode und
+    \code{IMethod\allowbreak{}Call\allowbreak{}Translator\allowbreak{}Plugin}}
+  \decision{Soll eine Property oder ein Feld übersetzt werden?}
+    {\code{IMember\allowbreak{}Translator\allowbreak{}Plugin}}
+  \decision{Soll über mehrere Zeilen aggregiert werden (\code{Group\allowbreak{}By})?}
+    {\code{IAggregate\allowbreak{}Method\allowbreak{}Call\allowbreak{}Translator\allowbreak{}Plugin}}
+  \decision{Ist die SQL-Syntax kein Funktionsaufruf, oder weicht die NULL-Semantik ab?}
+    {Eigene \code{Sql\allowbreak{}Expression}, SQL-Generator und Nullability-Prozessor:
+    zwei Einzeldienste ersetzen}
+  \decision{Soll der LINQ-Baum vor der Übersetzung umgeschrieben werden?}
+    {\code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor}}
+  \decision{Soll das geladene Objekt erzeugt, ergänzt oder geprüft werden?}
+    {\code{IMaterialization\allowbreak{}Interceptor}}
+  \decisionend{Letzter Ausweg: den übersetzten Baum über
+    \code{IQuery\allowbreak{}Translation\allowbreak{}Postprocessor\allowbreak{}Factory}
+    anpassen (Einzeldienst, Provider-Basis).}
+\end{decisiontree}
+
+\begin{datatable}{H{1.35}H{1.05}H{1.25}H{0.35}}
+  \textbf{Problem und Mechanismus} & \textbf{Zuerst prüfen} & \textbf{Typische
+  Fehlentscheidung} & \textbf{Kap.} \\
+  \tablehead
+  \textbf{Eine Datenbankfunktion soll in LINQ aufrufbar sein.}
+  \code{EF.\allowbreak{}Functions}-Methode und
+  \code{IMethod\allowbreak{}Call\allowbreak{}Translator\allowbreak{}Plugin}
+  \cellmeta{öffentlich · mehrfach · Scoped} &
+  \code{Has\allowbreak{}Db\allowbreak{}Function} in der Anwendung, bei Bedarf mit
+  \code{Has\allowbreak{}Translation}. &
+  Für fremde Methoden eine Exception werfen statt \code{null} zurückgeben; Laufzeitwerte als
+  Konstante einsetzen; Nullability falsch angeben. &
+  \ref{ch:translating-methods-and-members} \\
+  \tablerule
+  \textbf{Eine Property oder ein Feld eines eigenen Typs soll übersetzt werden.}
+  \code{IMember\allowbreak{}Translator\allowbreak{}Plugin}
+  \cellmeta{öffentlich · mehrfach · Scoped} &
+  Lässt sich der Wert als gemappte oder berechnete Spalte abbilden? &
+  Konstanten ohne das Type Mapping der Spalte erzeugen; dann entsteht ein falsches Literal.
+  & \ref{ch:translating-methods-and-members} \\
+  \tablerule
+  \textbf{Die Funktion hat kein Argument mit Datenbezug.}
+  \code{IEvaluatable\allowbreak{}Expression\allowbreak{}Filter\allowbreak{}Plugin}
+  zusätzlich zum Translator
+  \cellmeta{öffentlich · mehrfach · Singleton} &
+  Hat die Methode ein Spaltenargument? Dann ist das Plugin nicht nötig. &
+  Das Plugin vergessen: EF führt die Methode in .NET aus, und die Exception kommt aus ihrem
+  Körper. &
+  \ref{ch:preventing-client-side-evaluation} \\
+  \tablerule
+  \textbf{Eine Aggregatfunktion soll nach \code{Group\allowbreak{}By} verfügbar sein.}
+  \code{IAggregate\allowbreak{}Method\allowbreak{}Call\allowbreak{}Translator\allowbreak{}Plugin}
+  \cellmeta{öffentlich · mehrfach · Scoped} &
+  Lässt sich das Ergebnis aus vorhandenen Aggregaten bilden (\code{Count} mit Bedingung,
+  \code{Min}, \code{Max})? &
+  Leere Mengen und NULL-Werte anders behandeln als die .NET-Seite. &
+  \ref{ch:aggregate-translators} \\
+  \tablerule
+  \textbf{Die SQL-Syntax ist kein Funktionsaufruf, oder die NULL-Semantik weicht ab.}
+  Eigene \code{Sql\allowbreak{}Expression} mit
+  \code{IQuery\allowbreak{}Sql\allowbreak{}Generator\allowbreak{}Factory} und
+  \code{IRelational\allowbreak{}Parameter\allowbreak{}Based\allowbreak{}Sql\allowbreak{}Processor\allowbreak{}Factory}
+  \cellmeta{Provider-Basis · einzeln · Singleton bzw. Scoped; \code{Quote} experimentell
+  (EF9100)} &
+  Lässt sich der Ausdruck mit der
+  \code{ISql\allowbreak{}Expression\allowbreak{}Factory} aus Funktionen, Operatoren und
+  \code{CASE} zusammensetzen? &
+  Den Knoten nur im SQL-Generator behandeln: Ohne Nullability-Prozessor wirft EF, ohne
+  Generator fehlt der Operator stillschweigend. &
+  \ref{ch:custom-sql-expression-nodes} \\
+  \tablerule
+  \textbf{Der LINQ-Baum soll vor der Übersetzung umgeschrieben werden (Query-Rewriting).}
+  \code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor}
+  \cellmeta{öffentlich · mehrfach · Singleton} &
+  Genügt ein benannter Query-Filter oder ein Translator? &
+  Zustand pro Anfrage verwenden, obwohl das Ergebnis pro Abfrageform gecacht wird; pro
+  Context eine neue Instanz übergeben, was jedes Mal einen neuen internen Provider erzeugt.
+  & \ref{ch:further-query-extension-points}, \ref{ch:bulk-operations-and-the-limits} \\
+  \tablerule
+  \textbf{Der übersetzte Ausdrucksbaum soll angepasst werden.}
+  \code{IQuery\allowbreak{}Translation\allowbreak{}Postprocessor\allowbreak{}Factory}
+  \cellmeta{Provider-Basis · einzeln · Scoped} &
+  Lässt es sich vorher erledigen, mit Query-Interceptor oder Translator? &
+  Den Dienst ersetzen, ohne von der Provider-Implementierung zu erben; dann fehlen deren
+  Nachbearbeitungen. &
+  \ref{ch:further-query-extension-points} \\
+  \tablerule
+  \textbf{Geladene Objekte sollen erzeugt, initialisiert oder geprüft werden
+  (Materialisierung).} \code{IMaterialization\allowbreak{}Interceptor}
+  \cellmeta{öffentlich · mehrfach · Singleton} &
+  Konstruktorbindung (EF übergibt \code{Db\allowbreak{}Context},
+  \code{ILazy\allowbreak{}Loader}, \code{IEntity\allowbreak{}Type}) oder das Ereignis
+  \code{Change\allowbreak{}Tracker.\allowbreak{}Tracked} in der Anwendung. &
+  Zustand pro Context im Interceptor halten; teure Arbeit pro Zeile; pro Context eine neue
+  Instanz übergeben. &
+  \ref{ch:materialization-from-rows-to-objects} \\
+\end{datatable}
+
+\section{Ausführung und Speichern}\phantomsection\label{sec:decide-runtime}
+
+Diese Mechanismen laufen bei jeder Ausführung und liegen damit auf dem heißen Pfad. Sie
+sehen außerdem nur, was durch EF läuft: Eine Garantie, die auch für rohes SQL oder fremde
+Werkzeuge gelten soll, gehört in die Datenbank, nicht in einen Interceptor.
+
+\begin{datatable}{H{1.35}H{1.05}H{1.25}H{0.35}}
+  \textbf{Problem und Mechanismus} & \textbf{Zuerst prüfen} & \textbf{Typische
+  Fehlentscheidung} & \textbf{Kap.} \\
+  \tablehead
+  \textbf{Beim Speichern sollen Werte gesetzt oder Änderungen geprüft werden.}
+  \code{ISave\allowbreak{}Changes\allowbreak{}Interceptor}
+  \cellmeta{öffentlich · mehrfach · Scoped} &
+  Betrifft es nur eine Anwendung? Dann genügt es, \code{Save\allowbreak{}Changes} zu
+  überschreiben oder das Ereignis
+  \code{Db\allowbreak{}Context.\allowbreak{}Saving\allowbreak{}Changes} zu abonnieren. &
+  Nur die asynchrone Variante implementieren; sich darauf verlassen, dass
+  \code{Execute\allowbreak{}Update} und rohes SQL vorbeikommen. &
+  \ref{ch:interceptors}, \ref{ch:bulk-operations-and-the-limits} \\
+  \tablerule
+  \textbf{Beim Öffnen einer Verbindung soll Session-Zustand gesetzt werden.}
+  \code{IDb\allowbreak{}Connection\allowbreak{}Interceptor}
+  \cellmeta{öffentlich · mehrfach · Scoped} &
+  Ist der Wert für alle Verbindungen gleich? Dann gehört er in den Connection-String. &
+  Sich auf den Interceptor verlassen, wenn die Anwendung bereits geöffnete Verbindungen
+  übergibt; nur die synchrone oder nur die asynchrone Variante implementieren. &
+  \ref{ch:interceptors} \\
+  \tablerule
+  \textbf{Befehle sollen beobachtet oder ergänzt oder ihre Fehler übersetzt werden.}
+  \code{IDb\allowbreak{}Command\allowbreak{}Interceptor}
+  \cellmeta{öffentlich · mehrfach · Scoped} &
+  \code{Tag\allowbreak{}With} für Kommentare im SQL; ein Translator, wenn sich die Bedeutung
+  der Abfrage ändern soll. &
+  \code{Command\allowbreak{}Text} per Textersetzung umbauen; das bricht bei jeder Änderung
+  der SQL-Form. &
+  \ref{ch:interceptors}, \ref{ch:the-update-pipeline} \\
+  \tablerule
+  \textbf{Zustand soll an eine Transaktion gebunden sein.}
+  \code{IDb\allowbreak{}Transaction\allowbreak{}Interceptor}
+  \cellmeta{öffentlich · mehrfach · Scoped} &
+  Genügt der Connection-Interceptor? Er genügt, solange kein Transaction-Pooling im Spiel
+  ist. &
+  Transaktionslokale Settings verwenden, aber Abfragen außerhalb von Transaktionen zulassen:
+  Diese laufen ohne Zustand. Im Beispiel:
+  \code{Use\allowbreak{}Transaction\allowbreak{}Pooling(\allowbreak{})}. &
+  \ref{ch:row-level-security-in-production} \\
+  \tablerule
+  \textbf{INSERT, UPDATE oder DELETE sollen eine andere Form bekommen (Upsert).}
+  Update-Pipeline, etwa \code{IUpdate\allowbreak{}Sql\allowbreak{}Generator}
+  \cellmeta{Provider-Basis · einzeln · Singleton bzw. Scoped} &
+  SaveChanges-Interceptor (Zustände umschreiben), Command-Interceptor oder
+  \code{Execute\allowbreak{}Update}. &
+  Die Pipeline für Soft Delete ersetzen; das leistet ein SaveChanges-Interceptor. &
+  \ref{ch:the-update-pipeline} \\
+\end{datatable}
+
+\section{Schema und Werkzeuge}\phantomsection\label{sec:decide-tooling}
+
+Migrations laufen gegen das Design-Time-Modell, die übrigen Werkzeuge von \code{dotnet ef}
+in einem eigenen Service Provider. Dienste für diesen Provider registriert ein Plugin über
+\code{IDesign\allowbreak{}Time\allowbreak{}Services}, nicht in
+\code{Apply\allowbreak{}Services}.
+
+\begin{datatable}{H{1.35}H{1.05}H{1.25}H{0.35}}
+  \textbf{Problem und Mechanismus} & \textbf{Zuerst prüfen} & \textbf{Typische
+  Fehlentscheidung} & \textbf{Kap.} \\
+  \tablehead
+  \textbf{Schema-Objekte sollen aus dem Modell entstehen und seinen Änderungen folgen.}
+  Annotations, \code{IRelational\allowbreak{}Annotation\allowbreak{}Provider} und
+  \code{IMigrations\allowbreak{}Sql\allowbreak{}Generator}
+  \cellmeta{Provider-Basis · einzeln · Singleton bzw. Scoped} &
+  \code{migration\allowbreak{}Builder.\allowbreak{}Sql(\allowbreak{})} in den Migrationen der
+  Anwendung, vorhandene Konfiguration wie Check-Constraints. &
+  Die Annotations auch ins Laufzeitmodell kopieren (\code{design\allowbreak{}Time}
+  ignorieren); Bezeichner per String-Verkettung statt über den SQL-Helfer. &
+  \ref{ch:how-migrations-work}, \ref{ch:declarative-sql-from-annotations} \\
+  \tablerule
+  \textbf{Migrationen brauchen Schritte, die nicht ins Modell gehören (Rollen, Rechte).}
+  Eigene \code{Migration\allowbreak{}Operation} mit Erweiterung für
+  \code{Migration\allowbreak{}Builder}, SQL im Generator
+  \cellmeta{öffentlich · Generator: Provider-Basis · einzeln · Scoped} &
+  \code{migration\allowbreak{}Builder.\allowbreak{}Sql(\allowbreak{})} genügt, wenn das Plugin
+  den Schritt nicht für viele Anwendungen anbieten muss. &
+  Operationen nicht idempotent formulieren; die Reihenfolge zu den generierten Operationen
+  nicht beachten. &
+  \ref{ch:custom-migration-operations}, \ref{ch:advanced-migrations} \\
+  \tablerule
+  \textbf{Der Differ soll eigene Operationen selbst erzeugen.}
+  \code{IMigrations\allowbreak{}Model\allowbreak{}Differ} und
+  \code{ICSharp\allowbreak{}Migration\allowbreak{}Operation\allowbreak{}Generator}
+  \cellmeta{pubternal · einzeln · Scoped bzw. Singleton (Design-Time)} &
+  Der deklarative Weg über Annotations, fast immer die bessere Wahl. &
+  Den Differ ersetzen, nur weil eine geänderte Annotation SQL braucht; das leistet der
+  SQL-Generator. &
+  \ref{ch:custom-migration-operations} \\
+  \tablerule
+  \textbf{Snapshots sollen Fluent API statt \code{Has\allowbreak{}Annotation} zeigen.}
+  \code{IAnnotation\allowbreak{}Code\allowbreak{}Generator}, geladen über
+  \code{IDesign\allowbreak{}Time\allowbreak{}Services} und
+  \code{Design\allowbreak{}Time\allowbreak{}Services\allowbreak{}Reference}
+  \cellmeta{Provider-Basis · einzeln · Singleton (Design-Time)} &
+  Nichts tun: \code{Has\allowbreak{}Annotation} im Snapshot funktioniert, ist nur schwer
+  lesbar. &
+  Design-Time-Dienste in \code{Apply\allowbreak{}Services} registrieren, also im
+  Laufzeit-Container; übersetzte Annotations nicht aus dem Dictionary entfernen. &
+  \ref{ch:design-time-services} \\
+  \tablerule
+  \textbf{Das Compiled Model soll Design-Time-Annotations weglassen oder komplexe Werte
+  enthalten.}
+  \code{ICSharp\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator}
+  \cellmeta{pubternal · einzeln · Singleton (Design-Time)} &
+  Einfache Annotationswerte übernimmt EF ohne eigenen Generator. &
+  Laufzeit-Annotations mitfiltern, die ein Interceptor braucht; das relationale Modell
+  vergessen, das EF für NativeAOT zusätzlich schreibt. &
+  \ref{ch:compiled-models-trimming-and-nativeaot}, \ref{ch:property-level-fluent-api-and} \\
+  \tablerule
+  \textbf{Scaffolding soll die Schema-Objekte des Plugins erkennen.}
+  \code{IDatabase\allowbreak{}Model\allowbreak{}Factory} und
+  \code{IAnnotation\allowbreak{}Code\allowbreak{}Generator}
+  \cellmeta{Provider-Basis · einzeln · Scoped bzw. Singleton (Design-Time)} &
+  T4-Vorlagen (\code{dotnet new ef-templates}), wenn nur der erzeugte Code anders aussehen
+  soll. &
+  Ein eigenes Datenformat statt der Annotations der Fluent API verwenden; dann passen
+  Snapshot und Migrations nicht dazu. &
+  \ref{ch:scaffolding-reverse-engineering}, \ref{ch:scaffolding-in-practice} \\
+\end{datatable}
+
+\begin{important}[Vier Fehlentscheidungen, die in jedem Bereich vorkommen]
+  \textbf{Ersetzen, wo ein Plugin-Interface oder ein Decorator genügt.} Jede Ersetzung
+  schließt ein anderes Plugin aus (Kapitel~\ref{ch:registering-services}).
+
+  \textbf{Laufzeitwerte dort ablegen, wo EF cacht.} Options-Hash, Modell und übersetzte
+  Abfragen werden wiederverwendet. Werte pro Anfrage gehören in Parameter, in die
+  Datenbank-Session oder in Interceptors aus der Anwendung.
+
+  \textbf{Einen Laufzeit-Haken für eine Garantie halten.} Interceptors sehen nur, was durch
+  EF läuft (Kapitel~\ref{ch:bulk-operations-and-the-limits}).
+
+  \textbf{Design-Time und Laufzeit verwechseln.} Design-Time-Dienste gehören nicht in den
+  internen Provider, Design-Time-Annotations nicht ins Laufzeit- oder Compiled Model.
+\end{important}

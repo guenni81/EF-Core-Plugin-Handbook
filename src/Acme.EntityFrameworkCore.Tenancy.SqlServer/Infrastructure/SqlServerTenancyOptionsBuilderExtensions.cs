@@ -84,4 +84,52 @@ public static class SqlServerTenancyOptionsBuilderExtensions
 
         return sqlServerOptionsBuilder;
     }
+
+    /// <summary>
+    /// Throws when a query materializes an entity of another tenant (default: off). Detects
+    /// situations in which the security policies do not take effect. Requires the overload of
+    /// <c>UseAcmeTenancy</c> that takes the application's service provider.
+    /// </summary>
+    /// <param name="sqlServerOptionsBuilder">The builder passed to <c>UseSqlServer</c>.</param>
+    /// <param name="verify">Whether to check materialized entities.</param>
+    /// <returns>The same builder, for chaining.</returns>
+    public static SqlServerDbContextOptionsBuilder VerifyMaterializedTenants(
+        this SqlServerDbContextOptionsBuilder sqlServerOptionsBuilder, bool verify = true)
+    {
+        ArgumentNullException.ThrowIfNull(sqlServerOptionsBuilder);
+
+        var optionsBuilder = ((IRelationalDbContextOptionsBuilderInfrastructure)sqlServerOptionsBuilder)
+            .OptionsBuilder;
+        var extension = optionsBuilder.Options.FindExtension<SqlServerTenancyOptionsExtension>()
+                        ?? new SqlServerTenancyOptionsExtension();
+
+        ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(
+            extension.WithSettings(extension.Settings with { VerifyMaterializedTenants = verify }));
+
+        return sqlServerOptionsBuilder;
+    }
+
+    /// <summary>
+    /// Rejects <c>ExecuteUpdate</c> calls that set the tenant property, when the query is
+    /// compiled (default: off). Bulk operations bypass the SaveChanges interceptor; the
+    /// security policies still limit which rows they reach.
+    /// </summary>
+    /// <param name="sqlServerOptionsBuilder">The builder passed to <c>UseSqlServer</c>.</param>
+    /// <param name="protect">Whether to check bulk updates.</param>
+    /// <returns>The same builder, for chaining.</returns>
+    public static SqlServerDbContextOptionsBuilder ProtectBulkOperations(
+        this SqlServerDbContextOptionsBuilder sqlServerOptionsBuilder, bool protect = true)
+    {
+        ArgumentNullException.ThrowIfNull(sqlServerOptionsBuilder);
+
+        var optionsBuilder = ((IRelationalDbContextOptionsBuilderInfrastructure)sqlServerOptionsBuilder)
+            .OptionsBuilder;
+        var extension = optionsBuilder.Options.FindExtension<SqlServerTenancyOptionsExtension>()
+                        ?? new SqlServerTenancyOptionsExtension();
+
+        ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(
+            extension.WithSettings(extension.Settings with { ProtectBulkOperations = protect }));
+
+        return sqlServerOptionsBuilder;
+    }
 }

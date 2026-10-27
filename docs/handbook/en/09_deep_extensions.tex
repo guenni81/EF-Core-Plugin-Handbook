@@ -24,7 +24,7 @@ of the following applies:
 \begin{datatable}{H{0.80}H{1.20}}
   \textbf{Reason} & \textbf{Example} \\
   \tablehead
-  The syntax is not a function call & Operators such as \code{@@}, \code{<\allowbreak{}->},
+  The syntax is not a function call & Operators such as \code{@@}, \code{<->},
   \code{IS DISTINCT FROM}, keywords such as \code{AT TIME ZONE} \\
   \tablerule
   The nullability semantics differ & \code{IS DISTINCT FROM} is never NULL, even when an
@@ -59,6 +59,12 @@ Npgsql does not offer it as a function; it meets all three reasons.
   Nullability processor & Knows the NULL semantics & Exception during translation \\
 \end{datatable}
 
+The last two rows also apply to combinations with other plugins: if a second plugin replaces
+the generator or the processor, the node's SQL is silently missing or the query throws.
+\code{Composition\allowbreak{}Matrix\allowbreak{}Tests} shows both
+(chapter~\ref{ch:registering-services}).
+
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Query/Expressions/DistinctFromExpression.cs
 \begin{sourcecode}[Query/\allowbreak{}Expressions/\allowbreak{}Distinct\allowbreak{}From\allowbreak{}Expression.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
 public class DistinctFromExpression : SqlExpression
 {
@@ -116,6 +122,7 @@ The translator creates the node and aligns the type mappings of both sides: if o
 a mapping (a column, say), the other gets the same one. That way a constant becomes the
 matching literal:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Query/DistinctFromTranslator.cs
 \begin{sourcecode}[Query/\allowbreak{}Distinct\allowbreak{}From\allowbreak{}Translator.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 var definition = method.GetGenericMethodDefinition();
 if (definition != IsNotDistinctFromMethod && definition != IsDistinctFromMethod)
@@ -141,6 +148,7 @@ unknown nodes to
 visits the children. Without an override there is no error, but \textbf{SQL without the
 operator}. The plugin derives from the Npgsql generator:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Query/Internal/TenancyNpgsqlQuerySqlGenerator.cs
 \begin{sourcecode}[Query/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Npgsql\allowbreak{}Query\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
 public class TenancyNpgsqlQuerySqlGenerator : NpgsqlQuerySqlGenerator
 {
@@ -165,8 +173,22 @@ public class TenancyNpgsqlQuerySqlGenerator : NpgsqlQuerySqlGenerator
         VisitOperand(expression.Right);
         return expression;
     }
+
+    // The node as an operand of other operators: always in parentheses
+    protected override bool RequiresParentheses(SqlExpression outerExpression,
+        SqlExpression innerExpression)
+        => innerExpression is DistinctFromExpression
+           || base.RequiresParentheses(outerExpression, innerExpression);
 }
 \end{sourcecode}
+
+Parentheses are needed in two directions. \code{Visit\allowbreak{}Operand} parenthesizes
+compound operands \emph{inside} the node. For the node \emph{as} an operand, EF asks
+\code{Requires\allowbreak{}Parentheses}, which only knows EF's own nodes. Without the override
+the plugin wrote \code{a IS DISTINCT FROM 'x' <> a IS DISTINCT FROM 'y'}; PostgreSQL binds
+\code{<>} tighter than \code{IS} and reports a syntax error.
+\code{Deep\allowbreak{}Query\allowbreak{}Tests} checks the SQL,
+\code{Advanced\allowbreak{}Tests} the query against PostgreSQL.
 
 The generator is created through
 \code{IQuery\allowbreak{}Sql\allowbreak{}Generator\allowbreak{}Factory}, a singleton single
@@ -182,6 +204,7 @@ whether it can become NULL. Unknown nodes end up in
 implementation throws an exception. The processor hangs off a chain of three classes, all of
 which must be replaced:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Query/Internal/TenancyNpgsqlSqlNullabilityProcessor.cs
 \begin{sourcecode}[Query/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Npgsql\allowbreak{}Sql\allowbreak{}Nullability\allowbreak{}Processor.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
 public class TenancyNpgsqlSqlNullabilityProcessor : NpgsqlSqlNullabilityProcessor
 {
@@ -217,6 +240,7 @@ public class TenancyNpgsqlParameterBasedSqlProcessor : NpgsqlParameterBasedSqlPr
 //   : IRelationalParameterBasedSqlProcessorFactory
 \end{sourcecode}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Infrastructure/TenancyOptionsExtension.cs
 \begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Apply\allowbreak{}Services (\allowbreak{}addition)]{csharp}
 // 4) Deep extension: custom SQL expression node
 services.Replace(ServiceDescriptor
@@ -241,6 +265,7 @@ services.Replace(ServiceDescriptor
   \code{Directory.\allowbreak{}Build.\allowbreak{}props}.
 \end{note}
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/DeepQueryTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Deep\allowbreak{}Query\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 [Fact]
 public void IsDistinctFrom_in_projection_passes_nullability_processor()
@@ -254,6 +279,121 @@ public void IsDistinctFrom_in_projection_passes_nullability_processor()
 
     Assert.Contains("IS DISTINCT FROM", sql);
 }
+\end{sourcecode}
+
+\section{Practical example: operators for vector search and pgvector}
+
+Embeddings and similarity search bring operators into SQL that are not functions: pgvector
+writes the L2 distance as \code{<->}, the cosine distance as
+\code{<=>} and the negative inner product as
+\code{<\#>}; full-text search uses \code{@@}.
+\code{Sql\allowbreak{}Binary\allowbreak{}Expression} does not help here, because its operator
+is an \code{Expression\allowbreak{}Type}, and there is none for
+\code{<=>}. \code{Custom\allowbreak{}Operator\allowbreak{}Tests}
+therefore shows
+\code{EF.\allowbreak{}Functions.\allowbreak{}Cosine\allowbreak{}Distance(\allowbreak{}a,\allowbreak{}
+b)} as a node of its own, \code{Vector\allowbreak{}Distance\allowbreak{}Expression}, with the
+operator as a string, with translator, generator and nullability processor. It is test code:
+an application uses \code{Pgvector.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core},
+which brings the \code{vector} type, its type mapping and these translations. Npgsql itself has
+\code{Pg\allowbreak{}Unknown\allowbreak{}Binary\allowbreak{}Expression} for such cases, a node
+with an arbitrary operator and propagating nullability that needs no replaced generator or
+processor. It lives in an \code{Internal} namespace, though (EF1001).
+
+Three things decide whether such an operator produces correct SQL.
+
+\textbf{Type mappings.} The translator gives both operands the same mapping, inferred from the
+side that has one, usually the column. The parameter thus reaches the database with the
+column's store type:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/CustomOperatorTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Custom\allowbreak{}Operator\allowbreak{}Tests.\allowbreak{}cs ›\allowbreak{} Translator]{csharp}
+if (method != CosineDistanceMethod)
+    return null;
+
+var left = arguments[1];                        // arguments[0] is DbFunctions
+var right = arguments[2];
+var operandMapping = ExpressionExtensions.InferTypeMapping(left, right)
+                     ?? _typeMappingSource.FindMapping(left.Type);
+
+return new VectorDistanceExpression(
+    _sql.ApplyTypeMapping(left, operandMapping)!,
+    _sql.ApplyTypeMapping(right, operandMapping)!,
+    "<=>",
+    _typeMappingSource.FindMapping(typeof(double)));
+\end{sourcecode}
+
+In the test the column is a \code{float[]}, i.e. \code{real[]}. pgvector defines its operators
+only for \code{vector}, though; against a real database this needs a type mapping with that
+store type, as the package registers it. The result gets the mapping of \code{double}, i.e.
+\code{double precision}.
+
+\textbf{Precedence and parentheses.} EF does not know the precedence of a foreign operator.
+PostgreSQL ranks user-defined operators between the arithmetic and the comparison operators:
+\code{a <=> b * 2} means
+\code{a <=> (\allowbreak{}b * 2)}. Without a countermeasure, the
+generator wrote exactly that for
+\code{Cosine\allowbreak{}Distance(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}) * 2
++ 1}. The solution is the same two directions as above: parenthesize operands inside the node,
+and always parenthesize the node as an operand through
+\code{Requires\allowbreak{}Parentheses}. \code{Print} parenthesizes the same way, so that the
+DebugView shows what the database reads.
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/CustomOperatorTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Custom\allowbreak{}Operator\allowbreak{}Tests.\allowbreak{}cs ›\allowbreak{} Generator]{csharp}
+public class VectorQuerySqlGenerator : TenancyNpgsqlQuerySqlGenerator
+{
+    // ... constructor, VisitExtension, VisitOperand
+
+    protected virtual Expression VisitVectorDistance(VectorDistanceExpression expression)
+    {
+        VisitOperand(expression.Left);
+        Sql.Append($" {expression.Operator} ");
+        VisitOperand(expression.Right);
+        return expression;
+    }
+
+    // Without the override: "a <=> b * 2.0", read as a <=> (b * 2.0)
+    protected override bool RequiresParentheses(SqlExpression outerExpression,
+        SqlExpression innerExpression)
+        => innerExpression is VectorDistanceExpression
+           || base.RequiresParentheses(outerExpression, innerExpression);
+}
+\end{sourcecode}
+
+The generator derives from the plugin's generator, not from Npgsql's: both replace the same
+single service, and only this way do both nodes remain translatable. That is the price from the
+box above, on a small scale.
+
+\textbf{Nullability.} An ordinary operator is NULL as soon as an operand is NULL. The processor
+reports that onwards:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/CustomOperatorTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Custom\allowbreak{}Operator\allowbreak{}Tests.\allowbreak{}cs ›\allowbreak{} Nullability]{csharp}
+if (sqlExpression is VectorDistanceExpression distance)
+{
+    // NULL in, NULL out
+    var left = Visit(distance.Left, out var leftNullable)!;
+    var right = Visit(distance.Right, out var rightNullable)!;
+
+    nullable = leftNullable || rightNullable;
+    return distance.Update(left, right);
+}
+\end{sourcecode}
+
+The report has visible consequences. For
+\code{!(\allowbreak{}Cosine\allowbreak{}Distance(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})
+< 0.5)} EF writes \code{>= 0.5} for a required column, but a \code{CASE} for an optional one,
+because \code{NOT (\allowbreak{}NULL < 0.5)} is NULL in SQL but \code{true} in C\#. Without the
+processor, translation fails. The tests check the SQL of all cases:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/CustomOperatorTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Custom\allowbreak{}Operator\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+var sql = ctx.Documents
+    .Select(d => EF.Functions.CosineDistance(d.Embedding, query) * 2 + 1)
+    .ToQueryString();
+
+Assert.Contains("SELECT (d.\"Embedding\" <=> @query) * 2.0 + 1.0", sql);
 \end{sourcecode}
 
 % ------------------------------------------------------------
@@ -286,6 +426,7 @@ instead of a single argument, an \code{Enumerable\allowbreak{}Expression} that d
 The sample adds \code{EF.\allowbreak{}Functions.\allowbreak{}Every(\allowbreak{}values)} for
 PostgreSQL's \code{bool\_\allowbreak{}and}:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Query/EveryAggregateTranslator.cs
 \begin{sourcecode}[Query/\allowbreak{}Every\allowbreak{}Aggregate\allowbreak{}Translator.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 public virtual SqlExpression? Translate(MethodInfo method, EnumerableExpression source,
     IReadOnlyList<SqlExpression> arguments,
@@ -343,6 +484,7 @@ implementation:
 modelBuilder.Entity<Contract>().Property(c => c.Mandant).IsTenantProperty();
 \end{sourcecode}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/Metadata/TenancyPropertyBuilderExtensions.cs
 \begin{sourcecode}[Metadata/\allowbreak{}Tenancy\allowbreak{}Property\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}core package)]{csharp}
 public static PropertyBuilder IsTenantProperty(
     this PropertyBuilder builder, bool isTenant = true)
@@ -374,7 +516,7 @@ public static IConventionPropertyBuilder? IsTenantProperty(
 The method lives in the core package because it only sets metadata. The conventions of both
 provider packages find the tenant property through the same core function:
 
-\begin{sourcecode}[Metadata/\allowbreak{}Tenancy\allowbreak{}Entity\allowbreak{}Type\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}core package,\allowbreak{} shortened)]{csharp}
+\begin{sourcecode}[Metadata/\allowbreak{}Tenancy\allowbreak{}Entity\allowbreak{}Type\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}core package,\allowbreak{} shortened, simplified)]{csharp}
 public static IReadOnlyProperty? FindTenantPropertyCandidate(
     this IReadOnlyEntityType entityType)
 {
@@ -433,7 +575,7 @@ values automatically (chapter~\ref{ch:compiled-models-trimming-and-nativeaot}). 
 \code{ICSharp\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator}
 therefore has the opposite job: it removes the RLS annotations that only migrations need:
 
-\begin{sourcecode}[Design/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}CSharp\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
+\begin{sourcecode}[Design/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}CSharp\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}shortened, simplified)]{csharp}
 public class TenancyCSharpRuntimeAnnotationCodeGenerator
     : NpgsqlCSharpRuntimeAnnotationCodeGenerator
 {
@@ -477,6 +619,17 @@ time there. The generator therefore applies the same filter in an override of
   unused & yes (small) \\
 \end{datatable}
 
+\begin{note}[Two kinds of runtime annotations]
+  In this book, “runtime annotation” means an ordinary annotation that is read at run time.
+  EF also has a runtime annotation API in a narrower sense
+  (\code{Add\allowbreak{}Runtime\allowbreak{}Annotation},
+  \code{Get\allowbreak{}Or\allowbreak{}Add\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Value}
+  on \code{IAnnotatable}). It stores values on the finished model only, for example derived
+  data that should not be recomputed on every access. Such values never appear in the
+  snapshot or in migrations. For configuration that a plugin sets while the model is built,
+  the ordinary annotation is the right choice.
+\end{note}
+
 \begin{tip}
   For every annotation it should be clear who reads it and when. Annotations read only at
   design time do not belong in the compiled model; those read at run time must be in it and
@@ -498,6 +651,7 @@ the process. The route has three stations, two of which the plugin already knows
   (chapter~\ref{ch:design-time-services})}
 \end{flowdiagram}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Scaffolding/TenancyDatabaseModelFactory.cs
 \begin{sourcecode}[Scaffolding/\allowbreak{}Tenancy\allowbreak{}Database\allowbreak{}Model\allowbreak{}Factory.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
 public class TenancyDatabaseModelFactory : NpgsqlDatabaseModelFactory
 {
@@ -535,9 +689,10 @@ public class TenancyDatabaseModelFactory : NpgsqlDatabaseModelFactory
 }
 \end{sourcecode}
 
-The factory is registered like the code generator in the design-time services, with
-\code{Remove\allowbreak{}All} and \code{Add\allowbreak{}Singleton}. The data format is the
-same as with the Fluent API; snapshot, migrations and code generator therefore work without
+The factory is registered like the code generator in the design-time services with
+\code{Remove\allowbreak{}All}, but with \code{Add\allowbreak{}Scoped}: EF and Npgsql
+register the database model factory as scoped, and it depends on the scaffolding logger,
+which is scoped as well. The data format is the same as with the Fluent API; snapshot, migrations and code generator therefore work without
 further changes.
 
 \begin{note}[Normalized expressions]
@@ -550,6 +705,7 @@ further changes.
   first migration produces a DROP/CREATE with identical content.
 \end{note}
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests/AdvancedTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Advanced\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 [Fact]
 public void Scaffolding_reads_rls_and_policies()
@@ -594,6 +750,9 @@ provider type belongs in the core.} For the sample this yields:
   only the SQL command differs \\
   \tablerule
   Evaluatable filter with attribute & Core & Recognizes function classes of all packages \\
+  \tablerule
+  Check while loading (materialization interceptor) & Core & Only reads the model, the
+  context and the row's values \\
   \tablerule
   Value generation, logging, \code{Add\allowbreak{}Acme\allowbreak{}Tenancy} & Core & No SQL
   involved \\
@@ -649,16 +808,23 @@ has to solve anew per database:
   \tablerule
   Table owner & Only bound with \code{FORCE} & No FORCE; predicates are part of the query \\
   \tablerule
-  \code{DROP TABLE} & Policies disappear with it & Policy must go first (SCHEMABINDING) \\
+  \code{DROP TABLE}, renaming & Policies disappear with it or follow & Policy must go first and be recreated afterwards (SCHEMABINDING) \\
   \tablerule
   DDL in batches & Transactional, freely combinable & \code{CREATE
   FUNCTION/\allowbreak{}SCHEMA} alone in a batch:
   \code{EXEC(\allowbreak{}N'.\allowbreak{}.\allowbreak{}.\allowbreak{}')} \\
+  \tablerule
+  Table mappings & \multicolumn{2}{>{\RaggedRight\arraybackslash}p{0.6\linewidth}}{Same
+  contract from the core package (chapter~\ref{ch:conventions}, page~\pageref{sec:supported-table-mappings})} \\
+  \tablerule
+  Deliberate exception & Attribute or
+  \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})}
+  & Attribute only \\
 \end{datatable}
 
 \section{Activation through the provider builder}
 
-\begin{sourcecode}[Usage and Infrastructure/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
+\begin{sourcecode}[Usage and Infrastructure/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}shortened, simplified)]{csharp}
 services.AddAcmeTenancy<HttpTenantProvider>();                    // core package
 services.AddDbContext<ShopContext>((sp, o) => o
     .UseSqlServer(connectionString, sql => sql.UseAcmeTenancy(sp)));
@@ -688,7 +854,7 @@ public static SqlServerDbContextOptionsBuilder UseAcmeTenancy(
 For SQL Server, the convention only records the tenant column; the SQL is produced in the
 generator. The predicate function is the same for all tables and is created idempotently:
 
-\begin{sourcecode}[Migrations/\allowbreak{}Internal/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tenancy\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+\begin{sourcecode}[Migrations/\allowbreak{}Internal/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tenancy\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}excerpt, simplified)]{csharp}
 protected virtual void CreatePolicy(string table, string? schema, string column,
     MigrationCommandListBuilder builder)
 {
@@ -709,7 +875,7 @@ protected virtual void CreatePolicy(string table, string? schema, string column,
         + $"EXEC({Literal(functionSql)})");
 
     Statement(builder,
-        $"CREATE SECURITY POLICY {PolicyName(table)} "
+        $"CREATE SECURITY POLICY {PolicyName(table, schema ?? "dbo")} "
         + $"ADD FILTER PREDICATE {predicate} ON {target}, "
         + $"ADD BLOCK PREDICATE {predicate} ON {target} AFTER INSERT, "
         + $"ADD BLOCK PREDICATE {predicate} ON {target} AFTER UPDATE "
@@ -719,7 +885,8 @@ protected virtual void CreatePolicy(string table, string? schema, string column,
 protected override void Generate(DropTableOperation operation, IModel? model,
     MigrationCommandListBuilder builder, bool terminate = true)
 {
-    DropPolicy(operation.Name, builder);       // SCHEMABINDING: the policy first
+    // SCHEMABINDING: the policy first, found by the table it binds
+    DropPolicy(operation.Name, TableSchema(operation.Schema, model), builder);
     base.Generate(operation, model, builder, terminate);
 }
 \end{sourcecode}
@@ -736,8 +903,131 @@ therefore qualified by the callers with the model's default schema or, failing t
   Session key and schema are additionally validated during configuration.
 \end{important}
 
+\section{Schema changes on protected tables}\label{sec:sqlserver-schema-bound-changes}
+
+\code{SCHEMABINDING} protects the predicate function, but it also binds the table. SQL Server
+rejects \code{sp\_\allowbreak{}rename} for the table and the tenant column, \code{ALTER SCHEMA
+.\allowbreak{}.\allowbreak{}.\allowbreak{} TRANSFER}, \code{ALTER COLUMN} and \code{DROP COLUMN}
+as long as a security policy binds the table: “object participates in enforced dependencies”.
+This cannot be solved per operation. EF orders a migration's operations itself, and when the
+tenant column is renamed, the \code{Rename\allowbreak{}Column\allowbreak{}Operation} comes
+\emph{before} the \code{Alter\allowbreak{}Table\allowbreak{}Operation} that carries the changed
+annotation. A plain table rename produces no \code{Alter\allowbreak{}Table\allowbreak{}Operation}
+at all.
+
+The generator therefore overrides the entry point that receives the whole operation list. It
+finds all tables whose bound objects change, follows their renames and wraps the list. At the
+front it removes the policies of the affected tables under their old names. At the end it
+recreates them with the final table, schema and column names from the target model:
+
+\begin{sourcecode}[Generated SQL when renaming the tenant column (\allowbreak{}shortened)]{sql}
+DECLARE @policy nvarchar(400) = (SELECT TOP (1) ... FROM sys.security_policies AS p
+    WHERE EXISTS (SELECT 1 FROM sys.security_predicates AS s WHERE s.object_id = p.object_id
+        AND s.target_object_id = OBJECT_ID(N'[dbo].[Invoice]')
+        AND s.predicate_definition LIKE N'%[[]fn[_]tenant[_]predicate]%'));
+IF @policy IS NOT NULL EXEC(N'DROP SECURITY POLICY ' + @policy);
+EXEC sp_rename N'[Invoice].[TenantId]', N'Mandant', 'COLUMN';
+EXEC sp_rename N'[Invoice].[IX_Invoice_TenantId]', N'IX_Invoice_Mandant', 'INDEX';
+IF SCHEMA_ID(N'acme') IS NULL EXEC(N'CREATE SCHEMA [acme]');
+IF OBJECT_ID(N'[acme].[fn_tenant_predicate]', N'IF') IS NULL EXEC(N'CREATE FUNCTION ...');
+CREATE SECURITY POLICY [acme].[tenant_dbo_Invoice]
+    ADD FILTER PREDICATE [acme].[fn_tenant_predicate]([Mandant]) ON [dbo].[Invoice], ...
+\end{sourcecode}
+
+Three decisions are built into this:
+
+\begin{itemize}
+  \item \textbf{A transaction instead of switching off.} EF runs a migration's commands in a
+    transaction, and DDL is transactional in SQL Server. If a step fails, SQL Server also
+    rolls back the removal of the policy. A permanently removed policy, or one switched off
+    with \code{STATE = OFF}, cannot come about this way. The Down path is the same wrapping
+    with the names swapped.
+  \item \textbf{Removal by binding, not by name.} Only a policy whose predicate uses the
+    plugin's predicate function and that binds exactly this table is dropped. Policies of
+    others and tables without RLS stay untouched, and policies under an earlier name are
+    found all the same.
+  \item \textbf{Schema-qualified names.} Up to 1.0 the policy was called
+    \code{tenant\_\allowbreak{}Table}, so tables with the same name in two schemas collided.
+    New policies are called \code{tenant\_\allowbreak{}Schema\_\allowbreak{}Table}. Existing
+    installations keep the old name until the table is touched the next time; then the
+    generator replaces the policy. The remaining ambiguity (schema \code{a\_b} with table
+    \code{c} versus schema \code{a} with table \code{b\_c}) and names longer than 128
+    characters are rejected by the convention while the model is built.
+\end{itemize}
+
+Limits: restoring needs the target model. That is the normal case, since
+\code{dotnet ef migrations add} creates a designer file for every migration. If it is
+missing, or a changed table does not appear in it, the generator stops instead of dropping a
+policy. The application's own schema-bound objects (views with \code{SCHEMABINDING}, its own
+security policies) are not handled by the plugin; they still block the same operations. Data
+operations that EF sorts between the schema changes run inside the transaction without a
+policy, that is with the rights of the migration role.
+\code{Sql\allowbreak{}Server\allowbreak{}Migration\allowbreak{}Tests} checks with diffs
+generated by EF against a real SQL Server: create, rename column and table, move schema, every
+step back and drop, with read and write isolation through the app login after every step. In
+addition: tables with the same name in two schemas, a policy under the old name and someone
+else's policy on a table without RLS.
+
+\section{Changing the session key and the policy schema}\label{sec:sqlserver-session-settings}
+
+\code{session\allowbreak{}Key} and \code{policy\allowbreak{}Schema} are options, but they act
+in two places: at run time in the session interceptor, which sets the key, and in the database in
+the predicate function, which reads it. Up to 1.0 the generator read both values from the
+\emph{current} options and created the function only if it was missing. Switching from
+\code{TenantId} to \code{NewTenant} therefore produced no migration. The interceptor then set the
+new key, the function kept reading the old one, and no tenant saw any rows. Worse still: run
+again, for example for a new test database, an old migration would have created objects with the
+new values.
+
+Since 1.1 the package separates the two roles. The convention writes key and schema into the
+model as the model annotations
+\code{Acme:\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Rls:\allowbreak{}Session\allowbreak{}Key}
+and \code{Acme:\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Rls:\allowbreak{}Policy\allowbreak{}Schema},
+and so into the snapshot. The annotation provider passes them on to the relational model, and the
+differ produces an \code{Alter\allowbreak{}Database\allowbreak{}Operation} with the old and the
+new value when they change. The generator reads both values from the target model of the
+migration it is generating; the options only apply to models that do not record the values. That
+way every migration stays with the state it was generated from.
+
+\begin{datatable}{H{0.70}H{1.30}}
+  \textbf{Case} & \textbf{Behavior of the migration} \\
+  \tablehead
+  Unchanged & No operation, no phantom change \\
+  \tablerule
+  Key or schema changed, old value in the snapshot & In one transaction: remove the policies of
+  all protected tables, drop the old function, create the function with the new values,
+  recreate the policies. The Down path does the same in reverse. \\
+  \tablerule
+  First migration of a context, or the first after the upgrade from 1.0 (old value unknown) &
+  Nothing is dropped. An existing function must read the key that the model names, otherwise the
+  migration stops with \code{THROW 50000}. \\
+  \tablerule
+  Down to a snapshot before 1.1 & Function and policies stay as they are. \\
+\end{datatable}
+
+The third row is a deliberate limit. Without a recorded old value there is no proof that an
+existing function belongs to the plugin and not to another context. An existing installation
+therefore changes its key in two steps: first the first migration after the upgrade with the key
+unchanged, then the change in a migration of its own.
+
+The same check protects several contexts in one database. There is one function per policy
+schema, and every policy of the plugin checks the function's definition after creating it. If a
+second context configures another key in the same schema, its migration fails instead of binding
+its tables to a function that reads the wrong key. Contexts with different keys need different
+policy schemas.
+
+Run time and database can still drift apart briefly. If a new app version with a new key runs
+before the migration has been applied, the interceptor sets a key that the function does not
+read. The result is not a data leak but \emph{fail closed}: no rows, and writes fail on the BLOCK
+predicate. The migration therefore belongs before the new app version.
+\code{Sql\allowbreak{}Server\allowbreak{}Session\allowbreak{}Settings\allowbreak{}Tests} checks
+without a database the annotations, the snapshot, the empty diff, the detected change and the
+historical migration. Against a real SQL Server it checks changing key and schema with Up and
+Down, the upgrade of a 1.0 installation and the second context.
+
 \section{Run time: same flow, different command}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.SqlServer/Runtime/SqlServerTenantSessionInterceptor.cs
 \begin{sourcecode}[Runtime/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs]{csharp}
 public class SqlServerTenantSessionInterceptor : TenantSessionInterceptor
 {
@@ -764,12 +1054,13 @@ public class SqlServerTenantSessionInterceptor : TenantSessionInterceptor
 
 \section{Deliberately not ported}
 
-The SQL Server package is a complete but leaner provider. Fluent API policies, the optional
+The SQL Server package is a self-contained but leaner provider. Fluent API policies, the optional
 query filter, custom SQL nodes, aggregates, the snapshot code generator and scaffolding are
 missing there. That is a product decision, not a technical obstacle: each of these chapters
 can be transferred to SQL Server with the same patterns. The list belongs in the package's
 documentation so users know what to expect.
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests/SqlServerTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Sql\allowbreak{}Server.\allowbreak{}Tests/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 [Fact]
 public async Task Block_predicate_rejects_rows_of_other_tenant()

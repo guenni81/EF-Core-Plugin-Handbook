@@ -1,5 +1,6 @@
 using System.Data.Common;
 using Acme.EntityFrameworkCore.Tenancy.Interceptors;
+using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure;
 using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations;
 using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Runtime;
 using Microsoft.EntityFrameworkCore;
@@ -97,8 +98,7 @@ public sealed class PostgresFixture : IAsyncLifetime
     public const string AppRole = "shop_app";
     private const string AppPassword = "shop_app_pw";
 
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder()
-        .WithImage("postgres:17-alpine")
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:17-alpine")
         .Build();
 
     /// <summary>Connection string for <see cref="AppRole"/>; set in <see cref="InitializeAsync"/>.</summary>
@@ -143,23 +143,43 @@ public sealed class PostgresFixture : IAsyncLifetime
     }
 
     /// <summary>Creates a context that connects as <see cref="AppRole"/> with the given tenant.</summary>
-    public ShopContext CreateAppContext(MutableTenantProvider tenants)
-        => CreateContext(AppConnectionString, tenants);
+    /// <param name="tenants">The tenant of the context.</param>
+    /// <param name="tenancy">Optional plugin options.</param>
+    /// <param name="configure">Optional additional configuration, e.g. more interceptors.</param>
+    public ShopContext CreateAppContext(
+        MutableTenantProvider tenants,
+        Action<TenancyOptionsBuilder>? tenancy = null,
+        Action<DbContextOptionsBuilder<ShopContext>>? configure = null)
+        => CreateContext(new DbContextOptionsBuilder<ShopContext>().UseNpgsql(AppConnectionString),
+            tenants, tenancy, configure);
 
     /// <summary>
     /// Creates an app context over a connection the caller owns. EF only opens (and the
     /// session interceptor only runs) if the connection is still closed.
     /// </summary>
-    public ShopContext CreateAppContext(DbConnection connection, MutableTenantProvider tenants)
-        => CreateContext(new DbContextOptionsBuilder<ShopContext>().UseNpgsql(connection), tenants);
+    /// <param name="connection">The connection; EF opens it only if it is closed.</param>
+    /// <param name="tenants">The tenant of the context.</param>
+    /// <param name="tenancy">Optional plugin options.</param>
+    /// <param name="configure">Optional additional configuration, e.g. more interceptors.</param>
+    public ShopContext CreateAppContext(
+        DbConnection connection,
+        MutableTenantProvider tenants,
+        Action<TenancyOptionsBuilder>? tenancy = null,
+        Action<DbContextOptionsBuilder<ShopContext>>? configure = null)
+        => CreateContext(new DbContextOptionsBuilder<ShopContext>().UseNpgsql(connection),
+            tenants, tenancy, configure);
 
     private static ShopContext CreateContext(string connectionString, ITenantProvider? tenants)
-        => CreateContext(new DbContextOptionsBuilder<ShopContext>().UseNpgsql(connectionString), tenants);
+        => CreateContext(new DbContextOptionsBuilder<ShopContext>().UseNpgsql(connectionString),
+            tenants, tenancy: null, configure: null);
 
     private static ShopContext CreateContext(
-        DbContextOptionsBuilder<ShopContext> builder, ITenantProvider? tenants)
+        DbContextOptionsBuilder<ShopContext> builder,
+        ITenantProvider? tenants,
+        Action<TenancyOptionsBuilder>? tenancy,
+        Action<DbContextOptionsBuilder<ShopContext>>? configure)
     {
-        builder.UseAcmeTenancy();
+        builder.UseAcmeTenancy(tenancy);
 
         // Without a provider (owner context) no interceptors: the session setting stays unset.
         if (tenants is not null)
@@ -167,6 +187,7 @@ public sealed class PostgresFixture : IAsyncLifetime
                 new TenantConnectionInterceptor(tenants),
                 new TenantSaveChangesInterceptor(tenants));
 
+        configure?.Invoke(builder);
         return new ShopContext(builder.Options);
     }
 

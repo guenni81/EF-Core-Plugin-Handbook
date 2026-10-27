@@ -2,6 +2,7 @@ using Acme.EntityFrameworkCore.Tenancy.Diagnostics;
 using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Conventions;
 using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Internal;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions.Infrastructure;
@@ -56,6 +57,30 @@ public class DebuggingTests
 
         Assert.Contains("CurrentTenant", query.Expression.Print());
         Assert.Contains("current_setting", query.ToQueryString());
+    }
+
+    [Fact]
+    public void Query_logs_show_the_pipeline_stages()
+    {
+        // Chapter "The query pipeline": the tree after the funcletizer, then the
+        // SelectExpression with the plugin's query filter and translator already applied
+        var lines = new List<string>();
+        using var ctx = Contexts.Create(
+            tenancy: t => t.ApplyQueryFilter(),
+            configure: o => o.LogTo(lines.Add,
+                [CoreEventId.QueryCompilationStarting, CoreEventId.QueryExecutionPlanned],
+                LogLevel.Debug));
+        string? name = "Contoso";
+
+        _ = ctx.Customers.Where(c => c.Name == name).OrderBy(c => c.Id).ToQueryString();
+
+        var compiling = Assert.Single(lines, l => l.Contains("Compiling query expression"));
+        Assert.Contains("c.Name == @name", compiling);
+        Assert.DoesNotContain("current_setting", compiling);       // filter not yet inserted
+
+        var planned = Assert.Single(lines, l => l.Contains("Generated query execution expression"));
+        Assert.Contains("current_setting('app.tenant_id', TRUE)", planned);
+        Assert.Contains("AS uuid", planned);                       // before the SQL generator
     }
 
     [Fact]

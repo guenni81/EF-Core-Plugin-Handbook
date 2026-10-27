@@ -30,10 +30,10 @@ operations or replace results.
   savepoints & Scoped \\
   \tablerule
   \code{IIdentity\allowbreak{}Resolution\allowbreak{}Interceptor} & Conflicts when attaching
-  already tracked entities & Scoped \\
+  already tracked entities; never for queries (chapter~\ref{ch:materialization-from-rows-to-objects}) & Scoped \\
   \tablerule
-  \code{IMaterialization\allowbreak{}Interceptor} & Creating and initializing entities &
-  \textbf{Singleton} \\
+  \code{IMaterialization\allowbreak{}Interceptor} & Creating and initializing entities
+  (chapter~\ref{ch:materialization-from-rows-to-objects}) & \textbf{Singleton} \\
   \tablerule
   \code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor} & LINQ expression before
   compilation & \textbf{Singleton} \\
@@ -41,7 +41,10 @@ operations or replace results.
 
 The two singleton interceptors implement \code{ISingleton\allowbreak{}Interceptor}. They are
 used once per internal provider, not per context, and must therefore be stateless and
-thread-safe.
+thread-safe. Registered in the internal provider, however, EF only finds the materialization
+interceptor under \code{ISingleton\allowbreak{}Interceptor}; it calls a query expression
+interceptor only when it is registered as \code{IInterceptor}
+(chapter~\ref{ch:bulk-operations-and-the-limits}).
 
 \section{Two ways to register}
 
@@ -67,6 +70,7 @@ It sets the tenant of new entities and prevents data of another tenant from bein
 reassigned. This complements RLS (defense in depth) and produces clearer errors than the
 database. Chapter~\ref{ch:bulk-operations-and-the-limits} shows which paths bypass it:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/Interceptors/TenantSaveChangesInterceptor.cs
 \begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Save\allowbreak{}Changes\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}1/\allowbreak{}2)]{csharp}
 public class TenantSaveChangesInterceptor : SaveChangesInterceptor
 {
@@ -123,23 +127,84 @@ public class TenantSaveChangesInterceptor : SaveChangesInterceptor
                     break;
                 case EntityState.Added when currentValue != current:
                     throw Mismatch(entry, currentValue, current);
-                case EntityState.Modified when property.IsModified:
+                // Only an actual change of the value counts, not the flag
+                case EntityState.Modified
+                    when property.IsModified && currentValue != originalValue:
                     throw new TenancyException("The tenant property is immutable.");
-                case EntityState.Modified or EntityState.Deleted
-                    when originalValue != current:
-                    throw Mismatch(entry, originalValue, current);
+                case EntityState.Modified or EntityState.Deleted:
+                    if (entry.State == EntityState.Modified)
+                        property.IsModified = false;    // do not write the column
+                    // Empty = unknown (shadow property): the database decides
+                    if (!originalValue.IsEmpty && originalValue != current)
+                        throw Mismatch(entry, originalValue, current);
+                    break;
             }
         }
     }
 }
 \end{sourcecode}
 
-\begin{important}[Synchronous and asynchronous]
-  Always implement \textbf{both} variants, synchronous and asynchronous. Depending on
-  \code{Save\allowbreak{}Changes} or \code{Save\allowbreak{}Changes\allowbreak{}Async}, EF
-  calls only one of them. An interceptor that only overrides the asynchronous method has no
-  effect on synchronous calls, without anyone noticing.
-\end{important}
+Anyone who only works with asynchronous code easily overrides only one variant:
+
+\begin{sourcecode}[Interceptor (\allowbreak{}WRONG)]{csharp}
+public class TenantSaveChangesInterceptor : SaveChangesInterceptor
+{
+    public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+        DbContextEventData eventData, InterceptionResult<int> result,
+        CancellationToken cancellationToken = default) { /* apply the tenant */ }
+
+    // SavingChanges is missing
+}
+\end{sourcecode}
+
+\begin{failure}[What happens if only the asynchronous variant is implemented?]
+  \textbf{Observable.} With \code{Save\allowbreak{}Changes\allowbreak{}Async} everything
+  works. A synchronous \code{Save\allowbreak{}Changes}, for example in a console tool or an
+  older code path, saves without a tenant; RLS rejects the row with \code{WITH CHECK}, a
+  plugin without database protection silently writes it wrongly.
+
+  \textbf{Cause.} Depending on the call, EF calls exactly one variant. The base class
+  \code{Save\allowbreak{}Changes\allowbreak{}Interceptor} implements the other one as an
+  empty method, so there is no error. The same applies to connection and command
+  interceptors.
+
+  \textbf{Solution.} Always override both variants and call the same logic, like
+  \code{Apply\allowbreak{}Tenant} in the sample.
+
+  \textbf{Test:}
+  \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Interceptor\allowbreak{}\_with\allowbreak{}\_only\allowbreak{}\_the\allowbreak{}\_async\allowbreak{}\_variant\allowbreak{}\_…}.
+\end{failure}
+
+\section{Tracking flag, change of value and database protection}\label{sec:tracking-flag-versus-value}
+
+Three things look alike when saving and mean different things:
+
+\begin{itemize}
+  \item \textbf{The tracking flag.} \code{Db\allowbreak{}Context.\allowbreak{}Update} and
+    \code{Attach} of an untracked entity set \code{Is\allowbreak{}Modified} for \emph{every}
+    property, the tenant property included. Original and current value are the same: the value
+    the entity brings along. Up to 1.0 the interceptor already rejected this flag as a change of
+    tenant, and an ordinary update from an API failed.
+  \item \textbf{The actual change of value.} A row is only reassigned when the value differs from
+    the original value. The interceptor rejects that, even when the new value is the active
+    tenant. For an unchanged value it clears the flag, so that the \code{UPDATE} does not write
+    the tenant column.
+  \item \textbf{The state of the database.} For a tracked entity the original value comes from
+    the database. For a detached entity it is only a claim of the caller. A forged entity with
+    the own tenant and the ID of a foreign row therefore passes every check in the interceptor.
+    Only the policy decides: the \code{UPDATE} does not see the foreign row, changes zero rows,
+    and EF reports a \code{Db\allowbreak{}Update\allowbreak{}Concurrency\allowbreak{}Exception}.
+    An empty original value (a shadow property the entity cannot carry) counts as unknown, not
+    as foreign; here, too, the database decides.
+\end{itemize}
+
+The interceptor therefore only promises what it can know without accessing the database: no
+change of tenant in the change tracker, no values known to be foreign, no change without an
+active tenant. Whether a row really belongs to the tenant is checked by RLS alone.
+\code{Save\allowbreak{}Changes\allowbreak{}Interceptor\allowbreak{}Tests} covers the cases
+without a database, \code{Detached\allowbreak{}Update\allowbreak{}Tests} against PostgreSQL with
+a restricted role: \code{Update} with an unchanged tenant, synchronous and asynchronous, the
+forged foreign row ID and the reassignment of a tracked row.
 
 The logic lives in an \code{internal} method \code{Apply\allowbreak{}Tenant}. Tests can call
 it directly through \code{Internals\allowbreak{}Visible\allowbreak{}To} without needing a
@@ -157,7 +222,7 @@ event data
 (\code{context.\allowbreak{}Get\allowbreak{}Service<\allowbreak{}T>(\allowbreak{})}), and
 the tenant from the \emph{app} container:
 
-\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}core),\allowbreak{} Runtime/\allowbreak{}Tenant\allowbreak{}Connection\allowbreak{}Interceptor.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}core),\allowbreak{} Runtime/\allowbreak{}Tenant\allowbreak{}Connection\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}simplified)]{csharp}
 // Core package
 public abstract class TenantSessionInterceptor : DbConnectionInterceptor
 {
@@ -247,7 +312,7 @@ and both are easy to create by accident:
   after the change \\
 \end{datatable}
 
-\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Connection\allowbreak{}Lifetime\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Connection\allowbreak{}Lifetime\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}shortened, simplified)]{csharp}
 // Already open, with a session value left over from earlier work (tenant B)
 await using var connection = new NpgsqlConnection(appConnectionString);
 await connection.OpenAsync();
@@ -270,6 +335,7 @@ await db.Database.ApplyTenantSessionAsync();                  // session now: te
 var orders = await db.Orders.ToListAsync();                   // the rows of tenant A
 \end{sourcecode}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/Interceptors/TenantSessionInterceptor.cs
 \begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 public virtual async Task<bool> ApplyToOpenConnectionAsync(
     DbContext context, CancellationToken cancellationToken = default)
@@ -296,6 +362,17 @@ because the provider reads its settings from the internal service provider; that
 transaction: PostgreSQL is lenient here, SQL Server rejects a command that is not enlisted.
 The SQL Server tests check exactly this case; without the line they fail.
 
+In \code{Connection\allowbreak{}Opened} this assignment is missing on purpose. A local
+transaction requires an open connection, and EF opens the connection before it calls
+\code{Begin\allowbreak{}Transaction}; when the connection is opened there is no transaction yet.
+An ambient \code{Transaction\allowbreak{}Scope}, in turn, is joined by Npgsql and SqlClient
+themselves when the connection opens, and every command on the connection runs in it without a
+\code{Db\allowbreak{}Transaction} being assigned. \code{Transaction\allowbreak{}Context\allowbreak{}Tests}
+and the SQL Server tests check all three paths: the connection that
+\code{Begin\allowbreak{}Transaction\allowbreak{}Async} opens,
+\code{Apply\allowbreak{}Tenant\allowbreak{}Session} in an explicit transaction, and reading and
+writing under a \code{Transaction\allowbreak{}Scope}.
+
 \begin{important}[One context, one tenant]
   Isolation follows the connection, not the context. A context used for several tenants, or
   a connection that outlives a request, carries the tenant of the moment it was opened.
@@ -305,6 +382,11 @@ The SQL Server tests check exactly this case; without the line they fail.
   cannot cover every path should offer such an explicit API instead of only documenting the
   gap.
 \end{important}
+
+The gap can also be detected while loading: with
+\code{Verify\allowbreak{}Materialized\allowbreak{}Tenants(\allowbreak{})} the plugin checks
+every loaded entity against the context's tenant and throws instead of returning another
+tenant's rows (chapter~\ref{ch:materialization-from-rows-to-objects}).
 
 % ------------------------------------------------------------
 \chapter{Diagnostics and logging}\label{ch:diagnostics-and-logging}
@@ -316,6 +398,7 @@ errors via \code{Configure\allowbreak{}Warnings}.
 
 \section{Event IDs}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/Diagnostics/TenancyEventId.cs
 \begin{sourcecode}[Diagnostics/\allowbreak{}Tenancy\allowbreak{}Event\allowbreak{}Id.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
 public static class TenancyEventId
 {
@@ -350,6 +433,7 @@ template and the warning behavior from the options. EF caches its definitions pe
 provider; the plugin does the same with its own class registered as a singleton
 (chapter~\ref{ch:registering-services}):
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/Diagnostics/TenancyLoggingDefinitions.cs (strings)
 \begin{sourcecode}[Diagnostics/\allowbreak{}Tenancy\allowbreak{}Logging\allowbreak{}Definitions.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 public class TenancyLoggingDefinitions
 {
@@ -381,7 +465,7 @@ The actual log method follows the pattern of EF's
 \code{Core\allowbreak{}Logger\allowbreak{}Extensions} exactly: classic logging first, then
 the event data for DiagnosticSource and \code{Log\allowbreak{}To}:
 
-\begin{sourcecode}[Diagnostics/\allowbreak{}Tenancy\allowbreak{}Logger\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+\begin{sourcecode}[Diagnostics/\allowbreak{}Tenancy\allowbreak{}Logger\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}excerpt, simplified)]{csharp}
 private static void LogEntityType(
     IDiagnosticsLogger<DbLoggerCategory.Model> diagnostics,
     EventDefinition<string> definition,

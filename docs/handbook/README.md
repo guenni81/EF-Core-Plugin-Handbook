@@ -17,7 +17,8 @@ With a TeX Live installation (2025 or newer, including `latexmk` and `minted`):
 
 ```bash
 cd docs/handbook
-python3 check_code.py                  # code lines at most 94 characters
+python3 check_code.py                  # line length, excerpts against the source files
+python3 check_structure.py             # editions in sync, references, table widths
 latexmk EF-Core-Plugin-Handbook.tex    # -> out/EF-Core-Plugin-Handbook.pdf
 latexmk EF-Core-Plugin-Handbuch.tex    # -> out/EF-Core-Plugin-Handbuch.pdf
 latexmk -c                             # remove auxiliary files (out/aux/)
@@ -39,7 +40,7 @@ TeX Live allows in restricted shell-escape mode, so `-shell-escape` is not neede
 | File | Content |
 |---|---|
 | `EF-Core-Plugin-Handbook.tex` · `EF-Core-Plugin-Handbuch.tex` | Main document of each edition: language, PDF metadata, chapter files |
-| `handbook.sty` | Layout: fonts, colors, page style, code blocks, callouts, tables, flow diagrams, checklists, title block |
+| `handbook.sty` | Layout: fonts, colors, page style, code blocks, callouts, tables, flow diagrams, decision trees, checklists, title block |
 | `en/01_foundations.tex` · `de/01_grundlagen.tex` | Title, preface, table of contents, part I |
 | `en/02_infrastructure.tex` · `de/02_infrastruktur.tex` | Part II |
 | `en/03_model.tex` · `de/03_modell.tex` | Part III |
@@ -49,8 +50,9 @@ TeX Live allows in restricted shell-escape mode, so `-shell-escape` is not neede
 | `en/07_quality.tex` · `de/07_qualitaet.tex` | Part VII |
 | `en/08_advanced.tex` · `de/08_fortgeschritten.tex` | Part VIII |
 | `en/09_deep_extensions.tex` · `de/09_tiefe_erweiterungen.tex` | Part IX |
-| `en/10_appendices.tex` · `de/10_anhaenge.tex` | Appendices A–D, license |
-| `check_code.py` | Checks the maximum line length of all code excerpts |
+| `en/10_appendices.tex` · `de/10_anhaenge.tex` | Appendices A–F (exercises, sources), license |
+| `check_code.py`, `excerpts.py` | Line length of all code excerpts; bound excerpts against their source files |
+| `check_structure.py` | Both editions in sync per chapter, reference targets, datatable widths |
 | `fonts/` | DejaVu fonts (free license, see `LICENSE-DejaVu.txt`) |
 
 ## Building blocks
@@ -64,22 +66,27 @@ The chapter files only use the commands from `handbook.sty`:
 \begin{sourcecode}[Query/CurrentTenantTranslator.cs]{csharp}
 ...                                            % csharp, sql, xml or text
 \end{sourcecode}
-\begin{tip}[Optional title] ... \end{tip}      % also: important, note
+\begin{tip}[Optional title] ... \end{tip}      % also: important, note, failure
 \begin{datatable}{H{0.8}H{1.2}}                % relative widths, sum = number of columns
   \textbf{Head} & \textbf{Head} \\ \tablehead
   Cell & Cell \\ \tablerule
   Cell & Cell \\
 \end{datatable}
 \begin{flowdiagram} \flowstep{Stage}{Description} ... \end{flowdiagram}
+\begin{decisiontree}                           % "yes" leads right, "no" down
+  \decision{Question?}{Outcome} ... \decisionend{Otherwise}
+\end{decisiontree}
+\cellmeta{public · multiple · Scoped}          % grey second line in a table cell
 \begin{checklist} \item ... \end{checklist}
 ```
 
 ## Editing rules
 
 * **Edition.** The book has its own version, `\handbookversion` in `handbook.sty` (currently
-  1.0). It is independent of the package versions (10.x = EF Core 10) and appears on the
-  title page and in the page header. Raise it when a changed edition is published: the
-  minor version for corrections and additions, the major version for a revised book.
+  1.1). The package versions equal it (`VersionPrefix` in `Directory.Build.props`, 1.1.0),
+  so raise both together; it appears on the title page and in the page header. The minor
+  version for corrections and additions, the major version for a revised book or a new EF
+  Core major version.
 
 * **Keep both editions in sync.** Both editions share the same structure and the same
   labels; the file names differ by language. Any change to the content belongs in both
@@ -94,10 +101,15 @@ The chapter files only use the commands from `handbook.sty`:
   renamed, search for its old title.
 * **Code lines** inside `sourcecode` may be at most 94 characters long; `check_code.py`
   (and CI) fails otherwise. Code is copied verbatim; no LaTeX escaping is needed there.
-* **Code excerpts must match the repository.** When a class changes, update its excerpt
-  as well; the file path is given in the optional argument of `sourcecode`. Comments in the
-  English excerpts use the same wording as the source code, the German excerpts translate
-  them.
+* **Code excerpts must match the repository.** Bind an excerpt to its file with a comment
+  line `% source: <path from the repository root>` directly before `\begin{sourcecode}`, in
+  both editions; `check_code.py` then fails when the excerpt no longer matches. Comments and
+  `...` lines are ignored, so the German excerpts translate comments and excerpts may be
+  shortened; line breaks may differ. Add ` (strings)` when messages are translated. An
+  excerpt that rewrites code says so in its title ("vereinfacht" / "simplified").
+* **Both editions have the same structure.** `check_structure.py` compares sections,
+  listings, `% source:` bindings, tables and callouts per chapter; the relative widths of a
+  `datatable` must add up to its number of columns.
 * **Special characters** in running text must be escaped as usual in LaTeX (`\_`, `\&`,
   `\%`, `\#`, `\{`, `\}`). In the German edition write `\textquotedbl{}` instead of a
   straight `"`, which babel uses as a shorthand.

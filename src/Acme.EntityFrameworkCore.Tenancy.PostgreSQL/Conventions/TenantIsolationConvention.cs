@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using System.Reflection;
 using Acme.EntityFrameworkCore.Tenancy.Diagnostics;
@@ -65,10 +66,14 @@ public class TenantIsolationConvention : IModelFinalizingConvention
         IConventionModelBuilder modelBuilder,
         IConventionContext<IConventionModelBuilder> context)
     {
+        // TPT, TPC, entity splitting, owned types in their own table and implicit join tables
+        // would leave tenant data in tables without a tenant column: reject them first
+        TenantTableMappingValidator.Validate(modelBuilder.Metadata, e => e.IsRlsOptedOut());
+
         foreach (var entityType in modelBuilder.Metadata.GetEntityTypes())
         {
-            if (entityType.BaseType is not null       // root types of a hierarchy only
-                || entityType.IsOwned())              // owned types share the owner's table
+            if (entityType.BaseType is not null       // TPH: derived types share the root's table
+                || entityType.IsOwned())              // validated: in the owner's table or JSON
             {
                 continue;
             }
@@ -165,6 +170,10 @@ public class TenantIsolationConvention : IModelFinalizingConvention
     /// <summary>Adds the named query filter comparing the tenant property with the current tenant.</summary>
     /// <param name="entityType">The root entity type.</param>
     /// <param name="property">The tenant property.</param>
+    [UnconditionalSuppressMessage("AOT", "IL3050",
+        Justification = "Conventions only run while the model is built. NativeAOT requires a "
+                        + "compiled model, in which conventions do not run (chapter "
+                        + "\"Compiled models, trimming and NativeAOT\").")]
     protected virtual void ApplyQueryFilter(IConventionEntityType entityType, IConventionProperty property)
     {
         // e => EF.Property<TenantId>(e, "TenantId") == EF.Functions.CurrentTenant()

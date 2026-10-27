@@ -8,4 +8,13 @@ public static class SqlServerRlsAnnotationNames
 
     /// <summary>On the entity type/table: name of the tenant column (= RLS active).</summary>
     public const string TenantColumn = Prefix + "TenantColumn";
+
+    /// <summary>
+    /// On the model: the session key the predicate function reads. Recorded in the snapshot, so
+    /// that a migration uses the value of its own model, not the application's current options.
+    /// </summary>
+    public const string SessionKey = Prefix + "SessionKey";
+
+    /// <summary>On the model: the schema of the predicate function and the security policies.</summary>
+    public const string PolicySchema = Prefix + "PolicySchema";
 }

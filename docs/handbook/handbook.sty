@@ -1,8 +1,9 @@
 % Layout of the EF Core Plugin Handbook (both editions).
 %
 % Provides fonts, colors, page style, syntax-highlighted code blocks (minted), callout
-% boxes, tables, flow diagrams, checklists and the title block. The chapter files in de/
-% and en/ only use the commands and environments defined here. Compile with LuaLaTeX.
+% boxes, tables, flow diagrams, decision trees, checklists and the title block. The chapter
+% files in de/ and en/ only use the commands and environments defined here. Compile with
+% LuaLaTeX.
 \NeedsTeXFormat{LaTeX2e}
 \ProvidesPackage{handbook}[2026/10/25 EF Core Plugin Handbook layout]
 
@@ -26,7 +27,7 @@
 % ---------------------------------------------------------------- Version
 % Edition of the book itself, independent of the package versions (EF Core 10, 10.0.x).
 % Raise it when a changed edition is published (see README.md, "Edition").
-\newcommand{\handbookversion}{1.0}
+\newcommand{\handbookversion}{1.1}
 
 % ---------------------------------------------------------------- Colors
 \RequirePackage[table]{xcolor}
@@ -41,6 +42,7 @@
 \definecolor{importantbg}{HTML}{FFF7E6}\definecolor{importantfg}{HTML}{D99A00}
 \definecolor{tipbg}{HTML}{EAF5EE}\definecolor{tipfg}{HTML}{2E8B57}
 \definecolor{notebg}{HTML}{E8F0FA}\definecolor{notefg}{HTML}{1D4E89}
+\definecolor{failurebg}{HTML}{FCEEEE}\definecolor{failurefg}{HTML}{B3261E}
 \AtBeginDocument{\color{ink}}
 
 % ---------------------------------------------------------------- Headings & TOC
@@ -87,6 +89,7 @@
 % ---------------------------------------------------------------- Lists, tables, links
 \RequirePackage{enumitem}
 \RequirePackage{etoolbox}
+\RequirePackage{needspace}
 \RequirePackage{xltabular}
 \RequirePackage{array}
 \RequirePackage{tikz}
@@ -102,8 +105,10 @@
 % ---------------------------------------------------------------- Code blocks
 % \begin{sourcecode}[label]{language} ... \end{sourcecode}; the label names the source file.
 % Code lines may be at most 94 characters (checked by check_code.py).
+% The label never stays alone at the bottom of a page: room for it and a few code lines
 \newcommand{\codelabel}[1]{%
-  \par\addvspace{4pt}\noindent{\ttfamily\fontsize{7.2}{10}\selectfont\color{muted}#1}%
+  \par\addvspace{4pt}\needspace{5\baselineskip}%
+  \noindent{\ttfamily\fontsize{7.2}{10}\selectfont\color{muted}#1}%
   \par\nobreak\vspace{1pt}}
 \NewTCBListing{sourcecode}{ O{} m }{%
   listing engine=minted, minted language=#2, listing only, breakable,
@@ -118,7 +123,8 @@
   before nobreak={\ifx\relax#1\relax\par\nobreak\else\codelabel{#1}\fi}}
 
 % ---------------------------------------------------------------- Callout boxes
-% \begin{important|tip|note}[optional title] ... \end{...}
+% \begin{important|tip|note|failure}[optional title] ... \end{...}
+% failure: a "What happens if ...?" case; the wrong code stands right before it
 \newcommand{\handbookcallout}[2]{%
   \NewTColorBox{#1}{ O{\csname handbook#1title\endcsname} }{%
     enhanced, breakable, colback=#1bg, boxrule=0pt, frame hidden, sharp corners,
@@ -130,6 +136,7 @@
 \handbookcallout{important}{}
 \handbookcallout{tip}{}
 \handbookcallout{note}{}
+\handbookcallout{failure}{}
 
 % ---------------------------------------------------------------- Tables
 % \begin{datatable}{H{w1}H{w2}...}
@@ -144,6 +151,9 @@
 \newcommand{\tablehead}{\arrayrulecolor{accent}\noalign{\global\arrayrulewidth=0.8pt}\hline
   \noalign{\global\arrayrulewidth=0.4pt}\arrayrulecolor{rule}\endhead}
 \newcommand{\tablerule}{\hline}
+% \tablegroup{columns}{title}: a group heading across the whole row; without a rule below it,
+% so that it never stays alone at the bottom of a page
+\newcommand{\tablegroup}[2]{\multicolumn{#1}{l}{\textbf{\color{accent}#2}} \\*}
 
 % ---------------------------------------------------------------- Flow diagrams
 % \begin{flowdiagram} \flowstep{stage}{description} ... \end{flowdiagram}
@@ -174,6 +184,57 @@
       (f\the\numexpr\value{flowstep}-1\relax.south) -- (f\arabic{flowstep}.north);
   \fi}
 
+% ---------------------------------------------------------------- Decision trees
+% \begin{decisiontree} \decision{question}{outcome} ... \decisionend{otherwise} \end{decisiontree}
+% "Yes" leads right to the outcome of a question, "no" down to the next question.
+% \decisionlabels{yes}{no} sets the arrow labels (set per language).
+\tikzset{
+  dtquestion/.style={draw=codeborder, fill=accentlight, rounded corners=3pt, line width=0.6pt,
+    text width=0.42\linewidth, align=left, font=\small, inner sep=5pt, anchor=north west},
+  dtoutcome/.style={draw=tipfg, fill=tipbg, rounded corners=3pt, line width=0.6pt,
+    text width=0.40\linewidth, align=left, font=\small, inner sep=5pt, anchor=north west},
+  dtfinal/.style={draw=rule, fill=codebg, rounded corners=3pt, line width=0.6pt,
+    text width=0.42\linewidth, align=left, font=\small, inner sep=5pt, anchor=north west},
+  dtarrow/.style={accent, line width=1pt, -{Triangle[length=5pt, width=6pt]}},
+  dtlabel/.style={font=\footnotesize\bfseries\color{muted}, inner sep=2pt},
+}
+\newcommand{\decisionyes}{yes}
+\newcommand{\decisionno}{no}
+\newcommand{\decisionlabels}[2]{\renewcommand{\decisionyes}{#1}\renewcommand{\decisionno}{#2}}
+\newcounter{decisionstep}
+\newenvironment{decisiontree}
+  {\par\addvspace{4pt}\noindent\setcounter{decisionstep}{0}\begin{tikzpicture}}
+  {\end{tikzpicture}\par\addvspace{10pt}}
+\newcommand{\decisionrow}{% top of the next row, below everything drawn so far
+  \stepcounter{decisionstep}%
+  \ifnum\value{decisionstep}=1
+    \coordinate (dttop) at (0,0);%
+  \else
+    \coordinate (dttop) at ($(current bounding box.south -| 0,0) - (0,7mm)$);%
+  \fi}
+\newcommand{\decisionno@arrow}{%
+  \ifnum\value{decisionstep}>1
+    \draw[dtarrow] (q\the\numexpr\value{decisionstep}-1\relax.south)
+      -- node[dtlabel, right] {\decisionno} (q\arabic{decisionstep}.north);
+  \fi}
+\newcommand{\decision}[2]{%
+  \decisionrow
+  \node[dtquestion] (q\arabic{decisionstep}) at (dttop) {#1};
+  \node[dtoutcome] (a\arabic{decisionstep}) at ($(dttop) + (0.42\linewidth + 12pt + 12mm, 0)$)
+    {#2};
+  % The "yes" arrow runs at the height of the first line of both boxes
+  \draw[dtarrow] ($(q\arabic{decisionstep}.north east) + (0,-11pt)$)
+    -- node[dtlabel, above] {\decisionyes}
+       ($(a\arabic{decisionstep}.north west) + (0,-11pt)$);
+  \decisionno@arrow}
+\newcommand{\decisionend}[1]{%
+  \decisionrow
+  \node[dtfinal] (q\arabic{decisionstep}) at (dttop) {#1};
+  \decisionno@arrow}
+
+% Second line in a table cell, e.g. API, cardinality and lifetime of an extension point
+\newcommand{\cellmeta}[1]{\par{\footnotesize\color{muted}#1}}
+
 % ---------------------------------------------------------------- Checklist
 \newenvironment{checklist}
   {\begin{itemize}[label={☐}, leftmargin=1.6em, itemsep=2pt, topsep=4pt]}
@@ -198,7 +259,10 @@
   \ifstrequal{#1}{ngerman}{%
     \def\handbookimportanttitle{Wichtig}\def\handbooktiptitle{Tipp}%
     \def\handbooknotetitle{Hinweis}\def\handbookeditionlabel{Ausgabe}%
+    \def\handbookfailuretitle{Was passiert, wenn …?}%
+    \decisionlabels{ja}{nein}%
     \def\handbookpagelabel{Seite \thepage\ von \pageref*{LastPage}}}{%
     \def\handbookimportanttitle{Important}\def\handbooktiptitle{Tip}%
     \def\handbooknotetitle{Note}\def\handbookeditionlabel{Edition}%
+    \def\handbookfailuretitle{What happens if …?}%
     \def\handbookpagelabel{Page \thepage\ of \pageref*{LastPage}}}}

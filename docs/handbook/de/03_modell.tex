@@ -40,7 +40,7 @@ Migrations, Snapshots, Compiled Models) kann damit arbeiten.
   der Diff genau, welche sich geändert hat. \\
 \end{datatable}
 
-\begin{sourcecode}[Metadata/\allowbreak{}Rls\allowbreak{}Annotation\allowbreak{}Names.\allowbreak{}cs,\allowbreak{} Metadata/\allowbreak{}Rls\allowbreak{}Policy.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+\begin{sourcecode}[Metadata/\allowbreak{}Rls\allowbreak{}Annotation\allowbreak{}Names.\allowbreak{}cs,\allowbreak{} Metadata/\allowbreak{}Rls\allowbreak{}Policy.\allowbreak{}cs (\allowbreak{}gekürzt, vereinfacht)]{csharp}
 public static class RlsAnnotationNames
 {
     public const string Prefix = "Acme:Rls:";
@@ -70,6 +70,7 @@ erhält den Typ für weiteres Chaining. Und die Klasse liegt im Namespace
 \code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core}, damit sie
 überall ohne \code{using} verfügbar ist.
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Builders/RlsEntityTypeBuilderExtensions.cs
 \begin{sourcecode}[Builders/\allowbreak{}Rls\allowbreak{}Entity\allowbreak{}Type\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
 namespace Microsoft.EntityFrameworkCore;
 
@@ -114,6 +115,7 @@ Regeln der Datenbank schon beim Modellbau. Ein Fehler wie „INSERT-Policy mit U
 beim ersten Start der Anwendung auf und nicht erst beim Ausführen der Migration in
 Produktion:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Builders/PolicyBuilder.cs (strings)
 \begin{sourcecode}[Builders/\allowbreak{}Policy\allowbreak{}Builder.\allowbreak{}cs › Build]{csharp}
 internal RlsPolicy Build()
 {
@@ -156,6 +158,7 @@ Für eigene Conventions bietet das Plugin deshalb zusätzlich Überladungen auf 
 Convention-Builder an. Sie geben \code{null} zurück, wenn eine stärkere Quelle anders
 entschieden hat:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Builders/RlsEntityTypeBuilderExtensions.cs
 \begin{sourcecode}[Builders/\allowbreak{}Rls\allowbreak{}Entity\allowbreak{}Type\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs › Convention-Variante]{csharp}
 public static IConventionEntityTypeBuilder? HasRowLevelSecurity(
     this IConventionEntityTypeBuilder builder,
@@ -166,6 +169,32 @@ public static IConventionEntityTypeBuilder? HasRowLevelSecurity(
         ? null
         : builder;
 \end{sourcecode}
+
+Die Prüfung der Quelle steckt im Builder, nicht in den Metadaten. Wer in einer Convention
+direkt an die Metadaten schreibt, umgeht sie:
+
+\begin{sourcecode}[Convention (\allowbreak{}FALSCH)]{csharp}
+// In ProcessModelFinalizing: direkt an den Metadaten statt über entityType.Builder
+entityType.SetAnnotation(RlsAnnotationNames.Enabled, true);
+\end{sourcecode}
+
+\begin{failure}[Was passiert, wenn eine Convention die Konfigurationsquelle umgeht?]
+  \textbf{Beobachtbar.} Der Anwender schaltet RLS für eine Entität mit
+  \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})}
+  ab, und nach dem Modellbau ist es wieder an. Die nächste Migration aktiviert RLS für eine
+  Tabelle, die ausdrücklich ausgenommen war.
+
+  \textbf{Ursache.} \code{Set\allowbreak{}Annotation} am Convention-Metadatum überschreibt
+  jeden vorhandenen Wert. Nur der Convention-Builder vergleicht die Quellen und gibt
+  \code{null} zurück, wenn eine stärkere entschieden hat.
+
+  \textbf{Lösung.} In Conventions immer über \code{entity\allowbreak{}Type.\allowbreak{}Builder}
+  schreiben oder die Convention-Überladungen des Plugins verwenden.
+
+  \textbf{Test:}
+  \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Convention\allowbreak{}\_writing\allowbreak{}\_to\allowbreak{}\_the\allowbreak{}\_metadata\allowbreak{}\_…}
+  und die Gegenprobe über den Builder.
+\end{failure}
 
 % ------------------------------------------------------------
 \chapter{Conventions}\label{ch:conventions}
@@ -201,13 +230,37 @@ während des Modellbaus. Die wichtigsten:
   & Validierung \\
 \end{datatable}
 
-\begin{important}[Der häufigste Convention-Fehler]
-  Reaktive Conventions (\code{*Added}, \code{*Changed}) laufen, während der Nutzer noch
-  konfiguriert. Ein Spaltenname kann sich danach noch ändern, ein Entity-Typ kann noch einen
-  Basistyp bekommen. Wer davon abhängt, muss auf \emph{alle} relevanten Ereignisse reagieren
-  oder \code{IModel\allowbreak{}Finalizing\allowbreak{}Convention} verwenden. Letzteres ist
-  einfacher und für die meisten Plugins richtig.
-\end{important}
+Der häufigste Convention-Fehler ist der falsche Zeitpunkt:
+
+\begin{sourcecode}[Convention (\allowbreak{}FALSCH)]{csharp}
+public void ProcessPropertyAdded(IConventionPropertyBuilder propertyBuilder,
+    IConventionContext<IConventionPropertyBuilder> context)
+{
+    // Spaltennamen gleich merken, etwa für den Policy-Ausdruck
+    propertyBuilder.HasAnnotation("Acme:Column", propertyBuilder.Metadata.GetColumnName());
+}
+\end{sourcecode}
+
+\begin{failure}[Was passiert, wenn eine Convention zu früh läuft?]
+  \textbf{Beobachtbar.} Konfiguriert der Anwender danach
+  \code{Has\allowbreak{}Column\allowbreak{}Name(\textquotedbl{}tenant\textquotedbl{})} oder
+  benennt ein Naming-Plugin die Spalte um, bleibt der gemerkte Name
+  \code{Tenant\allowbreak{}Id}. Die Policy verweist auf eine Spalte, die es nicht gibt, und
+  die Migration scheitert erst in der Datenbank.
+
+  \textbf{Ursache.} Reaktive Conventions (\code{*Added}, \code{*Changed}) laufen, während
+  der Anwender noch konfiguriert. Ein Spaltenname kann sich danach noch ändern, ein
+  Entity-Typ noch einen Basistyp bekommen.
+
+  \textbf{Lösung.} Was vom fertigen Modell abhängt, in einer
+  \code{IModel\allowbreak{}Finalizing\allowbreak{}Convention} lesen, und zwar über
+  \code{Get\allowbreak{}Column\allowbreak{}Name(\allowbreak{}table)}. Wer reaktiv bleiben
+  muss, reagiert auf \emph{alle} relevanten Ereignisse.
+
+  \textbf{Test:}
+  \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Convention\allowbreak{}\_reading\allowbreak{}\_the\allowbreak{}\_column\allowbreak{}\_name\allowbreak{}\_too\allowbreak{}\_early\allowbreak{}\_…}
+  und die Gegenprobe bei \code{Model\allowbreak{}Finalizing}.
+\end{failure}
 
 \section{Conventions einhängen}
 
@@ -216,6 +269,7 @@ Convention-Set und fügt eigene Conventions hinzu.
 \code{Convention\allowbreak{}Set.\allowbreak{}Add} trägt eine Convention in alle Listen ein,
 deren Interfaces sie implementiert, jeweils am Ende:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Conventions/TenancyConventionSetPlugin.cs
 \begin{sourcecode}[Conventions/\allowbreak{}Tenancy\allowbreak{}Convention\allowbreak{}Set\allowbreak{}Plugin.\allowbreak{}cs]{csharp}
 public class TenancyConventionSetPlugin : IConventionSetPlugin
 {
@@ -272,15 +326,19 @@ Kapitel~\ref{ch:property-level-fluent-api-and}), aktiviert RLS mit Policy, legt 
 an, setzt eine Laufzeit-Annotation für den SaveChanges-Interceptor und optional einen
 Query-Filter:
 
-\begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Convention.\allowbreak{}cs › Process\allowbreak{}Model\allowbreak{}Finalizing]{csharp}
+\begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Convention.\allowbreak{}cs › Process\allowbreak{}Model\allowbreak{}Finalizing (\allowbreak{}vereinfacht)]{csharp}
 public virtual void ProcessModelFinalizing(
     IConventionModelBuilder modelBuilder,
     IConventionContext<IConventionModelBuilder> context)
 {
+    // TPT, TPC, Entity Splitting, Owned Types in eigener Tabelle und implizite
+    // Join-Tabellen ließen Mandantendaten ohne Mandantenspalte zurück: zuerst ablehnen
+    TenantTableMappingValidator.Validate(modelBuilder.Metadata, e => e.IsRlsOptedOut());
+
     foreach (var entityType in modelBuilder.Metadata.GetEntityTypes())
     {
-        if (entityType.BaseType is not null       // nur Root-Typen einer Hierarchie
-            || entityType.IsOwned())              // Owned Types teilen die Tabelle
+        if (entityType.BaseType is not null       // TPH: Tabelle des Root-Typs
+            || entityType.IsOwned())              // geprüft: Eigentümertabelle oder JSON
             continue;
 
         // Markierte Property oder "TenantId" bei ITenantOwned (Kernpaket,
@@ -312,6 +370,7 @@ public virtual void ProcessModelFinalizing(
 }
 \end{sourcecode}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Conventions/TenantIsolationConvention.cs
 \begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Convention.\allowbreak{}cs › Apply\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security]{csharp}
 protected virtual void ApplyRowLevelSecurity(
     IConventionEntityType entityType,
@@ -346,6 +405,90 @@ protected virtual void ApplyRowLevelSecurity(
   (\code{[a-z\_\allowbreak{}][a-z0-9\_\allowbreak{}]*\textbackslash{}.\allowbreak{}[a-z\_\allowbreak{}][a-z0-9\_\allowbreak{}]*}).
 \end{important}
 
+\section{Welche Tabellenabbildungen geschützt sind}\label{sec:supported-table-mappings}
+
+RLS schützt Tabellen, keine Entitäten. Die Policy vergleicht die Mandantenspalte \emph{derselben}
+Tabelle mit dem Session-Setting. Eine Tabelle mit Mandantendaten, aber ohne diese Spalte, lässt
+sich mit dieser Policy nicht schützen. Eine Entität kann mehrere Tabellen belegen, und mehrere
+Entitäten können sich eine Tabelle teilen. Deshalb prüft
+\code{Tenant\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Validator} aus dem Kernpaket
+vor jeder Annotation, ob jede Tabelle mit Mandantendaten die Mandantenspalte enthält. Beide
+Provider-Pakete rufen ihn auf, der Vertrag ist also für PostgreSQL und SQL Server gleich:
+
+\begin{datatable}{H{1.00}H{1.25}H{0.75}}
+  \textbf{Abbildung} & \textbf{Tabellen mit Mandantendaten} & \textbf{Verhalten} \\
+  \tablehead
+  Eine Tabelle pro Entität & die Tabelle, mit Mandantenspalte & geschützt \\
+  \tablerule
+  TPH (Standard) & eine Tabelle für die ganze Hierarchie & geschützt, Policy am Root-Typ \\
+  \tablerule
+  Mandantenbezogener abgeleiteter Typ unter einem Root ohne Mandant & dieselbe Tabelle, Zeilen
+  anderer Typen ohne Mandant & abgelehnt \\
+  \tablerule
+  TPT & je abgeleitetem Typ eine Tabelle \emph{ohne} Mandantenspalte & abgelehnt \\
+  \tablerule
+  TPC & je konkretem Typ eine Tabelle, die abstrakte Basis hat keine & abgelehnt (nicht
+  implementiert) \\
+  \tablerule
+  Owned Type in der Eigentümertabelle (\code{Owns\allowbreak{}One}) & Spalten der
+  Eigentümertabelle & geschützt \\
+  \tablerule
+  Owned Type als JSON (\code{To\allowbreak{}Json}) & eine Spalte der Eigentümertabelle &
+  geschützt \\
+  \tablerule
+  Owned Type in eigener Tabelle (\code{Owns\allowbreak{}Many}, \code{To\allowbreak{}Table})
+  & eigene Tabelle ohne Mandantenspalte & abgelehnt \\
+  \tablerule
+  Table Splitting & dieselben Zeilen für alle Typen & geschützt, wenn alle mandantenbezogenen
+  Typen dieselbe Spalte nutzen \\
+  \tablerule
+  Entity Splitting (\code{Split\allowbreak{}To\allowbreak{}Table}) & weitere Tabelle ohne
+  Mandantenspalte & abgelehnt \\
+  \tablerule
+  Implizite Many-to-many-Tabelle mit mandantenbezogener Seite & Join-Tabelle ohne
+  Mandantenspalte & abgelehnt \\
+  \tablerule
+  Join-Entität mit Mandanten-Property (\code{Using\allowbreak{}Entity}) & Join-Tabelle mit
+  Mandantenspalte & geschützt \\
+  \tablerule
+  View, \code{To\allowbreak{}Sql\allowbreak{}Query}, keyless ohne Tabelle & keine eigene
+  Tabelle & keine Policy; die Basistabellen tragen sie \\
+\end{datatable}
+
+Abgelehnt heißt: Das Modell wirft beim ersten Zugriff auf \code{Model} eine
+\code{Invalid\allowbreak{}Operation\allowbreak{}Exception}, die Tabelle, Typ und Ausweg nennt.
+Das passiert vor \code{Ensure\allowbreak{}Created}, vor jeder Migration und vor der ersten
+Abfrage. Eine scheinbare Unterstützung, die eine Policy auf eine Tabelle ohne passende Spalte
+schreibt, wäre schlimmer als die Ablehnung. TPC wäre grundsätzlich schützbar, weil jede
+konkrete Tabelle die Mandantenspalte erbt. Das Plugin unterstützt aber genau eine Tabelle pro
+Hierarchie, und eine halbe Umsetzung soll keine Sicherheit vortäuschen. Als Ausweg bleiben TPH
+oder eigenständige Entitäten.
+
+Bewusste Ausnahmen bleiben möglich: Eine mit \code{[No\allowbreak{}Tenant\allowbreak{}Isolation]}
+oder \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})}
+ausgenommene Entität wird nicht geprüft, und die Convention protokolliert die Ausnahme als
+Warnung. So unterscheidet das Modell eine Entscheidung von einem Versehen. Für die implizite
+Join-Tabelle gibt es im PostgreSQL-Paket
+\code{Using\allowbreak{}Entity(\allowbreak{}j => j.\allowbreak{}Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{}))};
+das SQL-Server-Paket kennt nur das Attribut und braucht dafür eine Join-Klasse. Besser ist
+fast immer eine Mandanten-Property an der Join-Entität:
+
+\begin{sourcecode}[Anwendung]{csharp}
+modelBuilder.Entity<Basket>()
+    .HasMany(b => b.Labels).WithMany(l => l.Baskets)
+    .UsingEntity("BasketLabel",
+        j => j.Property<TenantId>("TenantId").IsTenantProperty());   // Shadow-Property
+\end{sourcecode}
+
+Die Shadow-Property füllt der SaveChanges-Interceptor wie jede andere Mandanten-Property.
+\code{Mapping\allowbreak{}Isolation\allowbreak{}Tests} prüft beides gegen ein echtes
+PostgreSQL mit eingeschränkter Rolle: Ein TPC-Modell scheitert, bevor eine einzige Tabelle
+existiert. In einem Modell mit TPH, Owned Type, JSON-Spalte und dieser Join-Entität hat jede
+Tabelle RLS, und ohne Mandant ist in keiner Tabelle eine Zeile sichtbar.
+\code{Table\allowbreak{}Mapping\allowbreak{}Tests} und
+\code{Sql\allowbreak{}Server\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Tests} decken
+jede Zeile der Matrix ohne Datenbank ab.
+
 \section{Strukturelle Änderungen: Index und Query-Filter}
 
 Conventions dürfen nicht nur Annotations setzen, sondern das Modell strukturell verändern.
@@ -356,6 +499,7 @@ koexistieren mit eigenen Filtern des Nutzers und lassen sich gezielt per
 \code{Ignore\allowbreak{}Query\allowbreak{}Filters(\allowbreak{}[\textquotedbl{}Acme.\allowbreak{}Tenancy\textquotedbl{}])}
 abschalten.
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Conventions/TenantIsolationConvention.cs
 \begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Convention.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 protected virtual void EnsureTenantIndex(
     IConventionEntityType entityType, IConventionProperty property)
@@ -424,6 +568,7 @@ die das Attribut findet und nur noch die Reaktion verlangt. Der Wert wird mit
 \code{from\allowbreak{}Data\allowbreak{}Annotation: true} gesetzt, sodass die Fluent API ihn
 überstimmen kann:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Conventions/NoTenantIsolationAttributeConvention.cs
 \begin{sourcecode}[Conventions/\allowbreak{}No\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Attribute\allowbreak{}Convention.\allowbreak{}cs]{csharp}
 public class NoTenantIsolationAttributeConvention
     : TypeAttributeConventionBase<NoTenantIsolationAttribute>
@@ -458,7 +603,7 @@ gibt und der dem Provider gehört. Für Plugins ist eine
 \code{IModel\allowbreak{}Finalized\allowbreak{}Convention} der bessere Ort: Sie läuft auf
 dem fertigen Modell und kollidiert mit niemandem.
 
-\begin{sourcecode}[Conventions/\allowbreak{}Tenancy\allowbreak{}Model\allowbreak{}Validation\allowbreak{}Convention.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Conventions/\allowbreak{}Tenancy\allowbreak{}Model\allowbreak{}Validation\allowbreak{}Convention.\allowbreak{}cs (\allowbreak{}vereinfacht)]{csharp}
 public virtual IModel ProcessModelFinalized(IModel model)
 {
     foreach (var entityType in model.GetEntityTypes())
@@ -512,7 +657,7 @@ Typen hat ein Plugin zwei Möglichkeiten:
 Der stark typisierte \code{Tenant\allowbreak{}Id} und sein Konverter liegen im Kernpaket.
 Der Konverter hat eine gemeinsame Instanz; warum, zeigt der Abschnitt über Compiled Models.
 
-\begin{sourcecode}[Tenant\allowbreak{}Id.\allowbreak{}cs,\allowbreak{} Tenant\allowbreak{}Id\allowbreak{}Converter.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+\begin{sourcecode}[Tenant\allowbreak{}Id.\allowbreak{}cs,\allowbreak{} Tenant\allowbreak{}Id\allowbreak{}Converter.\allowbreak{}cs (\allowbreak{}gekürzt, vereinfacht)]{csharp}
 public readonly record struct TenantId(Guid Value)
 {
     public static TenantId Empty => default;
@@ -533,7 +678,7 @@ public sealed class TenantIdConverter : ValueConverter<TenantId, Guid>
 
 \section{Das Type Mapping}
 
-\begin{sourcecode}[Storage/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Type\allowbreak{}Mapping.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Storage/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Type\allowbreak{}Mapping.\allowbreak{}cs (\allowbreak{}vereinfacht)]{csharp}
 public class TenantIdTypeMapping : RelationalTypeMapping
 {
     // Pflicht für Compiled Models: öffentliche statische Default-Property
@@ -584,7 +729,7 @@ Mapping sein Verhalten, zum Beispiel die Literal-Erzeugung.
 Plugins, \emph{bevor} es auf die Mappings des Providers zurückgreift. Ein Plugin gibt
 \code{null} zurück, wenn es nicht zuständig ist:
 
-\begin{sourcecode}[Storage/\allowbreak{}Tenancy\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source\allowbreak{}Plugin.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Storage/\allowbreak{}Tenancy\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source\allowbreak{}Plugin.\allowbreak{}cs (\allowbreak{}vereinfacht)]{csharp}
 public class TenancyTypeMappingSourcePlugin : IRelationalTypeMappingSourcePlugin
 {
     public virtual RelationalTypeMapping? FindMapping(
@@ -618,6 +763,7 @@ Für JSON-Spalten braucht ein Mapping einen
 lesen, schreiben und beschreiben, wie er im generierten Code erzeugt wird. Das Muster folgt
 EFs eigenem \code{Json\allowbreak{}Guid\allowbreak{}Reader\allowbreak{}Writer}:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/TenantIdJsonReaderWriter.cs
 \begin{sourcecode}[Tenant\allowbreak{}Id\allowbreak{}Json\allowbreak{}Reader\allowbreak{}Writer.\allowbreak{}cs]{csharp}
 public sealed class TenantIdJsonReaderWriter : JsonValueReaderWriter<TenantId>
 {

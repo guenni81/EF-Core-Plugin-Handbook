@@ -59,6 +59,15 @@ public class TenancyNpgsqlQuerySqlGenerator : NpgsqlQuerySqlGenerator
         Visit(operand);
         if (!simple) Sql.Append(")");
     }
+
+    /// <summary>
+    /// Parenthesizes the plugin's nodes as operands of other operators. EF does not know their
+    /// precedence; PostgreSQL binds <c>=</c> and <c>&lt;&gt;</c> tighter than
+    /// <c>IS DISTINCT FROM</c>, so <c>a IS DISTINCT FROM b &lt;&gt; c</c> would compare b and c.
+    /// </summary>
+    protected override bool RequiresParentheses(SqlExpression outerExpression, SqlExpression innerExpression)
+        => innerExpression is DistinctFromExpression
+           || base.RequiresParentheses(outerExpression, innerExpression);
 }
 
 /// <summary>Replaces the Npgsql factory (single service, singleton).</summary>

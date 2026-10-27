@@ -1,6 +1,8 @@
 using Acme.EntityFrameworkCore.Tenancy.Diagnostics;
 using Acme.EntityFrameworkCore.Tenancy.Metadata;
+using Acme.EntityFrameworkCore.Tenancy.SqlServer.Infrastructure;
 using Acme.EntityFrameworkCore.Tenancy.SqlServer.Metadata;
+using Acme.EntityFrameworkCore.Tenancy.SqlServer.Metadata.Internal;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -22,19 +24,35 @@ public class SqlServerTenantIsolationConvention : IModelFinalizingConvention
 {
     private readonly IDiagnosticsLogger<DbLoggerCategory.Model> _logger;
     private readonly TenancyLoggingDefinitions _loggingDefinitions;
+    private readonly SqlServerTenancySettings? _settings;
 
     /// <summary>Creates the convention.</summary>
     /// <param name="logger">The model logger.</param>
     /// <param name="loggingDefinitions">The tenancy package's cached log definitions.</param>
+    [Obsolete("Without the settings the model does not record session key and policy schema. "
+              + "Use the constructor with the settings.")]
     public SqlServerTenantIsolationConvention(
         IDiagnosticsLogger<DbLoggerCategory.Model> logger,
         TenancyLoggingDefinitions loggingDefinitions)
+        : this(logger, loggingDefinitions, settings: null)
+    {
+    }
+
+    /// <summary>Creates the convention.</summary>
+    /// <param name="logger">The model logger.</param>
+    /// <param name="loggingDefinitions">The tenancy package's cached log definitions.</param>
+    /// <param name="settings">Session key and policy schema to record in the model.</param>
+    public SqlServerTenantIsolationConvention(
+        IDiagnosticsLogger<DbLoggerCategory.Model> logger,
+        TenancyLoggingDefinitions loggingDefinitions,
+        SqlServerTenancySettings? settings)
     {
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(loggingDefinitions);
 
         _logger = logger;
         _loggingDefinitions = loggingDefinitions;
+        _settings = settings;
     }
 
     /// <summary>
@@ -48,10 +66,18 @@ public class SqlServerTenantIsolationConvention : IModelFinalizingConvention
         IConventionModelBuilder modelBuilder,
         IConventionContext<IConventionModelBuilder> context)
     {
+        // Mappings that would leave tenant data in tables without a tenant column are rejected
+        // before any table is annotated (same contract as the PostgreSQL package)
+        TenantTableMappingValidator.Validate(modelBuilder.Metadata, IsOptedOut);
+
+        // Policy name -> table: each protected table needs its own policy name
+        var policies = new Dictionary<string, StoreObjectIdentifier>(StringComparer.OrdinalIgnoreCase);
+        var defaultSchema = modelBuilder.Metadata.GetDefaultSchema() ?? "dbo";
+
         foreach (var entityType in modelBuilder.Metadata.GetEntityTypes())
         {
-            // Derived types share the root's table (TPH) and owned types the owner's: one policy
-            // per table, attached to the root
+            // Derived types share the root's table (TPH) and owned types the owner's (validated
+            // above): one policy per table, attached to the root
             if (entityType.BaseType is not null || entityType.IsOwned())
                 continue;
 
@@ -63,7 +89,7 @@ public class SqlServerTenantIsolationConvention : IModelFinalizingConvention
                     $"Tenant property '{entityType.DisplayName()}.{property.Name}' must be of type TenantId.");
 
             // Opt-out via data annotation (only the PostgreSQL package offers the Fluent API variant)
-            if (entityType.ClrType.IsDefined(typeof(NoTenantIsolationAttribute), inherit: true))
+            if (IsOptedOut(entityType))
             {
                 _logger.TenantIsolationOptedOut(_loggingDefinitions, entityType);
                 continue;
@@ -78,6 +104,7 @@ public class SqlServerTenantIsolationConvention : IModelFinalizingConvention
             entityType.Builder.HasAnnotation(TenancyAnnotationNames.TenantProperty, property.Name);
             entityType.Builder.HasAnnotation(
                 SqlServerRlsAnnotationNames.TenantColumn, property.GetColumnName(table));
+            EnsureUniquePolicyName(policies, table, defaultSchema);
 
             // Every query filters by the tenant column via the predicate: index it unless an
             // existing index or key already starts with it
@@ -89,5 +116,36 @@ public class SqlServerTenantIsolationConvention : IModelFinalizingConvention
 
             _logger.TenantIsolationApplied(_loggingDefinitions, entityType);
         }
+
+        // The database objects depend on these settings: record them in the model (and so in the
+        // snapshot), so that a change produces an AlterDatabaseOperation and every migration
+        // generates SQL from its own model instead of from the current options
+        if (_settings is not null && policies.Count > 0)
+        {
+            modelBuilder.HasAnnotation(SqlServerRlsAnnotationNames.SessionKey, _settings.SessionKey);
+            modelBuilder.HasAnnotation(SqlServerRlsAnnotationNames.PolicySchema, _settings.PolicySchema);
+        }
     }
+
+    // SQL Server compares names case-insensitively by default; a collision would only show up as
+    // a failing CREATE SECURITY POLICY in the database
+    private static void EnsureUniquePolicyName(
+        Dictionary<string, StoreObjectIdentifier> policies, StoreObjectIdentifier table, string defaultSchema)
+    {
+        var name = SqlServerTenancyNames.PolicyName(table.Schema ?? defaultSchema, table.Name);
+        if (name.Length > SqlServerTenancyNames.MaxIdentifierLength)
+            throw new InvalidOperationException(
+                $"The security policy name '{name}' for table '{table.DisplayName()}' is longer than "
+                + $"{SqlServerTenancyNames.MaxIdentifierLength} characters. Shorten the table or schema name.");
+
+        if (policies.TryGetValue(name, out var other) && other != table)
+            throw new InvalidOperationException(
+                $"Tables '{other.DisplayName()}' and '{table.DisplayName()}' would get the same security "
+                + $"policy name '{name}'. Rename one of them.");
+
+        policies[name] = table;
+    }
+
+    private static bool IsOptedOut(IReadOnlyEntityType entityType)
+        => entityType.ClrType.IsDefined(typeof(NoTenantIsolationAttribute), inherit: true);
 }

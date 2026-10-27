@@ -35,6 +35,21 @@ public class DeepQueryTests
     }
 
     [Fact]
+    public void IsDistinctFrom_as_operand_of_a_comparison_is_parenthesized()
+    {
+        // PostgreSQL binds <> tighter than IS DISTINCT FROM: without parentheses the SQL
+        // would compare 'x' with the column
+        using var ctx = Contexts.Create();
+
+        var sql = ctx.Customers
+            .Where(c => EF.Functions.IsDistinctFrom(c.Name, "x") != EF.Functions.IsDistinctFrom(c.Name, "y"))
+            .ToQueryString();
+
+        Assert.Contains(
+            "WHERE (c.\"Name\" IS DISTINCT FROM 'x') <> (c.\"Name\" IS DISTINCT FROM 'y')", sql);
+    }
+
+    [Fact]
     public void Every_translates_to_bool_and_with_coalesce()
     {
         using var ctx = Contexts.Create();
@@ -60,4 +75,5 @@ public class DeepQueryTests
 
         Assert.Contains("FILTER (WHERE", sql);
     }
+
 }

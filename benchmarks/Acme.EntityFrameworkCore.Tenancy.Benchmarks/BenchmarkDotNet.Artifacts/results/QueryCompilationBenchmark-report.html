@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>QueryCompilationBenchmark-20261028-002209</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.15.8, Linux Ubuntu 24.04.5 LTS (Noble Numbat)
+11th Gen Intel Core i9-11900H 2.50GHz (Max: 800.00GHz), 1 CPU, 16 logical and 8 physical cores
+.NET SDK 10.0.202
+  [Host]   : .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+  ShortRun : .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+</code></pre>
+<pre><code>Job=ShortRun  IterationCount=3  LaunchCount=1  
+WarmupCount=3  
+</code></pre>
+
+<table>
+<thead><tr><th>Method</th><th>Setup         </th><th>Mean </th><th>Error</th><th>StdDev</th><th>Gen0</th><th>Gen1</th><th>Allocated</th>
+</tr>
+</thead><tbody><tr><td>Compile</td><td>EFCore</td><td>2,644.79 &mu;s</td><td>2,632.34 &mu;s</td><td>144.288 &mu;s</td><td>11.7188</td><td>7.8125</td><td>145.72 KB</td>
+</tr><tr><td>CacheHit</td><td>EFCore</td><td>17.86 &mu;s</td><td>76.07 &mu;s</td><td>4.169 &mu;s</td><td>0.7324</td><td>-</td><td>9.87 KB</td>
+</tr><tr><td>Compile</td><td>Tenancy</td><td>2,683.12 &mu;s</td><td>3,541.82 &mu;s</td><td>194.139 &mu;s</td><td>11.7188</td><td>7.8125</td><td>146.67 KB</td>
+</tr><tr><td>CacheHit</td><td>Tenancy</td><td>14.78 &mu;s</td><td>13.40 &mu;s</td><td>0.735 &mu;s</td><td>0.7324</td><td>-</td><td>9.91 KB</td>
+</tr><tr><td>Compile</td><td>Tenan(...)ilter [22]</td><td>2,777.43 &mu;s</td><td>4,727.43 &mu;s</td><td>259.126 &mu;s</td><td>11.7188</td><td>7.8125</td><td>160.37 KB</td>
+</tr><tr><td>CacheHit</td><td>Tenan(...)ilter [22]</td><td>14.77 &mu;s</td><td>15.17 &mu;s</td><td>0.831 &mu;s</td><td>0.7324</td><td>-</td><td>10.2 KB</td>
+</tr></tbody></table>
+</body>
+</html>

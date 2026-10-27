@@ -1,12 +1,13 @@
 % ============================================================
 \setpartpreamble{\partintro
-  {How a plugin is configured, registers its services and connects to the application's DI
-  container.}
+  {How a plugin is configured, registers its services, connects to the application's DI
+  container, and which state belongs where.}
   {
     \item Chapter~\ref{ch:the-options-extension}: The options extension
     \item Chapter~\ref{ch:registering-services}: Registering services
     \item Chapter~\ref{ch:public-api-and-integration-into}: Public API and integration into
     the application
+    \item Chapter~\ref{ch:state-lifetimes-and-thread-safety}: State, lifetimes and thread safety
   }}
 \part{Infrastructure}\label{part:II}
 
@@ -25,6 +26,7 @@ and \code{Get\allowbreak{}Hash\allowbreak{}Code} over all fields, which is exact
 cache key needs. New settings are added to the record without touching hashing or
 comparison.
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Infrastructure/TenancySettings.cs
 \begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Settings.\allowbreak{}cs]{csharp}
 public sealed record TenancySettings
 {
@@ -35,16 +37,18 @@ public sealed record TenancySettings
     public bool ForceRowLevelSecurity { get; init; } = true;
     public bool ApplyQueryFilter { get; init; }
     public bool CreateTenantIndex { get; init; } = true;
+    public bool VerifyMaterializedTenants { get; init; }
 }
 \end{sourcecode}
 
 \section{Immutability}
 
 EF compares and caches options. Once added, an extension must therefore never change again;
-every change creates a copy. The pattern from EF Core itself: a protected copy constructor
+every change creates a copy. What happens otherwise is shown by failure case~4 in
+chapter~\ref{ch:state-lifetimes-and-thread-safety}: new contexts silently keep working with the old value. The pattern from EF Core itself: a protected copy constructor
 and a virtual \code{Clone} method, so derived extensions clone their own type.
 
-\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs (\allowbreak{}excerpt, simplified)]{csharp}
 public class TenancyOptionsExtension : IDbContextOptionsExtension
 {
     private DbContextOptionsExtensionInfo? _info;
@@ -83,7 +87,7 @@ fast pre-filter and
 \code{Should\allowbreak{}Use\allowbreak{}Same\allowbreak{}Service\allowbreak{}Provider} as
 the exact comparison.
 
-\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Extension\allowbreak{}Info]{csharp}
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Extension\allowbreak{}Info (\allowbreak{}simplified)]{csharp}
 private sealed class ExtensionInfo : DbContextOptionsExtensionInfo
 {
     public ExtensionInfo(TenancyOptionsExtension extension)
@@ -123,10 +127,42 @@ There are two classic mistakes with these methods, with opposite consequences:
   \tablerule
   A value that varies per context is in the hash (tenant, connection string, instance) & A
   new internal provider including model is created for every context. Memory and startup
-  time explode; EF warns after 20 providers with
-  \code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}.
+  time explode; from the 21st provider on, EF throws by default with
+  \code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}
+  (failure case~2 in chapter~\ref{ch:state-lifetimes-and-thread-safety}).
   \\
 \end{datatable}
+
+The first mistake typically arises when a plugin without settings gets one later and the
+info class from the first version stays as it was:
+
+\begin{sourcecode}[Info class (\allowbreak{}WRONG)]{csharp}
+// From the first version without settings; SettingName was added later
+public override int GetServiceProviderHashCode() => 0;
+
+public override bool ShouldUseSameServiceProvider(DbContextOptionsExtensionInfo other)
+    => other is ExtensionInfo;
+\end{sourcecode}
+
+\begin{failure}[What happens if the hash forgets a setting?]
+  \textbf{Observable.} A context with \code{app.\allowbreak{}b} runs on the provider EF
+  built for \code{app.\allowbreak{}a}: singletons and model carry the value of the first
+  configuration. There is neither an error nor a warning, and tests with only one
+  configuration see nothing.
+
+  \textbf{Cause.} Hash and comparison are the key of the provider cache. If both say
+  “equal”, EF uses the cached provider; \code{ISingleton\allowbreak{}Options} is not
+  initialized again, and \code{Validate} does not run in the normal case
+  (chapter~\ref{ch:state-lifetimes-and-thread-safety}).
+
+  \textbf{Solution.} Include all model-relevant settings in hash and comparison, most
+  simply as a record like \code{Tenancy\allowbreak{}Settings}.
+
+  \textbf{Test:}
+  \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Setting\allowbreak{}\_missing\allowbreak{}\_from\allowbreak{}\_the\allowbreak{}\_hash\allowbreak{}\_…};
+  the counter-check is
+  \code{Options\allowbreak{}Tests.\allowbreak{}Different\allowbreak{}\_settings\allowbreak{}\_produce\allowbreak{}\_different\allowbreak{}\_models\allowbreak{}\_…}.
+\end{failure}
 
 \begin{important}[The rule of thumb for the hash]
   The hash must contain exactly what \textbf{influences which services are registered or
@@ -147,6 +183,7 @@ is \code{true} only for real providers.
 preconditions arising from the combination of extensions and reports them with a clear
 message instead of a later follow-up error:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Infrastructure/TenancyOptionsExtension.cs (strings)
 \begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Validate]{csharp}
 public virtual void Validate(IDbContextOptions options)
 {
@@ -169,6 +206,7 @@ additionally for relational services. It registers each service with the correct
 and automatically uses \code{Try\allowbreak{}Add\allowbreak{}Enumerable} for services that
 can be registered multiple times.
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Infrastructure/TenancyOptionsExtension.cs
 \begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Apply\allowbreak{}Services]{csharp}
 public virtual void ApplyServices(IServiceCollection services)
 {
@@ -219,14 +257,40 @@ public virtual void ApplyServices(IServiceCollection services)
   the provider's service. Both orders lead to the same result.
 \end{note}
 
+Bypassing the builder means choosing the lifetime yourself, and the obvious choice is wrong:
+
+\begin{sourcecode}[Apply\allowbreak{}Services (\allowbreak{}WRONG)]{csharp}
+public void ApplyServices(IServiceCollection services)
+    => services.AddSingleton<IMethodCallTranslatorPlugin, ReverseTranslatorPlugin>();
+\end{sourcecode}
+
+\begin{failure}[What happens if a plugin interface gets the wrong lifetime?]
+  \textbf{Observable.} Registration and model building succeed. Only the first query that
+  uses the function fails, with \code{Argument\allowbreak{}Null\allowbreak{}Exception}:
+  “Value cannot be null. (Parameter 'provider')”. The message names neither the plugin nor
+  the lifetime.
+
+  \textbf{Cause.} EF expects translator plugins as scoped. As a singleton, the plugin is
+  created in the root scope of the internal provider, where its scoped dependency
+  \code{ISql\allowbreak{}Expression\allowbreak{}Factory} cannot be resolved. The internal
+  provider does not check lifetimes (chapter~\ref{ch:state-lifetimes-and-thread-safety}).
+
+  \textbf{Solution.} Always register EF services and plugin interfaces through the services
+  builder; \code{Try\allowbreak{}Add} takes the lifetime from EF's table.
+
+  \textbf{Test:}
+  \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Plugin\allowbreak{}\_interface\allowbreak{}\_registered\allowbreak{}\_as\allowbreak{}\_singleton\allowbreak{}\_…}.
+\end{failure}
+
 \section{Singleton options}
 
 Singleton services such as type mapping plugins cannot resolve
 \code{IDb\allowbreak{}Context\allowbreak{}Options} per context. For them there is
 \code{ISingleton\allowbreak{}Options}: a singleton that EF initializes once from the options
-when creating the provider and validates for every further context.
+when creating the provider. When EF calls \code{Initialize} and \code{Validate} is explained
+in chapter~\ref{ch:state-lifetimes-and-thread-safety}.
 
-\begin{sourcecode}[Infrastructure/\allowbreak{}ITenancy\allowbreak{}Singleton\allowbreak{}Options.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Infrastructure/\allowbreak{}ITenancy\allowbreak{}Singleton\allowbreak{}Options.\allowbreak{}cs (\allowbreak{}simplified)]{csharp}
 public class TenancySingletonOptions : ITenancySingletonOptions
 {
     public TenancySettings Settings { get; private set; } = TenancySettings.Default;
@@ -236,13 +300,13 @@ public class TenancySingletonOptions : ITenancySingletonOptions
         => Settings = options.FindExtension<TenancyOptionsExtension>()?.Settings
                       ?? TenancySettings.Default;
 
-    // For every context: options must not differ from the provider's state
+    // Options must not differ from the provider's state (shared provider)
     public virtual void Validate(IDbContextOptions options)
     {
         var settings = options.FindExtension<TenancyOptionsExtension>()?.Settings
                        ?? TenancySettings.Default;
         if (settings != Settings)
-            throw new InvalidOperationException("Tenancy options changed afterwards ...");
+            throw new InvalidOperationException("The tenancy options differ ...");
     }
 }
 \end{sourcecode}
@@ -256,10 +320,9 @@ finds and initializes it. The factory variant ensures that both registrations re
 
 When a plugin replaces a single service, a second plugin doing the same cannot be active at
 the same time. Professional plugins mitigate this by additionally offering the actual logic
-publicly and reusably. In the sample, \code{Create\allowbreak{}Policy\allowbreak{}Sql} is
-public and all generator methods are virtual. A user who must combine two plugins writes
-their own generator deriving from one and calling the logic of the other. This option
-belongs in the documentation.
+publicly and reusably. How an application then combines two plugins is shown in the section
+“Integration as the way out” (page~\pageref{sec:integration-way-out}); this option belongs in
+the documentation.
 
 Better still, a plugin avoids the conflict altogether by \textbf{decorating} the service
 instead of replacing it: it takes whatever implementation is registered at that point (the
@@ -268,6 +331,7 @@ audit plugin that attaches a trigger to every new table. In its
 \code{Apply\allowbreak{}Services} it looks up the existing registration and replaces only
 the descriptor, not the logic:
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/CompositionTests.cs (strings)
 \begin{sourcecode}[tests/\allowbreak{}Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Tests/\allowbreak{}Composition\allowbreak{}Tests.\allowbreak{}cs › Audit\allowbreak{}Options\allowbreak{}Extension]{csharp}
 public void ApplyServices(IServiceCollection services)
 {
@@ -297,6 +361,7 @@ an instance, a factory, or a type whose dependencies (such as Npgsql's singleton
 \code{Activator\allowbreak{}Utilities} resolves from the container. The decorator itself
 only uses the public interface:
 
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/CompositionTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Composition\allowbreak{}Tests.\allowbreak{}cs › Audit\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator (\allowbreak{}shortened)]{csharp}
 public class AuditMigrationsSqlGenerator : IMigrationsSqlGenerator
 {
@@ -330,7 +395,7 @@ public class AuditMigrationsSqlGenerator : IMigrationsSqlGenerator
 
 In the application, the two plugins are combined without a single line of glue code:
 
-\begin{sourcecode}[Program.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Program.\allowbreak{}cs (\allowbreak{}simplified)]{csharp}
 services.AddDbContext<ShopContext>((sp, options) => options
     .UseNpgsql(connectionString)
     .UseAcmeTenancy(sp)       // replaces IMigrationsSqlGenerator
@@ -357,6 +422,171 @@ services.AddDbContext<ShopContext>((sp, options) => options
   the SQL of both plugins, and that activating the decorator before the provider fails.
 \end{tip}
 
+\section{Two architectures: multiple registration and single service}
+
+Whether two plugins work side by side is decided in one place: does EF ask \emph{all}
+registrations of a service or exactly \emph{one}? With a plugin interface, cooperation is
+part of EF's design. EF asks all translator plugins until one answers, lets every convention
+set plugin add its conventions and calls every interceptor. Two plugins need to know nothing
+about each other.
+
+With a single service there is no such cooperation. EF asks exactly one implementation, and
+it has to do everything all active plugins need. If two plugins replace the same service,
+one wins and the other loses its function without EF warning about it. Composition is then
+no longer EF's job but that of the plugin authors: through decorators that delegate, or
+through an integration in the application.
+
+\section{The rules in EF Core 10}
+
+The methods from the table at the beginning of this chapter behave like this with two
+plugins. Every row is reproduced in \code{Composition\allowbreak{}Matrix\allowbreak{}Tests}:
+
+\begin{datatable}{H{0.75}H{1.25}H{1.00}}
+  \textbf{Mechanism} & \textbf{Behavior} & \textbf{Consequence} \\
+  \tablehead
+  Options extensions & One extension per type: a second
+  \code{Add\allowbreak{}Or\allowbreak{}Update\allowbreak{}Extension} of the same type replaces
+  the first. \code{Apply\allowbreak{}Services} runs in activation order; every extension
+  contributes to the provider key & Different plugins coexist; the use method fetches the
+  existing extension and changes a copy \\
+  \tablerule
+  \code{Try\allowbreak{}Add} for a plugin interface & Adds unless the same implementation is
+  already registered (\code{Try\allowbreak{}Add\allowbreak{}Enumerable}) & Idempotent,
+  composable \\
+  \tablerule
+  \code{Try\allowbreak{}Add} for a single service & The first registration wins. The provider
+  registers with \code{Try\allowbreak{}Add}: a plugin before the provider wins, after it it
+  silently loses & Unsuitable for single services \\
+  \tablerule
+  \code{Replace} & The last registration wins, independent of the provider & Silently
+  discards earlier replacements and decorators \\
+  \tablerule
+  Decorator & Wraps what is registered at its point in time & Must run after the provider
+  and after replacements \\
+  \tablerule
+  \code{Replace\allowbreak{}Service} (application) & Applied after all extensions and always
+  wins & The application's tool for integration \\
+  \tablerule
+  Translator plugins & Plugins come before the provider's translators; among plugins, the
+  one activated first answers & Same method: the order decides \\
+  \tablerule
+  Convention set plugins & Run in activation order; later conventions see the results of
+  earlier ones & Same metadata: order and configuration source decide \\
+  \tablerule
+  Interceptors & Injected ones first, then those from \code{Add\allowbreak{}Interceptors} in
+  their order & Whoever suppresses or replaces a result affects the ones that follow \\
+\end{datatable}
+
+\section{Compatibility matrix}
+
+The following matrix rates typical combinations of two plugins. The ratings mean:
+\textbf{composable} (works without coordination), \textbf{order-dependent} (works if the
+activation order is right), \textbf{potential conflict} (works as long as the plugins do not
+overlap) and \textbf{integration only} (without code in the application, a function is
+lost).
+
+\begin{datatable}{H{0.95}H{0.65}H{1.40}}
+  \textbf{Combination} & \textbf{Rating} & \textbf{Reason} \\
+  \tablehead
+  Two \code{IMethod\allowbreak{}Call\allowbreak{}Translator\allowbreak{}Plugin} & composable;
+  potential conflict & Different methods: both active. The same method: the one activated
+  first wins, the other is never asked \\
+  \tablerule
+  Two \code{IMember\allowbreak{}Translator\allowbreak{}Plugin} & composable; potential
+  conflict & The same mechanism as for method translators \\
+  \tablerule
+  Two \code{IConvention\allowbreak{}Set\allowbreak{}Plugin} & composable; order-dependent &
+  Both run. If both set the same metadata with convention source, the later one wins;
+  explicit configuration beats both \\
+  \tablerule
+  Two type mapping plugins for the same CLR type & potential conflict & EF takes the first
+  mapping that is not \code{null}; the other plugin has no effect for this type \\
+  \tablerule
+  Two interceptors of the same kind & composable; order-dependent & Both run. Whoever
+  suppresses a result or rewrites a command affects the ones that follow \\
+  \tablerule
+  Two plugins replace \code{IMigrations\allowbreak{}Sql\allowbreak{}Generator} & integration
+  only & The one activated last wins; the first loses its SQL without a warning (in the
+  test: no policies any more) \\
+  \tablerule
+  Two plugins replace \code{IQuery\allowbreak{}Sql\allowbreak{}Generator\allowbreak{}Factory}
+  & integration only & The loser keeps its translators, but its nodes reach a generator that
+  does not know them: the SQL is silently missing. If the winner also replaces the
+  parameter-based processor, the query throws
+  (chapter~\ref{ch:custom-sql-expression-nodes}) \\
+  \tablerule
+  Decorator and replacement & order-dependent & Replacement first, then decorator: it wraps
+  the replacement. The other way round, \code{Replace} silently discards the decorator \\
+  \tablerule
+  Two decorators & composable & Each wraps what it finds \\
+  \tablerule
+  Two options extensions of different types & composable & Both contribute to the key, both
+  register their services; conflicts only arise in the services \\
+  \tablerule
+  Two plugins with the same use method name, annotation prefix or event ID range & potential
+  conflict & Ambiguous calls, mixed metadata or messages
+  (chapters~\ref{ch:what-belongs-in-the-core}, \ref{ch:annotations-and-fluent-api},
+  \ref{ch:diagnostics-and-logging}) \\
+  \tablerule
+  Plugin replacement and the application's \code{Replace\allowbreak{}Service} & composable if
+  intended & The application always wins; that is the intended way to integrate \\
+\end{datatable}
+
+\section{Integration as the way out}\label{sec:integration-way-out}
+
+What works “only with integration” is solved by the application with a class of its own
+that combines both plugins and is registered with \code{Replace\allowbreak{}Service}. That
+is only possible if at least one of the plugins offers its logic publicly: the application
+derives from its class and calls the logic of the other. That is exactly why all generator
+methods in the sample are virtual and \code{Create\allowbreak{}Policy\allowbreak{}Sql} is
+public:
+
+\begin{sourcecode}[Application (\allowbreak{}sketch)]{csharp}
+// Both plugins replace IMigrationsSqlGenerator; the application combines them
+public class ShopMigrationsSqlGenerator : TenancyMigrationsSqlGenerator
+{
+    // Constructor as in TenancyMigrationsSqlGenerator
+
+    protected override void Generate(CreateTableOperation operation, IModel? model,
+        MigrationCommandListBuilder builder, bool terminate = true)
+    {
+        base.Generate(operation, model, builder, terminate);   // Acme: table and RLS
+        OtherPluginSql.AppendTableSql(operation, builder);     // the other plugin's logic
+    }
+}
+
+options.UseNpgsql(connectionString)
+       .UseAcmeTenancy(sp)
+       .UseOtherPlugin()
+       .ReplaceService<IMigrationsSqlGenerator, ShopMigrationsSqlGenerator>();
+\end{sourcecode}
+
+A plugin that replaces a single service and keeps its logic only in private or internal
+methods does not leave this way open. The application then has no choice but to decide for
+one of the plugins.
+
+\section{Before publishing: checking coexistence}
+
+A plugin author can check with little effort how well the plugin gets along with others.
+\code{Composition\allowbreak{}Matrix\allowbreak{}Tests} shows the technique: a fictional
+second plugin with its own options extension that registers the same services, and
+assertions for both activation orders.
+
+\begin{checklist}
+  \item List every replaced single service and name it in the documentation.
+  \item Replace single services with \code{Replace}, never with \code{Try\allowbreak{}Add};
+    decorate where the public interface suffices.
+  \item Decorators abort with a clear message when there is nothing to wrap.
+  \item Offer the logic of replaced services as public and virtual so that applications can
+    integrate.
+  \item Plugin interfaces return \code{null} for anything foreign and do not claim methods,
+    types or metadata that do not belong to them.
+  \item Own annotation prefix, own event ID range, unique use method.
+  \item Test with a second plugin in both activation orders, and with popular plugins such as
+    EFCore.NamingConventions (chapter~\ref{ch:conventions}).
+  \item Document the required activation order, if there is one.
+\end{checklist}
+
 % ------------------------------------------------------------
 \chapter{Public API and integration into the application}\label{ch:public-api-and-integration-into}
 
@@ -367,6 +597,7 @@ Users activate the plugin through an extension method on
 existing extension or creates a new one and registers it through
 \code{IDb\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder\allowbreak{}Infrastructure}:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Infrastructure/TenancyDbContextOptionsBuilderExtensions.cs
 \begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 public static DbContextOptionsBuilder UseAcmeTenancy(
     this DbContextOptionsBuilder optionsBuilder,
@@ -400,7 +631,7 @@ method can be found without an additional \code{using}, just like
 Settings are configured through a dedicated builder. It validates input immediately and
 writes every change back as a new extension:
 
-\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Builder.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Builder.\allowbreak{}cs (\allowbreak{}excerpt, simplified)]{csharp}
 public class TenancyOptionsBuilder
 {
     public TenancyOptionsBuilder(DbContextOptionsBuilder optionsBuilder)
@@ -496,11 +727,240 @@ the connection interceptor gets the setting name from the singleton options that
 
 \begin{important}[DbContext pooling]
   With \code{Add\allowbreak{}Db\allowbreak{}Context\allowbreak{}Pool}, contexts are reused
-  and receive their options only once. Scoped interceptors from the first scope would be
-  reused for all later requests, with the tenant of the first request. For pooling, the
-  tenant provider must be a singleton that determines the tenant anew on every access, for
+  and receive their options only once, built with the root provider. The interceptor
+  instances are created once and serve all later requests. A tenant provider that keeps its
+  tenant per scope then always returns that of the first request. For pooling, the tenant
+  provider must therefore be a singleton that determines the tenant anew on every access, for
   example via \code{IHttp\allowbreak{}Context\allowbreak{}Accessor}.
-  Chapter~\ref{ch:using-the-plugin-in-asp} shows this variant, and the same applies to
+  Chapter~\ref{ch:using-the-plugin-in-asp} shows this variant, chapter~\ref{ch:state-lifetimes-and-thread-safety} the
+  rule behind it, and the same applies to
   \code{Add\allowbreak{}Db\allowbreak{}Context\allowbreak{}Factory}, whose factory is a
   singleton by default.
+\end{important}
+
+% ------------------------------------------------------------
+\chapter{State, lifetimes and thread safety}\label{ch:state-lifetimes-and-thread-safety}
+
+Almost every hard-to-find plugin bug has the same cause: state in the wrong place. A tenant
+in a singleton, a value in the hash that does not belong there, a scoped service held by a
+singleton. The previous chapters contain the individual rules; this chapter merges them into
+one and answers one question: \textbf{which kind of state may be stored where in an EF Core
+plugin?}
+
+\section{Two containers, two meanings of lifetime}
+
+A plugin lives in two containers (chapters~\ref{ch:ef-core-s-architecture-from} and
+\ref{ch:public-api-and-integration-into}). The same words mean different things there:
+
+\begin{datatable}{H{0.65}H{1.15}H{1.20}}
+  \textbf{Lifetime} & \textbf{Application container} & \textbf{EF's internal provider} \\
+  \tablehead
+  Singleton & Once per application & Once per internal provider, that is per
+  configuration. Several configurations in one process yield several instances. \\
+  \tablerule
+  Scoped & Once per scope, in ASP.NET Core per request & Once per context instance. With
+  pooling, the instance outlives the request and serves the next one. \\
+  \tablerule
+  Transient & New on every resolution & The same; rare for EF services
+  (\code{ILazy\allowbreak{}Loader}) \\
+  \tablerule
+  \code{static} & Once per process, across all containers & The same \\
+\end{datatable}
+
+Who builds which container decides the lifetime. The application builds the application
+container; the internal provider cannot resolve its services. EF builds the internal
+provider from the options, caches it by the hash of the options extensions
+(chapter~\ref{ch:the-options-extension}) and shares it among all contexts with the same
+configuration. The lifetime of an EF service is set by EF (appendix~\ref{app:A});
+\code{Try\allowbreak{}Add} applies it (chapter~\ref{ch:registering-services}).
+
+\section{Which state belongs where}
+
+\begin{datatable}{H{0.85}H{1.30}H{0.85}}
+  \textbf{State} & \textbf{Right place} & \textbf{Valid for} \\
+  \tablehead
+  Static plugin configuration (annotation names, event IDs, defaults) & \code{const} or
+  \code{static readonly}, immutable & Process \\
+  \tablerule
+  Cached reflection metadata (\code{Method\allowbreak{}Info},
+  \code{Property\allowbreak{}Info}) & \code{static readonly} fields; they are immutable and
+  therefore thread-safe & Process \\
+  \tablerule
+  Model-relevant configuration (setting name, policy name) & Immutable options extension, in
+  the hash; singleton services read it through \code{ISingleton\allowbreak{}Options} &
+  Internal provider \\
+  \tablerule
+  Provider- and model-specific data (derived from the model or the options) & Annotation or
+  runtime annotation on the model; intermediate results in a thread-safe singleton or
+  through
+  \code{Get\allowbreak{}Or\allowbreak{}Add\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Value}
+  & Internal provider, model \\
+  \tablerule
+  DbContext-specific data & Scoped service in the internal provider or the context from the
+  event data; reset with pooling (\code{IResettable\allowbreak{}Service}) & Context instance
+  \\
+  \tablerule
+  Connection-specific data (session settings) & The database session itself, set on every
+  opening by a connection interceptor (chapter~\ref{ch:interceptors}) & As long as the
+  connection is open \\
+  \tablerule
+  Current tenant & \code{ITenant\allowbreak{}Provider} in the application container, read on
+  every access; into the SQL only as a parameter or through the session & Request or job \\
+  \tablerule
+  Current user & Like the tenant: in the application container, per access (for example
+  through \code{IHttp\allowbreak{}Context\allowbreak{}Accessor}) & Request \\
+  \tablerule
+  Other request-specific data (correlation ID, culture) & Application scope or
+  \code{Async\allowbreak{}Local}; in the SQL at most as a parameter or tag & Request or job \\
+\end{datatable}
+
+Just as important is where state \emph{never} belongs: values of a request never go into
+the options, the hash, the model, a singleton field or a translated query. All these places
+are reused across requests.
+
+\section{Singleton means: one per internal provider}
+
+A singleton in the internal provider is not “global for the process”. Two contexts with a
+different setting name get two providers and therefore two instances of
+\code{Tenancy\allowbreak{}Singleton\allowbreak{}Options}. Conversely, all contexts of one
+configuration share \emph{one} instance, on all threads at the same time: parallel requests
+work with different contexts but with the same singletons.
+
+A singleton must therefore be immutable after its initialization or cache in a thread-safe
+way. The sample shows three forms: the type mapping plugin and the materialization
+interceptor are stateless, \code{Tenancy\allowbreak{}Singleton\allowbreak{}Options} is
+initialized once and then only read, and
+\code{Tenancy\allowbreak{}Logging\allowbreak{}Definitions} creates its definitions with
+\code{Lazy\allowbreak{}Initializer.\allowbreak{}Ensure\allowbreak{}Initialized}
+(chapter~\ref{ch:diagnostics-and-logging}). A single \code{Db\allowbreak{}Context}, on the
+other hand, is not thread-safe and is never used concurrently; a scoped service therefore
+only ever sees one caller at a time.
+
+\code{ISingleton\allowbreak{}Options} answers the question of how a singleton gets the
+configuration. \code{IDb\allowbreak{}Context\allowbreak{}Options} is scoped and not
+available in a singleton (see failure case~3). EF calls \code{Initialize} once when it
+builds the provider, with the options of the first context. That is enough because the hash
+ensures that only contexts with the same model-relevant options get this provider. EF calls
+\code{Validate} when a context uses a provider that EF did not build for exactly these
+options, above all with \code{Use\allowbreak{}Internal\allowbreak{}Service\allowbreak{}Provider}:
+then contexts with different settings may share a provider, and \code{Validate} has to
+reject that.
+
+\section{Service provider and model cache}
+
+Both caches amplify every decision about state. The provider cache uses the options
+extensions as its key; the model is built per provider and context type
+(chapter~\ref{ch:models-per-runtime-context}). This leads to two directions of error, which
+chapter~\ref{ch:the-options-extension} covers in detail: what is missing from the key
+although it influences the model leads to a wrong, shared model. What is in the key although
+it changes per request creates a provider including model per value; from the 21st on, EF
+throws by default with
+\code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}.
+Instances of singleton interceptors are part of the key as well
+(chapter~\ref{ch:materialization-from-rows-to-objects}).
+
+\section{Pooling, factories, jobs and open connections}
+
+The lifetimes above apply to \code{Add\allowbreak{}Db\allowbreak{}Context}. Other ways of
+creating contexts shift them:
+
+\begin{datatable}{H{0.80}H{1.15}H{1.05}}
+  \textbf{Situation} & \textbf{What changes} & \textbf{Rule} \\
+  \tablehead
+  \code{Add\allowbreak{}Db\allowbreak{}Context\allowbreak{}Pool} & Options and interceptors
+  are created once from the root provider; the context instance and its scoped services serve
+  many requests one after the other & Tenant provider reads per access; scoped services with
+  state implement \code{IResettable\allowbreak{}Service}
+  (chapter~\ref{ch:using-the-plugin-in-asp}) \\
+  \tablerule
+  \code{Add\allowbreak{}Db\allowbreak{}Context\allowbreak{}Factory} & Factory and options are
+  singletons by default; the options callback gets the root provider & Register the factory
+  as scoped or use a tenant provider that reads per access \\
+  \tablerule
+  Parallel requests & Different contexts, the same singletons & Singletons stateless or
+  thread-safe \\
+  \tablerule
+  Background services & No \code{Http\allowbreak{}Context}; the tenant comes from the job &
+  Set the tenant before scope and context, for example through
+  \code{Async\allowbreak{}Local}; never fall back to “all tenants” \\
+  \tablerule
+  Long-open connections & The session state belongs to the connection, not to the context &
+  Let EF open the connection; on a tenant change call
+  \code{Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})}
+  (chapter~\ref{ch:interceptors}); mind transaction pooling
+  (chapter~\ref{ch:row-level-security-in-production}) \\
+\end{datatable}
+
+\section{Six failure cases}
+
+Each of the following cases is reproduced as a test in the sample, the wrong variant next to
+the right one (\code{State\allowbreak{}And\allowbreak{}Lifetime\allowbreak{}Tests}, case~5
+in \code{Materialization\allowbreak{}Tests}, case~6 in
+\code{Failure\allowbreak{}Case\allowbreak{}Tests}).
+
+\begin{datatable}{H{0.93}H{1.00}H{1.13}H{0.94}}
+  \textbf{Case} & \textbf{Cause} & \textbf{Observable} & \textbf{Solution} \\
+  \tablehead
+  1. Current tenant in a singleton & A tenant provider remembers the first tenant, for
+  example as an “optimization” & With pooling or a singleton factory, request B works
+  entirely as tenant A: session, reads and writes. RLS does not help because all values
+  match & Read the tenant on every access (\code{Http\allowbreak{}Context},
+  \code{Async\allowbreak{}Local}) \\
+  \tablerule
+  2. Current tenant in the hash & The options extension carries the tenant into the provider
+  key & One provider including model per tenant: memory and startup time grow, from the
+  21st on an exception & Tenant through interceptors and session; only model-relevant values
+  in the hash \\
+  \tablerule
+  3. Scoped service in a singleton & A singleton service injects
+  \code{ICurrent\allowbreak{}Db\allowbreak{}Context} or
+  \code{IDb\allowbreak{}Context\allowbreak{}Options} & No error at registration, because EF
+  does not validate scopes in the internal provider; the singleton gets \code{null} and fails
+  later & Register the service as scoped, take the context from the event data, or read
+  configuration through \code{ISingleton\allowbreak{}Options} \\
+  \tablerule
+  4. Options extension changed after registration & A mutable property of the extension is
+  set later & The provider was built with the old value; new contexts silently keep working
+  with it & Immutable extension, changes as a copy (\code{With\allowbreak{}Settings},
+  chapter~\ref{ch:the-options-extension}) \\
+  \tablerule
+  5. Context state in a singleton interceptor & The interceptor remembers tenant or context
+  of the first call & False alarms for other tenants, hidden leaks, race conditions; one
+  instance per context creates one provider per context & Get data on every call through the
+  context (chapter~\ref{ch:materialization-from-rows-to-objects}) \\
+  \tablerule
+  6. Scoped state with pooling & A scoped plugin service collects data “per request”, such as
+  counters or buffers & With pooling, the next request sees the data of the previous one,
+  because context and scope are reused & Also register the service as
+  \code{IResettable\allowbreak{}Service} and clear it in \code{Reset\allowbreak{}State} \\
+\end{datatable}
+
+Case~3 is the most treacherous because it starts without any warning. In the application
+container, ASP.NET Core reports such a “captive dependency” in the development environment
+when resolving; EF's internal provider does not check it:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/StateAndLifetimeTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}State\allowbreak{}And\allowbreak{}Lifetime\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
+// WRONG: a singleton that needs the current context
+m.TryAddSingleton<ContextHolder, ContextHolder>();     // ContextHolder(ICurrentDbContext)
+
+using var ctx = ContextWithHolder(ServiceLifetime.Singleton);
+Assert.Null(ctx.GetService<ContextHolder>().Current);  // root scope: no context
+
+// Right: scoped, one instance per context
+Assert.Same(ctx, ctx.GetService<ContextHolder>().Current!.Context);
+\end{sourcecode}
+
+Case~4 can only be detected with \code{ISingleton\allowbreak{}Options.\allowbreak{}Validate}
+where EF calls it, that is with a provider shared through
+\code{Use\allowbreak{}Internal\allowbreak{}Service\allowbreak{}Provider}. The test
+\code{Shared\allowbreak{}\_provider\allowbreak{}\_rejects\allowbreak{}\_contexts\allowbreak{}\_with\allowbreak{}\_different\allowbreak{}\_tenancy\allowbreak{}\_settings}
+shows that \code{Tenancy\allowbreak{}Singleton\allowbreak{}Options} does exactly that. In
+the normal case, only immutability itself protects.
+
+\begin{important}[The rule in one sentence]
+  What is the same for all contexts of a configuration belongs in options, model or
+  singletons; what changes per context, in scoped services; what changes per request, in the
+  application container, and from there per call into parameters or the session, never into
+  a cache.
 \end{important}

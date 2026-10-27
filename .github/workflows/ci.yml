@@ -17,6 +17,13 @@ jobs:
       - name: Build
         run: dotnet build -c Release
 
+      # NuGet audit reports advisories as NU1901-NU1904 warnings; this step makes them fail the
+      # build and lists the affected packages with their advisories, for every project
+      - name: No known vulnerable packages
+        run: |
+          dotnet list package --vulnerable --include-transitive | tee vulnerable.txt
+          ! grep -q '^ *> ' vulnerable.txt
+
       - name: Unit tests (no database)
         run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Tests -c Release --no-build
 
@@ -26,6 +33,20 @@ jobs:
 
       - name: SQL Server tests (unit + SQL Server via Testcontainers)
         run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests -c Release --no-build
+
+  # The packages as a customer gets them: pack, fresh application, dotnet-ef (migrations, no
+  # phantom changes, compiled model) and a NativeAOT application against PostgreSQL in Docker.
+  # Uses the newest stable EF Core 10.0.x patch for the tooling; the script prints the versions.
+  consumer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Consumer test (packages, tooling, compiled model, NativeAOT)
+        run: eng/consumer-test/run.sh --nativeaot
 
   # Builds both editions of the handbook with LuaLaTeX. Fails if a code excerpt exceeds
   # the maximum line length, a reference is undefined or the LaTeX sources are broken.
@@ -38,8 +59,10 @@ jobs:
         working-directory: docs/handbook
     steps:
       - uses: actions/checkout@v4
-      - name: Check code excerpts
+      - name: Check code excerpts (line length, bound excerpts against the source files)
         run: python3 check_code.py
+      - name: Check structure (editions in sync, references, table widths)
+        run: python3 check_structure.py
       - name: Build PDFs (German and English)
         run: |
           latexmk EF-Core-Plugin-Handbuch.tex

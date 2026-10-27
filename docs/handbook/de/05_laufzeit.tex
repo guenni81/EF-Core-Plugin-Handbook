@@ -30,10 +30,10 @@ unterdrücken oder Ergebnisse ersetzen.
   Savepoints & Scoped \\
   \tablerule
   \code{IIdentity\allowbreak{}Resolution\allowbreak{}Interceptor} & Konflikte beim Anhängen
-  bereits getrackter Entitäten & Scoped \\
+  bereits getrackter Entitäten; nie bei Abfragen (Kapitel~\ref{ch:materialization-from-rows-to-objects}) & Scoped \\
   \tablerule
   \code{IMaterialization\allowbreak{}Interceptor} & Erzeugen und Initialisieren von
-  Entitäten & \textbf{Singleton} \\
+  Entitäten (Kapitel~\ref{ch:materialization-from-rows-to-objects}) & \textbf{Singleton} \\
   \tablerule
   \code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor} & LINQ-Ausdruck vor der
   Kompilierung & \textbf{Singleton} \\
@@ -41,7 +41,10 @@ unterdrücken oder Ergebnisse ersetzen.
 
 Die beiden Singleton-Interceptors implementieren \code{ISingleton\allowbreak{}Interceptor}.
 Sie werden einmal pro internem Provider verwendet, nicht pro Context, und müssen deshalb
-zustandslos und thread-sicher sein.
+zustandslos und thread-sicher sein. Im internen Provider registriert, findet EF aber nur den
+Materialisierungs-Interceptor unter \code{ISingleton\allowbreak{}Interceptor}; einen
+Query-Expression-Interceptor ruft es nur auf, wenn er als \code{IInterceptor} registriert ist
+(Kapitel~\ref{ch:bulk-operations-and-the-limits}).
 
 \section{Zwei Wege der Registrierung}
 
@@ -69,6 +72,7 @@ anderen Mandanten geschrieben oder umgehängt werden. Das ergänzt RLS (Defense 
 liefert verständlichere Fehler als die Datenbank.
 Kapitel~\ref{ch:bulk-operations-and-the-limits} zeigt, welche Wege an ihm vorbeiführen:
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/Interceptors/TenantSaveChangesInterceptor.cs
 \begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Save\allowbreak{}Changes\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}1/\allowbreak{}2)]{csharp}
 public class TenantSaveChangesInterceptor : SaveChangesInterceptor
 {
@@ -125,23 +129,85 @@ public class TenantSaveChangesInterceptor : SaveChangesInterceptor
                     break;
                 case EntityState.Added when currentValue != current:
                     throw Mismatch(entry, currentValue, current);
-                case EntityState.Modified when property.IsModified:
+                // Nur ein tatsächlicher Wertwechsel zählt, nicht die Markierung
+                case EntityState.Modified
+                    when property.IsModified && currentValue != originalValue:
                     throw new TenancyException("Mandanten-Property ist unveränderlich.");
-                case EntityState.Modified or EntityState.Deleted
-                    when originalValue != current:
-                    throw Mismatch(entry, originalValue, current);
+                case EntityState.Modified or EntityState.Deleted:
+                    if (entry.State == EntityState.Modified)
+                        property.IsModified = false;    // Spalte nicht schreiben
+                    // Leer = unbekannt (Shadow-Property): die Datenbank entscheidet
+                    if (!originalValue.IsEmpty && originalValue != current)
+                        throw Mismatch(entry, originalValue, current);
+                    break;
             }
         }
     }
 }
 \end{sourcecode}
 
-\begin{important}[Synchron und asynchron]
-  Immer \textbf{beide} Varianten implementieren, synchron und asynchron. EF ruft je nach
-  \code{Save\allowbreak{}Changes} oder \code{Save\allowbreak{}Changes\allowbreak{}Async} nur
-  eine davon auf. Ein Interceptor, der nur die asynchrone Methode überschreibt, ist bei
-  synchronen Aufrufen wirkungslos, ohne dass es jemand bemerkt.
-\end{important}
+Wer nur mit asynchronem Code arbeitet, überschreibt leicht nur eine Variante:
+
+\begin{sourcecode}[Interceptor (\allowbreak{}FALSCH)]{csharp}
+public class TenantSaveChangesInterceptor : SaveChangesInterceptor
+{
+    public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+        DbContextEventData eventData, InterceptionResult<int> result,
+        CancellationToken cancellationToken = default) { /* Mandant setzen */ }
+
+    // SavingChanges fehlt
+}
+\end{sourcecode}
+
+\begin{failure}[Was passiert, wenn nur die asynchrone Variante implementiert ist?]
+  \textbf{Beobachtbar.} Mit \code{Save\allowbreak{}Changes\allowbreak{}Async} funktioniert
+  alles. Ein synchrones \code{Save\allowbreak{}Changes}, etwa in einem Konsolenwerkzeug oder
+  einem älteren Codepfad, speichert ohne Mandant; RLS lehnt die Zeile mit
+  \code{WITH CHECK} ab, ein Plugin ohne Datenbankschutz schreibt sie still falsch.
+
+  \textbf{Ursache.} EF ruft je nach Aufruf genau eine Variante auf. Die Basisklasse
+  \code{Save\allowbreak{}Changes\allowbreak{}Interceptor} implementiert die andere als
+  leere Methode, also ohne Fehler. Dasselbe gilt für Connection- und Command-Interceptors.
+
+  \textbf{Lösung.} Immer beide Varianten überschreiben und dieselbe Logik aufrufen, wie
+  \code{Apply\allowbreak{}Tenant} im Beispiel.
+
+  \textbf{Test:}
+  \code{Failure\allowbreak{}Case\allowbreak{}Tests.\allowbreak{}Interceptor\allowbreak{}\_with\allowbreak{}\_only\allowbreak{}\_the\allowbreak{}\_async\allowbreak{}\_variant\allowbreak{}\_…}.
+\end{failure}
+
+\section{Markierung, Wertwechsel und Datenbankschutz}\label{sec:tracking-flag-versus-value}
+
+Drei Dinge sehen beim Speichern ähnlich aus und bedeuten Verschiedenes:
+
+\begin{itemize}
+  \item \textbf{Die Tracking-Markierung.} \code{Db\allowbreak{}Context.\allowbreak{}Update} und
+    \code{Attach} einer nicht getrackten Entität setzen \code{Is\allowbreak{}Modified} für
+    \emph{jede} Property, auch für die Mandanten-Property. Original- und aktueller Wert sind
+    dabei gleich, nämlich der Wert, den die Entität mitbringt. Bis 1.0 lehnte der Interceptor
+    schon diese Markierung als Mandantenwechsel ab, und ein gewöhnliches Update aus einer API
+    scheiterte.
+  \item \textbf{Der tatsächliche Wertwechsel.} Nur wenn sich der Wert gegenüber dem
+    Originalwert ändert, wird eine Zeile umgehängt. Das lehnt der Interceptor ab, auch wenn
+    der neue Wert der aktive Mandant ist. Bei einem unveränderten Wert nimmt er die Markierung
+    zurück, sodass das \code{UPDATE} die Mandantenspalte nicht schreibt.
+  \item \textbf{Der Datenbankzustand.} Bei einer getrackten Entität stammt der Originalwert
+    aus der Datenbank. Bei einer abgekoppelten Entität ist er nur eine Behauptung des
+    Aufrufers. Eine manipulierte Entität mit dem eigenen Mandanten und der ID einer fremden Zeile
+    besteht deshalb jede Prüfung im Interceptor. Erst die Policy entscheidet: Das
+    \code{UPDATE} sieht die fremde Zeile nicht, ändert null Zeilen, und EF meldet eine
+    \code{Db\allowbreak{}Update\allowbreak{}Concurrency\allowbreak{}Exception}. Ein leerer
+    Originalwert (eine Shadow-Property, die die Entität nicht tragen kann) gilt als unbekannt,
+    nicht als fremd; auch hier entscheidet die Datenbank.
+\end{itemize}
+
+Der Interceptor verspricht also nur, was er ohne Datenbankzugriff wissen kann: keinen
+Mandantenwechsel im Change Tracker, keine bekannt fremden Werte, keine Änderung ohne aktiven
+Mandanten. Ob eine Zeile wirklich dem Mandanten gehört, prüft allein RLS.
+\code{Save\allowbreak{}Changes\allowbreak{}Interceptor\allowbreak{}Tests} deckt die Fälle
+ohne Datenbank ab, \code{Detached\allowbreak{}Update\allowbreak{}Tests} gegen PostgreSQL mit
+eingeschränkter Rolle: \code{Update} mit unverändertem Mandanten synchron und asynchron, die
+manipulierte fremde Zeilen-ID und das Umhängen einer getrackten Zeile.
 
 Die Logik liegt in einer \code{internal}-Methode \code{Apply\allowbreak{}Tenant}. Tests
 können sie über \code{Internals\allowbreak{}Visible\allowbreak{}To} direkt aufrufen, ohne
@@ -158,7 +224,7 @@ Event-Daten
 (\code{context.\allowbreak{}Get\allowbreak{}Service<\allowbreak{}T>(\allowbreak{})}) aus dem
 \emph{internen} Provider, den Mandanten aus dem \emph{App}-Container:
 
-\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}Kern),\allowbreak{} Runtime/\allowbreak{}Tenant\allowbreak{}Connection\allowbreak{}Interceptor.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}Kern),\allowbreak{} Runtime/\allowbreak{}Tenant\allowbreak{}Connection\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}vereinfacht)]{csharp}
 // Kernpaket
 public abstract class TenantSessionInterceptor : DbConnectionInterceptor
 {
@@ -249,7 +315,7 @@ umgehen ihn, und beide entstehen leicht aus Versehen:
   aufrufen \\
 \end{datatable}
 
-\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Connection\allowbreak{}Lifetime\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Connection\allowbreak{}Lifetime\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}gekürzt, vereinfacht)]{csharp}
 // Bereits offen, mit einem Session-Wert aus früherer Arbeit (Mandant B)
 await using var connection = new NpgsqlConnection(appConnectionString);
 await connection.OpenAsync();
@@ -273,6 +339,7 @@ await db.Database.ApplyTenantSessionAsync();                  // Session jetzt: 
 var orders = await db.Orders.ToListAsync();                   // die Zeilen von Mandant A
 \end{sourcecode}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/Interceptors/TenantSessionInterceptor.cs
 \begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 public virtual async Task<bool> ApplyToOpenConnectionAsync(
     DbContext context, CancellationToken cancellationToken = default)
@@ -300,6 +367,17 @@ laufenden Transaktion anschließen: PostgreSQL ist hier nachsichtig, SQL Server 
 Befehl ab, der ihr nicht zugeordnet ist. Die SQL-Server-Tests prüfen genau diesen Fall; ohne
 die Zeile schlagen sie fehl.
 
+In \code{Connection\allowbreak{}Opened} fehlt diese Zuordnung mit Absicht. Eine lokale
+Transaktion setzt eine offene Verbindung voraus, und EF öffnet die Verbindung, bevor es
+\code{Begin\allowbreak{}Transaction} aufruft; beim Öffnen gibt es also noch keine Transaktion.
+Eine umgebende \code{Transaction\allowbreak{}Scope} wiederum übernehmen Npgsql und SqlClient
+beim Öffnen selbst, und jeder Befehl auf der Verbindung läuft darin, ohne dass ihm eine
+\code{Db\allowbreak{}Transaction} zugewiesen wird. \code{Transaction\allowbreak{}Context\allowbreak{}Tests}
+und die SQL-Server-Tests prüfen alle drei Wege: die Verbindung, die
+\code{Begin\allowbreak{}Transaction\allowbreak{}Async} öffnet,
+\code{Apply\allowbreak{}Tenant\allowbreak{}Session} in einer expliziten Transaktion und
+Lesen und Schreiben unter einer \code{Transaction\allowbreak{}Scope}.
+
 \begin{important}[Ein Context, ein Mandant]
   Die Isolation folgt der Verbindung, nicht dem Context. Ein Context, der für mehrere
   Mandanten verwendet wird, oder eine Verbindung, die eine Anfrage überdauert, trägt den
@@ -311,6 +389,11 @@ die Zeile schlagen sie fehl.
   statt die Lücke nur zu dokumentieren.
 \end{important}
 
+Erkennen lässt sich die Lücke zusätzlich beim Laden: Mit
+\code{Verify\allowbreak{}Materialized\allowbreak{}Tenants(\allowbreak{})} prüft das Plugin jede
+geladene Entität gegen den Mandanten des Contexts und wirft, statt fremde Zeilen
+zurückzugeben (Kapitel~\ref{ch:materialization-from-rows-to-objects}).
+
 % ------------------------------------------------------------
 \chapter{Diagnose und Logging}\label{ch:diagnostics-and-logging}
 
@@ -321,6 +404,7 @@ per \code{Configure\allowbreak{}Warnings} ignorieren, protokollieren oder zu Feh
 
 \section{Event-IDs}
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/Diagnostics/TenancyEventId.cs
 \begin{sourcecode}[Diagnostics/\allowbreak{}Tenancy\allowbreak{}Event\allowbreak{}Id.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
 public static class TenancyEventId
 {
@@ -356,6 +440,7 @@ Meldungsvorlage und das Warnverhalten aus den Options. EF cached seine Definitio
 internem Provider; das Plugin macht es genauso mit einer eigenen Klasse, die als Singleton
 registriert ist (Kapitel~\ref{ch:registering-services}):
 
+% source: src/Acme.EntityFrameworkCore.Tenancy/Diagnostics/TenancyLoggingDefinitions.cs (strings)
 \begin{sourcecode}[Diagnostics/\allowbreak{}Tenancy\allowbreak{}Logging\allowbreak{}Definitions.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 public class TenancyLoggingDefinitions
 {
@@ -387,7 +472,7 @@ Die eigentliche Log-Methode folgt exakt dem Muster aus EFs
 \code{Core\allowbreak{}Logger\allowbreak{}Extensions}: erst klassisches Logging, dann die
 Ereignisdaten für DiagnosticSource und \code{Log\allowbreak{}To}:
 
-\begin{sourcecode}[Diagnostics/\allowbreak{}Tenancy\allowbreak{}Logger\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+\begin{sourcecode}[Diagnostics/\allowbreak{}Tenancy\allowbreak{}Logger\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}Auszug, vereinfacht)]{csharp}
 private static void LogEntityType(
     IDiagnosticsLogger<DbLoggerCategory.Model> diagnostics,
     EventDefinition<string> definition,

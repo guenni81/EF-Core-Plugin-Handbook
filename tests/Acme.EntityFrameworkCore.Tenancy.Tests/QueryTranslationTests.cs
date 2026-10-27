@@ -22,6 +22,20 @@ public class QueryTranslationTests
     }
 
     [Fact]
+    public void Inequality_with_CurrentTenant_never_matches_without_a_tenant()
+    {
+        // CurrentTenant() is not nullable for EF (CLR type TenantId). Without a tenant the SQL
+        // value is NULL and "<>" is not true: no rows instead of all rows wherever row level
+        // security does not apply (chapter "Translating methods and members")
+        using var ctx = Contexts.Create();
+
+        var sql = ctx.Orders.Where(o => o.TenantId != EF.Functions.CurrentTenant()).ToQueryString();
+
+        Assert.EndsWith("WHERE o.\"TenantId\" <> nullif(current_setting('app.tenant_id', TRUE), '')::uuid", sql);
+        Assert.DoesNotContain("IS NULL", sql);
+    }
+
+    [Fact]
     public void CurrentTenant_uses_configured_setting_name()
     {
         using var ctx = Contexts.Create(t => t.UseSettingName("app.mandant"));

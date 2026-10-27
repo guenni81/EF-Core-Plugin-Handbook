@@ -64,22 +64,27 @@ public class CurrentTenantTranslator : IMethodCallTranslator
         var boolean = _typeMappingSource.FindMapping(typeof(bool))!;
 
         // current_setting(name, missing_ok => true): NULL instead of an error if not set.
-        // The setting name is emitted as an SQL literal (escaped correctly).
+        // The setting name is emitted as an SQL literal (escaped correctly). It returns NULL
+        // although no argument is NULL, so no argument propagates nullability.
         var currentSetting = _sql.Function(
             "current_setting",
             [_sql.Constant(_options.Settings.SettingName, text), _sql.Constant(true, boolean)],
             nullable: true,
-            argumentsPropagateNullability: [true, false],
+            argumentsPropagateNullability: [false, false],
             typeof(string),
             text);
 
         // After RESET/DISCARD, current_setting returns '' instead of NULL -> nullif.
         // Without it, the cast to uuid would fail on pooled connections.
+        // Deliberately not nullable for EF, matching the non-nullable CLR type TenantId. In SQL
+        // the value is NULL without a tenant: every comparison is then not true and no row
+        // matches, the safe direction. Declared nullable, EF would add "OR ... IS NULL" to
+        // inequalities and return all rows wherever row level security does not apply.
         var nullIfEmpty = _sql.Function(
             "nullif",
             [currentSetting, _sql.Constant(string.Empty, text)],
-            nullable: true,
-            argumentsPropagateNullability: [true, false],
+            nullable: false,
+            argumentsPropagateNullability: [false, false],
             typeof(string),
             text);
 

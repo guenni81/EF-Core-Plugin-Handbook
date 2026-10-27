@@ -21,6 +21,11 @@ public class TenantIdTypeMapping : RelationalTypeMapping
             new CoreTypeMappingParameters(
                 typeof(TenantId),
                 converter: TenantIdConverter.Instance,
+                // Shared comparers: EF would otherwise create them through reflection, which
+                // NativeAOT does not support
+                comparer: TenantIdValueComparer.Instance,
+                keyComparer: TenantIdValueComparer.Instance,
+                providerValueComparer: TenantIdValueComparer.Provider,
                 // Needed for primitive collections and JSON columns that contain TenantId
                 jsonValueReaderWriter: TenantIdJsonReaderWriter.Instance),
             storeType: "uuid",

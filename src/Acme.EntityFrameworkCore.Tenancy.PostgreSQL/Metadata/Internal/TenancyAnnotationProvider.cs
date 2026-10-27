@@ -36,9 +36,13 @@ public class TenancyAnnotationProvider : NpgsqlAnnotationProvider
         if (!designTime)
             yield break;
 
-        // With TPH/table splitting several types share one table. RLS is configured on the type
-        // that owns the table (root); validation enforces this.
-        var entityType = (IEntityType)table.EntityTypeMappings.First().TypeBase;
+        // With TPH/table splitting several types share one table. RLS is configured on root
+        // types only (validation enforces this); with table splitting any of them may carry it,
+        // and TenantTableMappingValidator ensures that they agree.
+        var entityType = table.EntityTypeMappings
+            .Select(m => (IEntityType)m.TypeBase)
+            .FirstOrDefault(e => e.HasRlsConfiguration())
+            ?? (IEntityType)table.EntityTypeMappings.First().TypeBase;
 
         foreach (var annotation in entityType.GetAnnotations())
         {

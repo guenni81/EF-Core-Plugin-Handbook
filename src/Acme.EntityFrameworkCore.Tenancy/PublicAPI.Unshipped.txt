@@ -1,1 +1,10 @@
 #nullable enable
+Acme.EntityFrameworkCore.Tenancy.TenantIdJsonConverter
+Acme.EntityFrameworkCore.Tenancy.TenantIdJsonConverter.TenantIdJsonConverter() -> void
+override Acme.EntityFrameworkCore.Tenancy.TenantIdJsonConverter.Read(ref System.Text.Json.Utf8JsonReader reader, System.Type! typeToConvert, System.Text.Json.JsonSerializerOptions! options) -> Acme.EntityFrameworkCore.Tenancy.TenantId
+override Acme.EntityFrameworkCore.Tenancy.TenantIdJsonConverter.ReadAsPropertyName(ref System.Text.Json.Utf8JsonReader reader, System.Type! typeToConvert, System.Text.Json.JsonSerializerOptions! options) -> Acme.EntityFrameworkCore.Tenancy.TenantId
+override Acme.EntityFrameworkCore.Tenancy.TenantIdJsonConverter.Write(System.Text.Json.Utf8JsonWriter! writer, Acme.EntityFrameworkCore.Tenancy.TenantId value, System.Text.Json.JsonSerializerOptions! options) -> void
+override Acme.EntityFrameworkCore.Tenancy.TenantIdJsonConverter.WriteAsPropertyName(System.Text.Json.Utf8JsonWriter! writer, Acme.EntityFrameworkCore.Tenancy.TenantId value, System.Text.Json.JsonSerializerOptions! options) -> void
+Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantQueryExpressionInterceptor
+Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantQueryExpressionInterceptor.TenantQueryExpressionInterceptor() -> void
+virtual Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantQueryExpressionInterceptor.QueryCompilationStarting(System.Linq.Expressions.Expression! queryExpression, Microsoft.EntityFrameworkCore.Diagnostics.QueryExpressionEventData! eventData) -> System.Linq.Expressions.Expression!

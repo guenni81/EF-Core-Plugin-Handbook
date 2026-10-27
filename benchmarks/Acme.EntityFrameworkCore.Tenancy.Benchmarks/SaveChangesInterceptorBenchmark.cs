@@ -1,10 +1,7 @@
 using Acme.EntityFrameworkCore.Tenancy;
 using Acme.EntityFrameworkCore.Tenancy.Interceptors;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Running;
 using Microsoft.EntityFrameworkCore;
-
-BenchmarkRunner.Run<SaveChangesInterceptorBenchmark>(args: args);
 
 /// <summary>Tenant-owned entity for the benchmark.</summary>
 public class Order : ITenantOwned
