@@ -7,62 +7,7 @@ version is given by the dependency range and the compatibility table in the READ
 
 ## [Unreleased]
 
-### Added
-
-- Benchmarks `MaterializationInterceptorBenchmark` (PostgreSQL via Testcontainers; 10, 100
-  and 1000 rows without, with an empty and with the tenant-verifying materialization
-  interceptor) and `QueryCompilationBenchmark` (first compilation and cache hit for EF Core,
-  the plugin and the plugin with query filter). The benchmark project now selects classes with
-  `--filter`. Handbook: new section "Reading and query compilation" with the results and a
-  recommendation for `VerifyMaterializedTenants()`: most of its cost comes from EF leaving the
-  compiled materialization path as soon as any materialization interceptor is registered.
-- `CustomOperatorTests`: the pgvector cosine distance `<=>` as a custom SQL expression node
-  (test code only: translator, SQL generator derived from the plugin's, nullability processor),
-  with checks for precedence, propagated nullability and the failure without the processor.
-  Handbook: new section "Practical example: operators for vector search and pgvector".
-- Deployment template in `docs/deployment`: `setup-roles.sql` (one-time roles `shop_owner` and
-  `shop_app`, default privileges for tables of later migrations) and `migrations-deploy.yml`
-  (GitHub Actions, not active here: build, migration bundle, bundle as the owner, then the
-  rolling deployment). The NativeAOT consumer test now runs this sequence against PostgreSQL:
-  the script unchanged, the bundle twice as the owner, DDL refused for the application role,
-  the application as `shop_app`. Handbook: new section "Deployment: pipeline, roles and zero
-  downtime" (no `Migrate()` on startup, expand and contract under RLS, flow diagram).
-- `UseTransactionPooling()` (PostgreSQL options builder) with the new
-  `PostgreSqlTransactionSessionInterceptor` for PgBouncer in transaction mode: together with
-  `UseAcmeTenancy(applicationServices)` the tenant is set per transaction with
-  `set_config(..., true)` in `TransactionStarted` instead of per connection, and every
-  `SaveChanges` runs in a transaction (`AutoTransactionBehavior.Always`). Commands outside a
-  transaction have no tenant (fail closed); a `TenantConnectionInterceptor` refuses the session
-  value with a `TenancyException` when the option is set. Tested in `TransactionPoolingTests`;
-  handbook section "Transaction pooling" rewritten.
-- `ProtectBulkOperations()` (PostgreSQL options builder, SQL Server provider builder) with the
-  new `TenantQueryExpressionInterceptor` from the core package: `ExecuteUpdate` calls that set
-  the tenant property fail with a `TenancyException` when the query is compiled. It is
-  registered as `IInterceptor`, because EF never calls query expression interceptors that are
-  registered as `ISingletonInterceptor` (recorded in `BulkOperationTests`; appendix A corrected).
-- Tests for the session interceptor and transactions against PostgreSQL and SQL Server:
-  connection opened by `BeginTransactionAsync`, `ApplyTenantSession` inside an explicit
-  transaction, reading and writing under an ambient `TransactionScope`. No code change was
-  needed: EF opens the connection before a local transaction exists, and both providers enlist
-  in an ambient transaction when the connection opens.
-- `TenantIdJsonConverter` (core package): `TenantId` serializes with System.Text.Json as a plain
-  GUID string, also as a dictionary key, selected by an attribute on the type; invalid values
-  throw `JsonException`. The ShopApi sample no longer needs its own converter.
-
-### Fixed
-
-- `IS [NOT] DISTINCT FROM` as an operand of another operator is now parenthesized
-  (`TenancyNpgsqlQuerySqlGenerator.RequiresParentheses`). Before, comparing two such
-  expressions produced SQL that PostgreSQL rejected with a syntax error, because it binds `<>`
-  tighter than `IS`.
-
-### Changed
-
-- `TenantMaterializationInterceptor` looks up the tenant provider once per context instance
-  (`ConditionalWeakTable`, keys held weakly) instead of on every materialized row; the tenant
-  itself is still read on every row, also across leases of a pooled context.
-
-## [1.1.0] - 2026-10-27
+## [1.1.0] - 2026-10-28
 
 Packages 1.1.0, handbook edition 1.1. Package versions now equal the handbook edition; the
 first release, published as packages 10.0.0, corresponds to edition 1.0 (tag `v1.0`).
@@ -165,6 +110,45 @@ first release, published as packages 10.0.0, corresponds to edition 1.0 (tag `v1
   (comments and elisions ignored, optional `(strings)`); unbound excerpts of repository files
   must be marked as simplified. New `check_structure.py`: both editions in sync per chapter,
   reference targets, datatable widths. Both run in CI.
+- Benchmarks `MaterializationInterceptorBenchmark` (PostgreSQL via Testcontainers; 10, 100
+  and 1000 rows without, with an empty and with the tenant-verifying materialization
+  interceptor) and `QueryCompilationBenchmark` (first compilation and cache hit for EF Core,
+  the plugin and the plugin with query filter). The benchmark project now selects classes with
+  `--filter`. Handbook: new section "Reading and query compilation" with the results and a
+  recommendation for `VerifyMaterializedTenants()`: most of its cost comes from EF leaving the
+  compiled materialization path as soon as any materialization interceptor is registered.
+- `CustomOperatorTests`: the pgvector cosine distance `<=>` as a custom SQL expression node
+  (test code only: translator, SQL generator derived from the plugin's, nullability processor),
+  with checks for precedence, propagated nullability and the failure without the processor.
+  Handbook: new section "Practical example: operators for vector search and pgvector".
+- Deployment template in `docs/deployment`: `setup-roles.sql` (one-time roles `shop_owner` and
+  `shop_app`, default privileges for tables of later migrations) and `migrations-deploy.yml`
+  (GitHub Actions, not active here: build, migration bundle, bundle as the owner, then the
+  rolling deployment). The NativeAOT consumer test now runs this sequence against PostgreSQL:
+  the script unchanged, the bundle twice as the owner, DDL refused for the application role,
+  the application as `shop_app`. Handbook: new section "Deployment: pipeline, roles and zero
+  downtime" (no `Migrate()` on startup, expand and contract under RLS, flow diagram).
+- `UseTransactionPooling()` (PostgreSQL options builder) with the new
+  `PostgreSqlTransactionSessionInterceptor` for PgBouncer in transaction mode: together with
+  `UseAcmeTenancy(applicationServices)` the tenant is set per transaction with
+  `set_config(..., true)` in `TransactionStarted` instead of per connection, and every
+  `SaveChanges` runs in a transaction (`AutoTransactionBehavior.Always`). Commands outside a
+  transaction have no tenant (fail closed); a `TenantConnectionInterceptor` refuses the session
+  value with a `TenancyException` when the option is set. Tested in `TransactionPoolingTests`;
+  handbook section "Transaction pooling" rewritten.
+- `ProtectBulkOperations()` (PostgreSQL options builder, SQL Server provider builder) with the
+  new `TenantQueryExpressionInterceptor` from the core package: `ExecuteUpdate` calls that set
+  the tenant property fail with a `TenancyException` when the query is compiled. It is
+  registered as `IInterceptor`, because EF never calls query expression interceptors that are
+  registered as `ISingletonInterceptor` (recorded in `BulkOperationTests`; appendix A corrected).
+- Tests for the session interceptor and transactions against PostgreSQL and SQL Server:
+  connection opened by `BeginTransactionAsync`, `ApplyTenantSession` inside an explicit
+  transaction, reading and writing under an ambient `TransactionScope`. No code change was
+  needed: EF opens the connection before a local transaction exists, and both providers enlist
+  in an ambient transaction when the connection opens.
+- `TenantIdJsonConverter` (core package): `TenantId` serializes with System.Text.Json as a plain
+  GUID string, also as a dictionary key, selected by an attribute on the type; invalid values
+  throw `JsonException`. The ShopApi sample no longer needs its own converter.
 
 ### Changed
 
@@ -186,6 +170,9 @@ first release, published as packages 10.0.0, corresponds to edition 1.0 (tag `v1
   `Microsoft.EntityFrameworkCore.Design` instead of pinning their own version. Pinned
   companion packages made the test and sample projects fail to restore with newer EF
   patches.
+- `TenantMaterializationInterceptor` looks up the tenant provider once per context instance
+  (`ConditionalWeakTable`, keys held weakly) instead of on every materialized row; the tenant
+  itself is still read on every row, also across leases of a pooled context.
 
 ### Fixed
 
@@ -279,6 +266,10 @@ first release, published as packages 10.0.0, corresponds to edition 1.0 (tag `v1
   of the tenant provider as the part that must read the tenant on every access.
 - `TenancyDesignTimeServices` registered `IDatabaseModelFactory` as a singleton although EF
   and Npgsql register it as scoped and it depends on the scoped scaffolding logger.
+- `IS [NOT] DISTINCT FROM` as an operand of another operator is now parenthesized
+  (`TenancyNpgsqlQuerySqlGenerator.RequiresParentheses`). Before, comparing two such
+  expressions produced SQL that PostgreSQL rejected with a syntax error, because it binds `<>`
+  tighter than `IS`.
 
 ## [1.0.0]
 
