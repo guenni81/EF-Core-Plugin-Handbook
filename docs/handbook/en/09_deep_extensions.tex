@@ -24,7 +24,7 @@ of the following applies:
 \begin{datatable}{H{0.80}H{1.20}}
   \textbf{Reason} & \textbf{Example} \\
   \tablehead
-  The syntax is not a function call & Operators such as \code{@@}, \code{<\allowbreak{}->},
+  The syntax is not a function call & Operators such as \code{@@}, \code{<->},
   \code{IS DISTINCT FROM}, keywords such as \code{AT TIME ZONE} \\
   \tablerule
   The nullability semantics differ & \code{IS DISTINCT FROM} is never NULL, even when an
@@ -173,8 +173,22 @@ public class TenancyNpgsqlQuerySqlGenerator : NpgsqlQuerySqlGenerator
         VisitOperand(expression.Right);
         return expression;
     }
+
+    // The node as an operand of other operators: always in parentheses
+    protected override bool RequiresParentheses(SqlExpression outerExpression,
+        SqlExpression innerExpression)
+        => innerExpression is DistinctFromExpression
+           || base.RequiresParentheses(outerExpression, innerExpression);
 }
 \end{sourcecode}
+
+Parentheses are needed in two directions. \code{Visit\allowbreak{}Operand} parenthesizes
+compound operands \emph{inside} the node. For the node \emph{as} an operand, EF asks
+\code{Requires\allowbreak{}Parentheses}, which only knows EF's own nodes. Without the override
+the plugin wrote \code{a IS DISTINCT FROM 'x' <> a IS DISTINCT FROM 'y'}; PostgreSQL binds
+\code{<>} tighter than \code{IS} and reports a syntax error.
+\code{Deep\allowbreak{}Query\allowbreak{}Tests} checks the SQL,
+\code{Advanced\allowbreak{}Tests} the query against PostgreSQL.
 
 The generator is created through
 \code{IQuery\allowbreak{}Sql\allowbreak{}Generator\allowbreak{}Factory}, a singleton single
@@ -265,6 +279,121 @@ public void IsDistinctFrom_in_projection_passes_nullability_processor()
 
     Assert.Contains("IS DISTINCT FROM", sql);
 }
+\end{sourcecode}
+
+\section{Practical example: operators for vector search and pgvector}
+
+Embeddings and similarity search bring operators into SQL that are not functions: pgvector
+writes the L2 distance as \code{<->}, the cosine distance as
+\code{<=>} and the negative inner product as
+\code{<\#>}; full-text search uses \code{@@}.
+\code{Sql\allowbreak{}Binary\allowbreak{}Expression} does not help here, because its operator
+is an \code{Expression\allowbreak{}Type}, and there is none for
+\code{<=>}. \code{Custom\allowbreak{}Operator\allowbreak{}Tests}
+therefore shows
+\code{EF.\allowbreak{}Functions.\allowbreak{}Cosine\allowbreak{}Distance(\allowbreak{}a,\allowbreak{}
+b)} as a node of its own, \code{Vector\allowbreak{}Distance\allowbreak{}Expression}, with the
+operator as a string, with translator, generator and nullability processor. It is test code:
+an application uses \code{Pgvector.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core},
+which brings the \code{vector} type, its type mapping and these translations. Npgsql itself has
+\code{Pg\allowbreak{}Unknown\allowbreak{}Binary\allowbreak{}Expression} for such cases, a node
+with an arbitrary operator and propagating nullability that needs no replaced generator or
+processor. It lives in an \code{Internal} namespace, though (EF1001).
+
+Three things decide whether such an operator produces correct SQL.
+
+\textbf{Type mappings.} The translator gives both operands the same mapping, inferred from the
+side that has one, usually the column. The parameter thus reaches the database with the
+column's store type:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/CustomOperatorTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Custom\allowbreak{}Operator\allowbreak{}Tests.\allowbreak{}cs ›\allowbreak{} Translator]{csharp}
+if (method != CosineDistanceMethod)
+    return null;
+
+var left = arguments[1];                        // arguments[0] is DbFunctions
+var right = arguments[2];
+var operandMapping = ExpressionExtensions.InferTypeMapping(left, right)
+                     ?? _typeMappingSource.FindMapping(left.Type);
+
+return new VectorDistanceExpression(
+    _sql.ApplyTypeMapping(left, operandMapping)!,
+    _sql.ApplyTypeMapping(right, operandMapping)!,
+    "<=>",
+    _typeMappingSource.FindMapping(typeof(double)));
+\end{sourcecode}
+
+In the test the column is a \code{float[]}, i.e. \code{real[]}. pgvector defines its operators
+only for \code{vector}, though; against a real database this needs a type mapping with that
+store type, as the package registers it. The result gets the mapping of \code{double}, i.e.
+\code{double precision}.
+
+\textbf{Precedence and parentheses.} EF does not know the precedence of a foreign operator.
+PostgreSQL ranks user-defined operators between the arithmetic and the comparison operators:
+\code{a <=> b * 2} means
+\code{a <=> (\allowbreak{}b * 2)}. Without a countermeasure, the
+generator wrote exactly that for
+\code{Cosine\allowbreak{}Distance(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}) * 2
++ 1}. The solution is the same two directions as above: parenthesize operands inside the node,
+and always parenthesize the node as an operand through
+\code{Requires\allowbreak{}Parentheses}. \code{Print} parenthesizes the same way, so that the
+DebugView shows what the database reads.
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/CustomOperatorTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Custom\allowbreak{}Operator\allowbreak{}Tests.\allowbreak{}cs ›\allowbreak{} Generator]{csharp}
+public class VectorQuerySqlGenerator : TenancyNpgsqlQuerySqlGenerator
+{
+    // ... constructor, VisitExtension, VisitOperand
+
+    protected virtual Expression VisitVectorDistance(VectorDistanceExpression expression)
+    {
+        VisitOperand(expression.Left);
+        Sql.Append($" {expression.Operator} ");
+        VisitOperand(expression.Right);
+        return expression;
+    }
+
+    // Without the override: "a <=> b * 2.0", read as a <=> (b * 2.0)
+    protected override bool RequiresParentheses(SqlExpression outerExpression,
+        SqlExpression innerExpression)
+        => innerExpression is VectorDistanceExpression
+           || base.RequiresParentheses(outerExpression, innerExpression);
+}
+\end{sourcecode}
+
+The generator derives from the plugin's generator, not from Npgsql's: both replace the same
+single service, and only this way do both nodes remain translatable. That is the price from the
+box above, on a small scale.
+
+\textbf{Nullability.} An ordinary operator is NULL as soon as an operand is NULL. The processor
+reports that onwards:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/CustomOperatorTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Custom\allowbreak{}Operator\allowbreak{}Tests.\allowbreak{}cs ›\allowbreak{} Nullability]{csharp}
+if (sqlExpression is VectorDistanceExpression distance)
+{
+    // NULL in, NULL out
+    var left = Visit(distance.Left, out var leftNullable)!;
+    var right = Visit(distance.Right, out var rightNullable)!;
+
+    nullable = leftNullable || rightNullable;
+    return distance.Update(left, right);
+}
+\end{sourcecode}
+
+The report has visible consequences. For
+\code{!(\allowbreak{}Cosine\allowbreak{}Distance(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})
+< 0.5)} EF writes \code{>= 0.5} for a required column, but a \code{CASE} for an optional one,
+because \code{NOT (\allowbreak{}NULL < 0.5)} is NULL in SQL but \code{true} in C\#. Without the
+processor, translation fails. The tests check the SQL of all cases:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/CustomOperatorTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Custom\allowbreak{}Operator\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+var sql = ctx.Documents
+    .Select(d => EF.Functions.CosineDistance(d.Embedding, query) * 2 + 1)
+    .ToQueryString();
+
+Assert.Contains("SELECT (d.\"Embedding\" <=> @query) * 2.0 + 1.0", sql);
 \end{sourcecode}
 
 % ------------------------------------------------------------

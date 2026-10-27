@@ -9,6 +9,10 @@ version is given by the dependency range and the compatibility table in the READ
 
 ### Added
 
+- `CustomOperatorTests`: the pgvector cosine distance `<=>` as a custom SQL expression node
+  (test code only: translator, SQL generator derived from the plugin's, nullability processor),
+  with checks for precedence, propagated nullability and the failure without the processor.
+  Handbook: new section "Practical example: operators for vector search and pgvector".
 - Deployment template in `docs/deployment`: `setup-roles.sql` (one-time roles `shop_owner` and
   `shop_app`, default privileges for tables of later migrations) and `migrations-deploy.yml`
   (GitHub Actions, not active here: build, migration bundle, bundle as the owner, then the
@@ -37,6 +41,13 @@ version is given by the dependency range and the compatibility table in the READ
 - `TenantIdJsonConverter` (core package): `TenantId` serializes with System.Text.Json as a plain
   GUID string, also as a dictionary key, selected by an attribute on the type; invalid values
   throw `JsonException`. The ShopApi sample no longer needs its own converter.
+
+### Fixed
+
+- `IS [NOT] DISTINCT FROM` as an operand of another operator is now parenthesized
+  (`TenancyNpgsqlQuerySqlGenerator.RequiresParentheses`). Before, comparing two such
+  expressions produced SQL that PostgreSQL rejected with a syntax error, because it binds `<>`
+  tighter than `IS`.
 
 ### Changed
 

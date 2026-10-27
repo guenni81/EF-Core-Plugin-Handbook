@@ -129,12 +129,16 @@ public class AdvancedTests : IClassFixture<PostgresFixture>
 
         var same = await reader.Orders
             .CountAsync(o => EF.Functions.IsNotDistinctFrom(o.TenantId, EF.Functions.CurrentTenant()));
+        // As operands of <>: only valid SQL with parentheses around both nodes
+        var exactlyOne = await reader.Orders
+            .CountAsync(o => EF.Functions.IsDistinctFrom(o.Total, 1m) != EF.Functions.IsDistinctFrom(o.Total, 2m));
         var allPositive = await reader.Orders
             .GroupBy(o => o.TenantId)
             .Select(g => EF.Functions.Every(g.Select(o => o.Total > 0)))
             .SingleAsync();
 
         Assert.Equal(2, same);
+        Assert.Equal(2, exactlyOne);
         Assert.True(allPositive);
     }
 

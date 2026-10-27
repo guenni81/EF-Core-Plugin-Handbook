@@ -24,7 +24,7 @@ mindestens eins davon zutrifft:
 \begin{datatable}{H{0.80}H{1.20}}
   \textbf{Grund} & \textbf{Beispiel} \\
   \tablehead
-  Die Syntax ist kein Funktionsaufruf & Operatoren wie \code{@@}, \code{<\allowbreak{}->},
+  Die Syntax ist kein Funktionsaufruf & Operatoren wie \code{@@}, \code{<->},
   \code{IS DISTINCT FROM}, Schlüsselwörter wie \code{AT TIME ZONE} \\
   \tablerule
   Die Nullability-Semantik weicht ab & \code{IS DISTINCT FROM} ist nie NULL, auch wenn ein
@@ -173,8 +173,22 @@ public class TenancyNpgsqlQuerySqlGenerator : NpgsqlQuerySqlGenerator
         VisitOperand(expression.Right);
         return expression;
     }
+
+    // Der Knoten als Operand anderer Operatoren: immer in Klammern
+    protected override bool RequiresParentheses(SqlExpression outerExpression,
+        SqlExpression innerExpression)
+        => innerExpression is DistinctFromExpression
+           || base.RequiresParentheses(outerExpression, innerExpression);
 }
 \end{sourcecode}
+
+Klammern braucht es in zwei Richtungen. \code{Visit\allowbreak{}Operand} klammert
+zusammengesetzte Operanden \emph{im} Knoten. Für den Knoten \emph{als} Operand fragt EF
+\code{Requires\allowbreak{}Parentheses}, und das kennt nur seine eigenen Knoten. Ohne den
+Override schrieb das Plugin
+\code{a IS DISTINCT FROM 'x' <> a IS DISTINCT FROM 'y'}; PostgreSQL bindet \code{<>} stärker
+als \code{IS} und meldet einen Syntaxfehler. \code{Deep\allowbreak{}Query\allowbreak{}Tests}
+prüft das SQL, \code{Advanced\allowbreak{}Tests} die Abfrage gegen PostgreSQL.
 
 Der Generator wird über
 \code{IQuery\allowbreak{}Sql\allowbreak{}Generator\allowbreak{}Factory} erzeugt, einen
@@ -267,6 +281,120 @@ public void IsDistinctFrom_in_projection_passes_nullability_processor()
 
     Assert.Contains("IS DISTINCT FROM", sql);
 }
+\end{sourcecode}
+
+\section{Praxisbeispiel: Operatoren für Vektorsuche und pgvector}
+
+Embeddings und Ähnlichkeitssuche bringen Operatoren in SQL, die keine Funktionen sind: pgvector
+schreibt die L2-Distanz als \code{<->}, die Kosinus-Distanz als
+\code{<=>} und das negative innere Produkt als
+\code{<\#>}; die Volltextsuche verwendet \code{@@}.
+\code{Sql\allowbreak{}Binary\allowbreak{}Expression} hilft hier nicht, denn ihr Operator ist
+ein \code{Expression\allowbreak{}Type}, und für \code{<=>} gibt es
+keinen. \code{Custom\allowbreak{}Operator\allowbreak{}Tests} zeigt deshalb
+\code{EF.\allowbreak{}Functions.\allowbreak{}Cosine\allowbreak{}Distance(\allowbreak{}a,\allowbreak{}
+b)} als eigenen Knoten \code{Vector\allowbreak{}Distance\allowbreak{}Expression} mit dem
+Operator als Zeichenkette, mit Translator, Generator und Nullability-Prozessor. Es ist
+Testcode: Eine Anwendung nimmt \code{Pgvector.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core},
+das den Typ \code{vector}, sein Type Mapping und diese Übersetzungen mitbringt. Npgsql selbst
+hat für solche Fälle \code{Pg\allowbreak{}Unknown\allowbreak{}Binary\allowbreak{}Expression},
+einen Knoten mit beliebigem Operator und propagierender Nullability, der Generator und
+Prozessor nicht ersetzen muss. Er liegt aber in einem \code{Internal}-Namespace (EF1001).
+
+Drei Dinge entscheiden darüber, ob ein solcher Operator richtiges SQL ergibt.
+
+\textbf{Type Mappings.} Der Translator gibt beiden Operanden dasselbe Mapping, abgeleitet von
+der Seite, die eins hat, meist der Spalte. So geht der Parameter mit dem Speichertyp der Spalte
+an die Datenbank:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/CustomOperatorTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Custom\allowbreak{}Operator\allowbreak{}Tests.\allowbreak{}cs ›\allowbreak{} Translator]{csharp}
+if (method != CosineDistanceMethod)
+    return null;
+
+var left = arguments[1];                        // arguments[0] ist DbFunctions
+var right = arguments[2];
+var operandMapping = ExpressionExtensions.InferTypeMapping(left, right)
+                     ?? _typeMappingSource.FindMapping(left.Type);
+
+return new VectorDistanceExpression(
+    _sql.ApplyTypeMapping(left, operandMapping)!,
+    _sql.ApplyTypeMapping(right, operandMapping)!,
+    "<=>",
+    _typeMappingSource.FindMapping(typeof(double)));
+\end{sourcecode}
+
+Im Test ist die Spalte ein \code{float[]}, also \code{real[]}. pgvector definiert seine
+Operatoren aber nur für \code{vector}; gegen eine echte Datenbank braucht es deshalb ein Type
+Mapping mit diesem Speichertyp, wie es das Paket registriert. Das Ergebnis bekommt das Mapping
+von \code{double}, also \code{double precision}.
+
+\textbf{Rangfolge und Klammern.} EF kennt die Rangfolge eines fremden Operators nicht.
+PostgreSQL ordnet selbst definierte Operatoren zwischen die arithmetischen und die
+Vergleichsoperatoren ein: \code{a <=> b * 2} heißt
+\code{a <=> (\allowbreak{}b * 2)}. Ohne Gegenmaßnahme schrieb der
+Generator für \code{Cosine\allowbreak{}Distance(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})
+* 2 + 1} genau das. Die Lösung sind dieselben zwei Richtungen wie oben: Operanden im Knoten
+klammern und den Knoten als Operand über
+\code{Requires\allowbreak{}Parentheses} immer klammern. \code{Print} klammert genauso, damit
+die DebugView zeigt, was die Datenbank liest.
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/CustomOperatorTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Custom\allowbreak{}Operator\allowbreak{}Tests.\allowbreak{}cs ›\allowbreak{} Generator]{csharp}
+public class VectorQuerySqlGenerator : TenancyNpgsqlQuerySqlGenerator
+{
+    // ... Konstruktor, VisitExtension, VisitOperand
+
+    protected virtual Expression VisitVectorDistance(VectorDistanceExpression expression)
+    {
+        VisitOperand(expression.Left);
+        Sql.Append($" {expression.Operator} ");
+        VisitOperand(expression.Right);
+        return expression;
+    }
+
+    // Ohne Override: "a <=> b * 2.0", gelesen als a <=> (b * 2.0)
+    protected override bool RequiresParentheses(SqlExpression outerExpression,
+        SqlExpression innerExpression)
+        => innerExpression is VectorDistanceExpression
+           || base.RequiresParentheses(outerExpression, innerExpression);
+}
+\end{sourcecode}
+
+Der Generator erbt vom Generator des Plugins, nicht von dem von Npgsql: Beide ersetzen
+denselben Einzeldienst, und nur so bleiben beide Knoten übersetzbar. Das ist der Preis aus
+dem Kasten oben, im Kleinen.
+
+\textbf{Nullability.} Ein gewöhnlicher Operator ist NULL, sobald ein Operand NULL ist. Der
+Prozessor meldet das weiter:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/CustomOperatorTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Custom\allowbreak{}Operator\allowbreak{}Tests.\allowbreak{}cs ›\allowbreak{} Nullability]{csharp}
+if (sqlExpression is VectorDistanceExpression distance)
+{
+    // NULL hinein, NULL heraus
+    var left = Visit(distance.Left, out var leftNullable)!;
+    var right = Visit(distance.Right, out var rightNullable)!;
+
+    nullable = leftNullable || rightNullable;
+    return distance.Update(left, right);
+}
+\end{sourcecode}
+
+Die Meldung hat sichtbare Folgen. Für
+\code{!(\allowbreak{}Cosine\allowbreak{}Distance(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})
+< 0.5)} schreibt EF bei einer Pflichtspalte \code{>= 0.5}, bei einer optionalen Spalte ein
+\code{CASE}, weil \code{NOT (\allowbreak{}NULL < 0.5)} in SQL NULL ist, in C\# aber
+\code{true}. Ohne den Prozessor scheitert die Übersetzung. Die Tests prüfen das SQL aller
+Fälle:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/CustomOperatorTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Custom\allowbreak{}Operator\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+var sql = ctx.Documents
+    .Select(d => EF.Functions.CosineDistance(d.Embedding, query) * 2 + 1)
+    .ToQueryString();
+
+Assert.Contains("SELECT (d.\"Embedding\" <=> @query) * 2.0 + 1.0", sql);
 \end{sourcecode}
 
 % ------------------------------------------------------------
