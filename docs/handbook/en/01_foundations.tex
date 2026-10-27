@@ -707,9 +707,11 @@ ends up in the cached model. Run-time values therefore have no place here.
 
 \section{Queries}\phantomsection\label{sec:decide-queries}
 
-Query extensions run once per query shape; the result is cached
-(chapter~\ref{ch:the-query-pipeline}). Values that change per execution therefore belong in
-the SQL as a parameter or database function, never as a constant. The following tree is
+At which stage of the pipeline a desired change sits is shown by the map in
+chapter~\ref{ch:the-query-pipeline}; this section then chooses the mechanism. Most query
+extensions run once per query shape, and the result is cached. Values that change per
+execution therefore belong in the SQL as a parameter or database function, never as a
+constant. The following tree is
 ordered by increasing depth of intervention; one question concerns every custom function
 and therefore comes first:
 

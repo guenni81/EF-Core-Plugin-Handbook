@@ -88,6 +88,7 @@
 % ---------------------------------------------------------------- Lists, tables, links
 \RequirePackage{enumitem}
 \RequirePackage{etoolbox}
+\RequirePackage{needspace}
 \RequirePackage{xltabular}
 \RequirePackage{array}
 \RequirePackage{tikz}
@@ -103,8 +104,10 @@
 % ---------------------------------------------------------------- Code blocks
 % \begin{sourcecode}[label]{language} ... \end{sourcecode}; the label names the source file.
 % Code lines may be at most 94 characters (checked by check_code.py).
+% The label never stays alone at the bottom of a page: room for it and a few code lines
 \newcommand{\codelabel}[1]{%
-  \par\addvspace{4pt}\noindent{\ttfamily\fontsize{7.2}{10}\selectfont\color{muted}#1}%
+  \par\addvspace{4pt}\needspace{5\baselineskip}%
+  \noindent{\ttfamily\fontsize{7.2}{10}\selectfont\color{muted}#1}%
   \par\nobreak\vspace{1pt}}
 \NewTCBListing{sourcecode}{ O{} m }{%
   listing engine=minted, minted language=#2, listing only, breakable,

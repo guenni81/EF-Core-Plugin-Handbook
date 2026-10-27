@@ -473,11 +473,11 @@ Optimierung lohnt:
   Einmal pro Provider & Conventions, Type-Mapping-Plugins, Singleton-Options & Lesbarkeit
   vor Mikro-Optimierung \\
   \tablerule
-  Einmal pro Abfrageform & Translators, Evaluatable-Filter, Query-Interceptors & Moderat;
-  Ergebnis wird gecacht \\
+  Einmal pro Abfrageform & Translators, Query-Interceptors & Moderat; Ergebnis wird gecacht
+  (Kapitel~\ref{ch:the-query-pipeline}) \\
   \tablerule
   Bei jeder Ausführung & Interceptors für Commands, Verbindungen, SaveChanges,
-  Materialisierung & Heißer Pfad: keine Reflection, keine unnötigen Allokationen \\
+  Materialisierung; Evaluatable-Filter, wenn der Funcletizer die Parameterwerte ausliest & Heißer Pfad: keine Reflection, keine unnötigen Allokationen \\
 \end{datatable}
 
 Daraus ergeben sich einige Regeln, die das Beispiel befolgt: \code{Method\allowbreak{}Info}-

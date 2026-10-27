@@ -356,7 +356,7 @@ and the registrations of \code{Add\allowbreak{}Entity\allowbreak{}Framework\allo
 % ------------------------------------------------------------
 \chapter{Debugging toolbox}\label{app:D}
 
-When a plugin does not behave as expected, the question is almost always one of five. Each
+When a plugin does not behave as expected, the question is almost always one of six. Each
 technique below is checked in \code{Debugging\allowbreak{}Tests}.
 
 \begin{datatable}{H{0.61}H{1.39}}
@@ -377,6 +377,13 @@ technique below is checked in \code{Debugging\allowbreak{}Tests}.
   What does the query look like before and after translation? &
   \code{query.\allowbreak{}Expression.\allowbreak{}Print(\allowbreak{})} and
   \code{query.\allowbreak{}To\allowbreak{}Query\allowbreak{}String(\allowbreak{})} \\
+  \tablerule
+  At which stage of the pipeline does something change? &
+  \code{Log\allowbreak{}To} at debug level with
+  \code{Core\allowbreak{}Event\allowbreak{}Id.\allowbreak{}Query\allowbreak{}Compilation\allowbreak{}Starting}
+  (tree after the funcletizer) and
+  \code{Query\allowbreak{}Execution\allowbreak{}Planned} (\code{Select\allowbreak{}Expression}
+  and shaper), chapter~\ref{ch:the-query-pipeline} \\
   \tablerule
   Does my plugin log? &
   \code{Log\allowbreak{}To(\allowbreak{}lines.\allowbreak{}Add,\allowbreak{}

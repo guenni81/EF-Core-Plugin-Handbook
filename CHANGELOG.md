@@ -25,9 +25,20 @@ version of EF Core (10.x = EF Core 10).
   outside of EF. Unit and integration tests, including the failure cases of a singleton
   interceptor created per context or remembering the tenant.
 
+- Handbook (both editions): chapter 12 "The query pipeline" rewritten as the map for all
+  query extensions: one sample query followed through every stage with EF's real logs and
+  SQL, the three points in time (per query shape, per parameter constellation, per
+  execution), responsible components, extension points, single services, where
+  provider-internal API begins, lifetimes, and how to locate a change before choosing a
+  mechanism. Appendix D shows the query compilation logs; `DebuggingTests` checks them.
+
 ### Fixed
 
 - The handbook said EF only warns after 20 internal service providers; by default it throws.
+- The old query pipeline diagram placed the NULL optimization in postprocessing and the
+  query interceptor in preprocessing; the materialization chapter said the value converter
+  is inlined into the shaper (the shaper calls its compiled delegate); the performance
+  chapter listed the evaluatable filter as running once per query shape only.
 - `TenancyDesignTimeServices` registered `IDatabaseModelFactory` as a singleton although EF
   and Npgsql register it as scoped and it depends on the scoped scaffolding logger.
 

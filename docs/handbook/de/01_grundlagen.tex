@@ -726,9 +726,11 @@ im gecachten Modell. Laufzeitwerte haben hier deshalb nichts zu suchen.
 
 \section{Abfragen}\phantomsection\label{sec:decide-queries}
 
-Abfrage-Erweiterungen laufen einmal pro Abfrageform; das Ergebnis wird gecacht
-(Kapitel~\ref{ch:the-query-pipeline}). Werte, die sich pro Ausführung ändern, gehören
-deshalb als Parameter oder Datenbankfunktion ins SQL, nie als Konstante. Der folgende Baum
+An welcher Stufe der Pipeline eine gewünschte Änderung sitzt, zeigt die Landkarte in
+Kapitel~\ref{ch:the-query-pipeline}; dieser Abschnitt wählt dann den Mechanismus. Die
+meisten Abfrage-Erweiterungen laufen einmal pro Abfrageform, und das Ergebnis wird gecacht.
+Werte, die sich pro Ausführung ändern, gehören deshalb als Parameter oder Datenbankfunktion
+ins SQL, nie als Konstante. Der folgende Baum
 ist nach steigender Eingriffstiefe geordnet; eine Frage betrifft jede eigene Funktion und
 steht deshalb vor ihm:
 

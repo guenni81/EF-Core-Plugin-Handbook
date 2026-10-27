@@ -458,11 +458,11 @@ optimization pays off:
   Once per provider & Conventions, type mapping plugins, singleton options & Readability
   over micro-optimization \\
   \tablerule
-  Once per query shape & Translators, evaluatable filter, query interceptors & Moderate; the
-  result is cached \\
+  Once per query shape & Translators, query interceptors & Moderate; the result is cached
+  (chapter~\ref{ch:the-query-pipeline}) \\
   \tablerule
-  On every execution & Interceptors for commands, connections, SaveChanges, materialization
-  & Hot path: no reflection, no unnecessary allocations \\
+  On every execution & Interceptors for commands, connections, SaveChanges, materialization;
+  evaluatable filter when the funcletizer extracts the parameter values & Hot path: no reflection, no unnecessary allocations \\
 \end{datatable}
 
 This leads to a few rules the sample follows: \code{Method\allowbreak{}Info} and

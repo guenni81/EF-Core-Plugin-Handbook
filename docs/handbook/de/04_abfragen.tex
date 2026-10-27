@@ -16,31 +16,315 @@
 % ------------------------------------------------------------
 \chapter{Die Query-Pipeline}\label{ch:the-query-pipeline}
 
-Eine LINQ-Abfrage durchläuft in EF Core mehrere Stufen, bevor SQL entsteht. Wer weiß, wo
-welche Stufe sitzt, weiß auch, wo ein Plugin ansetzen muss:
+Eine LINQ-Abfrage durchläuft in EF Core eine Reihe von Stufen, bevor SQL entsteht, und
+eine weitere, bevor Objekte zurückkommen. Jede Query-Erweiterung dieses Buchs sitzt an
+genau einer dieser Stufen. Dieses Kapitel ist die Landkarte dazu: Es verfolgt eine konkrete
+Abfrage durch die Pipeline, zeigt, wer an jeder Stufe verantwortlich ist und wo ein Plugin
+eingreifen kann, und hilft, eine gewünschte Änderung zuerst zu \emph{lokalisieren}. Welcher
+Mechanismus dann der richtige ist, entscheidet der Abschnitt „Abfragen“ der
+Entscheidungshilfe (Seite~\pageref{sec:decide-queries}); wie er funktioniert, steht im
+jeweiligen Kapitel.
+
+Die Stufen im Überblick:
 
 \begin{flowdiagram}
-  \flowstep{Funcletizer}{Wertet Teilausdrücke ohne Datenbezug in .NET aus und macht
-  Parameter daraus. Plugin: IEvaluatableExpressionFilterPlugin}
-  \flowstep{Preprocessing}{Navigationen expandieren, Query-Filter einfügen, normalisieren.
-  Plugin: IQueryExpressionInterceptor}
-  \flowstep{Queryable-Übersetzung}{Where, Select, OrderBy usw. werden zu einer
-  SelectExpression}
-  \flowstep{SQL-Übersetzung}{Ausdrücke werden zu SqlExpressions. Plugins: Method-, Member-
-  und Aggregate-Translators}
-  \flowstep{Postprocessing}{Nullability-Optimierung, Parameter-abhängige Anpassungen}
-  \flowstep{SQL-Generierung}{QuerySqlGenerator schreibt den SQL-Text}
-  \flowstep{Materialisierung}{Zeilen werden zu Objekten (Kapitel~\ref{ch:materialization-from-rows-to-objects}). Plugin:
-  IMaterializationInterceptor}
+  \flowstep{LINQ}{Der Compiler erzeugt einen Expression Tree; lokale Variablen sind darin
+  Feldzugriffe auf eine Closure}
+  \flowstep{Funcletizer}{Wertet Teilausdrücke ohne Datenbezug aus, macht Parameter daraus;
+  danach Blick in den Query-Cache}
+  \flowstep{Preprocessing}{Query-Filter einfügen, Navigationen expandieren, normalisieren}
+  \flowstep{Queryable-Übersetzung}{Where, OrderBy, Select … werden zu einem
+  SelectExpression mit Shaper}
+  \flowstep{SQL-Übersetzung}{Lambdas darin werden zu SqlExpressions; Translators liefern
+  Funktionen und Member}
+  \flowstep{Postprocessing}{Der SelectExpression wird abgeschlossen; Ergebnis wird mit dem
+  Shaper kompiliert und gecacht}
+  \flowstep{Parameterabhängig}{Mit den Werten der Parameter: NULL-Semantik, weitere
+  Vereinfachungen}
+  \flowstep{SQL-Generierung}{Der QuerySqlGenerator schreibt den SQL-Text des Providers}
+  \flowstep{Ausführung}{Befehl, Verbindung, DbDataReader}
+  \flowstep{Materialisierung}{Zeilen werden zu Objekten
+  (Kapitel~\ref{ch:materialization-from-rows-to-objects})}
 \end{flowdiagram}
 
-Die kompilierte Abfrage wird gecacht. Translators laufen also nur einmal pro Abfrageform,
-nicht bei jeder Ausführung. Werte, die sich pro Ausführung ändern (Parameter,
-Session-Settings), müssen deshalb im SQL als Parameter oder als Datenbankfunktion stehen,
-nie als zur Übersetzungszeit eingesetzte Konstante. Genau deshalb übersetzt das Beispiel
-\code{Current\allowbreak{}Tenant(\allowbreak{})} in einen Aufruf von
+\section{Eine Abfrage auf ihrem Weg}
+
+Die Beispielabfrage läuft mit aktiviertem Mandanten-Query-Filter
+(\code{Apply\allowbreak{}Query\allowbreak{}Filter(\allowbreak{})},
+Kapitel~\ref{ch:conventions}). Der Name kommt aus einer Anfrage und kann fehlen:
+
+\begin{sourcecode}[Anwendung]{csharp}
+string? name = filter.Name;                        // kann null sein
+
+var customers = await db.Customers
+    .Where(c => c.Name == name)
+    .OrderBy(c => c.Id)
+    .ToListAsync();
+\end{sourcecode}
+
+Was mit der Beispielabfrage an den einzelnen Stufen passiert, zeigen die Debug-Logs von EF
+(\code{Core\allowbreak{}Event\allowbreak{}Id.\allowbreak{}Query\allowbreak{}Compilation\allowbreak{}Starting}
+und \code{Query\allowbreak{}Execution\allowbreak{}Planned}) und
+\code{To\allowbreak{}Query\allowbreak{}String(\allowbreak{})}.
+
+\textbf{Funcletizer.} Der lokale Wert \code{name} hat keinen Datenbezug. EF wertet ihn
+nicht als Konstante ein, sondern macht einen Parameter daraus. Erst dieser Baum ist der
+Schlüssel für den Query-Cache: Dieselbe Abfrage mit einem anderen Namen trifft denselben
+Eintrag.
+
+\begin{sourcecode}[Log: Compiling query expression]{text}
+DbSet<Customer>()
+    .Where(c => c.Name == @name)
+    .OrderBy(c => c.Id)
+\end{sourcecode}
+
+\textbf{Preprocessing.} Der benannte Query-Filter des Plugins kommt hinzu, mit
+\code{EF.\allowbreak{}Functions.\allowbreak{}Current\allowbreak{}Tenant(\allowbreak{})}.
+Dass dieser Aufruf hier noch ein Aufruf ist und nicht vorab in .NET ausgeführt wurde,
+verdankt er dem Evaluatable-Expression-Filter des Plugins
+(Kapitel~\ref{ch:preventing-client-side-evaluation}).
+
+\textbf{Queryable- und SQL-Übersetzung.} Beide Stufen greifen ineinander: Für jeden
+Queryable-Operator übersetzt EF dessen Lambda in SQL-Ausdrücke. Aus
+\code{c.\allowbreak{}Name == @name} wird ein binärer SQL-Vergleich, aus
+\code{Current\allowbreak{}Tenant(\allowbreak{})} liefert der Method-Translator des Plugins
+einen Funktionsausdruck. Das Ergebnis ist ein \code{Select\allowbreak{}Expression}, die
+relationale Darstellung der Abfrage, noch unabhängig von der SQL-Syntax des Providers:
+
+\begin{sourcecode}[Log: Generated query execution expression (\allowbreak{}Auszug)]{text}
+SELECT c.Id, c.Name, c.TenantId
+FROM Customers AS c
+WHERE (c.TenantId == CAST(nullif(current_setting('app.tenant_id', TRUE), '') AS uuid))
+    && (c.Name == @name)
+ORDER BY c.Id ASC
+\end{sourcecode}
+
+\textbf{Postprocessing und Kompilierung.} Der \code{Select\allowbreak{}Expression} wird
+abgeschlossen und zusammen mit dem Shaper, der später die Objekte baut, zu einem Delegaten
+kompiliert. Bis hierher läuft alles einmal pro Abfrageform.
+
+\textbf{Parameterabhängige Verarbeitung.} Erst bei der Ausführung kennt EF die Werte der
+Parameter. Der \code{Relational\allowbreak{}Parameter\allowbreak{}Based\allowbreak{}Sql\allowbreak{}Processor}
+wertet die NULL-Semantik aus. Ist \code{name} null, kann \code{c.\allowbreak{}Name =
+NULL} bei einer Pflichtspalte nie wahr sein, und der ganze Filter fällt zu \code{FALSE}
+zusammen. Mit einem Wert bleibt der Vergleich stehen.
+
+\textbf{SQL-Generierung.} Der Generator des Providers schreibt den Text: Npgsql macht aus
+dem \code{CAST} die PostgreSQL-Schreibweise \code{::\allowbreak{}uuid} und setzt
+Bezeichner in Anführungszeichen.
+
+\begin{sourcecode}[To\allowbreak{}Query\allowbreak{}String(\allowbreak{}) mit name = \textquotedbl{}Contoso\textquotedbl{} und mit name = null]{sql}
+-- @name='Contoso'
+SELECT c."Id", c."Name", c."TenantId"
+FROM "Customers" AS c
+WHERE c."TenantId" = nullif(current_setting('app.tenant_id', TRUE), '')::uuid
+    AND c."Name" = @name
+ORDER BY c."Id"
+
+SELECT c."Id", c."Name", c."TenantId"
+FROM "Customers" AS c
+WHERE FALSE
+ORDER BY c."Id"
+\end{sourcecode}
+
+\textbf{Ausführung und Materialisierung.} Der Befehl läuft, und der Shaper baut aus jeder
+Zeile einen \code{Customer}; die Mandanten-ID kommt dabei über den Value Converter zurück.
+Kapitel~\ref{ch:materialization-from-rows-to-objects} beschreibt diesen Rückweg.
+
+\section{Wie oft welche Stufe läuft}
+
+Die Pipeline hat drei Zeitpunkte, und jeder Mechanismus gehört zu genau einem davon. Für
+die Beispielabfrage, viermal ausgeführt (zweimal mit \code{\textquotedbl{}Contoso\textquotedbl{}}, einmal mit null,
+einmal mit \code{\textquotedbl{}Fabrikam\textquotedbl{}}), ergibt das:
+
+\begin{datatable}{H{0.90}H{1.35}H{0.75}}
+  \textbf{Zeitpunkt} & \textbf{Stufen} & \textbf{Im Beispiel} \\
+  \tablehead
+  Einmal pro Abfrageform & Preprocessing bis Postprocessing; Query-Interceptor, Translators,
+  Kompilierung des Shapers & 1-mal \\
+  \tablerule
+  Einmal pro Parameterkonstellation & Parameterabhängige Verarbeitung und SQL-Generierung,
+  gecacht nach dem, was die Entscheidungen beeinflusst hat (hier: null oder nicht null) &
+  2-mal \\
+  \tablerule
+  Bei jeder Ausführung & Funcletizer (liest die Parameterwerte aus), Befehl,
+  Command-Interceptor, Materialisierung & 4-mal \\
+\end{datatable}
+
+Daraus folgt die wichtigste Regel für Query-Erweiterungen: Werte, die sich pro Ausführung
+ändern (Parameter, Mandant, Uhrzeit), müssen im SQL als Parameter oder Datenbankfunktion
+stehen, nie als zur Übersetzungszeit eingesetzte Konstante. Genau deshalb übersetzt das
+Plugin \code{Current\allowbreak{}Tenant(\allowbreak{})} in
 \code{current\_\allowbreak{}setting(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}
-und setzt nicht den aktuellen Mandanten ein.
+und setzt nicht den aktuellen Mandanten ein. Mit vorkompilierten Abfragen
+(Kapitel~\ref{ch:further-query-extension-points}) rückt der erste Zeitpunkt sogar in den
+Build.
+
+\section{Die Landkarte}
+
+Die folgende Tabelle ordnet jeder Stufe die verantwortliche EF-Komponente zu, den Eingriff,
+den ein Plugin dort hat, und das Kapitel, das ihn behandelt. Die Angaben in grauer Schrift
+folgen der Legende der Entscheidungshilfe in
+Kapitel~\ref{ch:choosing-the-right-extension-point}.
+
+\begin{datatable}{H{0.70}H{1.05}H{1.00}H{0.25}}
+  \textbf{Stufe} & \textbf{Verantwortlich} & \textbf{Eingriff} & \textbf{Kap.} \\
+  \tablehead
+  Funcletizer & \code{Expression\allowbreak{}Tree\allowbreak{}Funcletizer} (intern), fragt
+  \code{IEvaluatable\allowbreak{}Expression\allowbreak{}Filter} &
+  \code{IEvaluatable\allowbreak{}Expression\allowbreak{}Filter\allowbreak{}Plugin}
+  \cellmeta{öffentlich · mehrfach · Singleton} &
+  \ref{ch:preventing-client-side-evaluation} \\
+  \tablerule
+  Query-Cache & \code{ICompiled\allowbreak{}Query\allowbreak{}Cache} (intern, Singleton) &
+  Kein Eingriff & – \\
+  \tablerule
+  Vor dem Preprocessing & \code{Query\allowbreak{}Compilation\allowbreak{}Context} zu Beginn
+  der Kompilierung & \code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor}
+  \cellmeta{öffentlich · mehrfach · Singleton} &
+  \ref{ch:further-query-extension-points}, \ref{ch:bulk-operations-and-the-limits} \\
+  \tablerule
+  Preprocessing & \code{IQuery\allowbreak{}Translation\allowbreak{}Preprocessor\allowbreak{}Factory};
+  Navigation Expansion intern & Query-Filter im Modell; sonst Einzeldienst ersetzen
+  \cellmeta{öffentlich · einzeln · Scoped} &
+  \ref{ch:conventions} \\
+  \tablerule
+  Queryable-Übersetzung &
+  \code{IQueryable\allowbreak{}Method\allowbreak{}Translating\allowbreak{}Expression\allowbreak{}Visitor\allowbreak{}Factory};
+  Npgsql-Implementierung intern & Einzeldienst ersetzen
+  \cellmeta{Provider-Basis · einzeln · Scoped} & – \\
+  \tablerule
+  SQL-Übersetzung &
+  \code{IRelational\allowbreak{}Sql\allowbreak{}Translating\allowbreak{}Expression\allowbreak{}Visitor\allowbreak{}Factory},
+  \code{ISql\allowbreak{}Expression\allowbreak{}Factory}, Translator-Provider &
+  Method-, Member-, Aggregate-Translator-Plugins
+  \cellmeta{öffentlich · mehrfach · Scoped} &
+  \ref{ch:translating-methods-and-members}, \ref{ch:aggregate-translators} \\
+  \tablerule
+  Postprocessing &
+  \code{IQuery\allowbreak{}Translation\allowbreak{}Postprocessor\allowbreak{}Factory};
+  Npgsql-Implementierung intern & Einzeldienst ersetzen
+  \cellmeta{Provider-Basis · einzeln · Scoped} &
+  \ref{ch:further-query-extension-points} \\
+  \tablerule
+  Shaper & \code{IShaped\allowbreak{}Query\allowbreak{}Compiling\allowbreak{}Expression\allowbreak{}Visitor\allowbreak{}Factory}
+  & Über Type Mappings, Constructor Binding und
+  \code{IMaterialization\allowbreak{}Interceptor} & \ref{ch:materialization-from-rows-to-objects} \\
+  \tablerule
+  Parameterabhängig &
+  \code{IRelational\allowbreak{}Parameter\allowbreak{}Based\allowbreak{}Sql\allowbreak{}Processor\allowbreak{}Factory},
+  darin \code{Sql\allowbreak{}Nullability\allowbreak{}Processor}; Npgsql intern &
+  Einzeldienst ersetzen, nötig für eigene Knoten
+  \cellmeta{Provider-Basis · einzeln · Scoped} &
+  \ref{ch:custom-sql-expression-nodes} \\
+  \tablerule
+  SQL-Generierung & \code{IQuery\allowbreak{}Sql\allowbreak{}Generator\allowbreak{}Factory};
+  \code{Npgsql\allowbreak{}Query\allowbreak{}Sql\allowbreak{}Generator} intern &
+  Einzeldienst ersetzen, nötig für eigene Knoten
+  \cellmeta{Provider-Basis · einzeln · Singleton} &
+  \ref{ch:custom-sql-expression-nodes} \\
+  \tablerule
+  Ausführung & Relationale Befehle und Verbindung &
+  \code{IDb\allowbreak{}Command\allowbreak{}Interceptor}
+  \cellmeta{öffentlich · mehrfach · Scoped} & \ref{ch:interceptors} \\
+  \tablerule
+  Materialisierung & Kompilierter Shaper, Materializer &
+  \code{IMaterialization\allowbreak{}Interceptor}
+  \cellmeta{öffentlich · mehrfach · Singleton} &
+  \ref{ch:materialization-from-rows-to-objects} \\
+\end{datatable}
+
+\begin{important}[Wo providerinterne API beginnt]
+  Bis einschließlich SQL-Übersetzung kommt ein Plugin mit öffentlichen Plugin-Interfaces aus.
+  Die Basisklassen der späteren Stufen sind in EF zwar öffentlich
+  (\code{Relational\allowbreak{}Query\allowbreak{}Translation\allowbreak{}Postprocessor},
+  \code{Relational\allowbreak{}Parameter\allowbreak{}Based\allowbreak{}Sql\allowbreak{}Processor},
+  \code{Query\allowbreak{}Sql\allowbreak{}Generator}), aber jeder Provider leitet eigene
+  Klassen davon ab, bei Npgsql alle in
+  \code{Npgsql.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Postgre\allowbreak{}SQL.\allowbreak{}Query.\allowbreak{}Internal}.
+  Wer einen dieser Einzeldienste ersetzt, muss von der Provider-Klasse erben, um deren
+  Verhalten zu behalten, und arbeitet damit gegen interne API
+  (Kapitel~\ref{ch:versioning-and-compatibility}).
+\end{important}
+
+\section{Sechs Arten, in eine Abfrage einzugreifen}
+
+Die Mechanismen der folgenden Kapitel werden leicht verwechselt, weil sie alle „die Abfrage
+ändern“. Sie unterscheiden sich darin, was sie sehen und wann sie laufen:
+
+\begin{datatable}{H{0.78}H{1.12}H{1.10}}
+  \textbf{Mechanismus} & \textbf{Arbeitet auf} & \textbf{Richtig für} \\
+  \tablehead
+  Expression-Rewriting (\code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor}) &
+  Dem LINQ-Baum nach dem Funcletizer: Parameter statt Werte, noch kein SQL & Bedingungen
+  ergänzen, Aufrufe ersetzen, Operationen ablehnen; einmal pro Abfrageform \\
+  \tablerule
+  Method-, Member-, Aggregate-Translation & Einem einzelnen Aufruf, Member oder Aggregat;
+  baut aus vorhandenen SQL-Bausteinen & Neue Funktionen in LINQ; \code{null} für alles, was
+  nicht passt \\
+  \tablerule
+  Eigene \code{Sql\allowbreak{}Expression} & Einem neuen Knotentyp im
+  \code{Select\allowbreak{}Expression} & Syntax, die kein Funktionsaufruf ist, oder eigene
+  NULL-Semantik; muss an drei Stellen bekannt sein: Translator, parameterabhängige
+  Verarbeitung, Generator \\
+  \tablerule
+  \code{Relational\allowbreak{}Parameter\allowbreak{}Based\allowbreak{}Sql\allowbreak{}Processor}
+  & Dem fertigen \code{Select\allowbreak{}Expression} \emph{mit} Parameterwerten & Entscheidungen,
+  die vom Wert eines Parameters abhängen, vor allem NULL-Semantik; gecacht pro Konstellation
+  \\
+  \tablerule
+  \code{Query\allowbreak{}Sql\allowbreak{}Generator} & Dem endgültigen Baum, schreibt nur Text &
+  Die Schreibweise eines Knotens; trifft keine inhaltlichen Entscheidungen mehr \\
+  \tablerule
+  Materialisierung (\code{IMaterialization\allowbreak{}Interceptor}) & Den Zeilen nach der
+  Ausführung & Objekte prüfen, ergänzen, ersetzen; ändert kein SQL \\
+\end{datatable}
+
+Zwei Verwechslungen sind besonders häufig. Wer im Generator Bedingungen umbaut, umgeht die
+NULL-Optimierung, die vorher lief, und sieht keine Parameterwerte. Und wer mit einem
+Query-Interceptor etwas „übersetzen“ will, kann nur LINQ durch anderes LINQ ersetzen; einen
+SQL-Knoten, den es nicht gibt, erzeugt nur ein Translator.
+
+\section{Erst lokalisieren, dann wählen}
+
+Eine gewünschte Änderung an einer Abfrage lässt sich fast immer durch eine Frage einer
+Stufe zuordnen. Erst danach lohnt die Wahl des Mechanismus in der Entscheidungshilfe
+(Seite~\pageref{sec:decide-queries}).
+
+\begin{datatable}{H{1.25}H{0.80}H{0.95}}
+  \textbf{Was soll sich ändern?} & \textbf{Stufe} & \textbf{Weiter in} \\
+  \tablehead
+  Ein Wert ohne Datenbezug wird zu früh in .NET ausgewertet &
+  Funcletizer & Kapitel~\ref{ch:preventing-client-side-evaluation} \\
+  \tablerule
+  \emph{Welche} Abfrage gestellt wird: zusätzliche Bedingung, ersetzter Aufruf &
+  Vor dem Preprocessing & Query-Filter (Kapitel~\ref{ch:conventions}) oder
+  Kapitel~\ref{ch:further-query-extension-points} \\
+  \tablerule
+  Wie ein .NET-Aufruf, Member oder Aggregat als SQL aussieht & SQL-Übersetzung &
+  Kapitel~\ref{ch:translating-methods-and-members}, \ref{ch:aggregate-translators} \\
+  \tablerule
+  SQL braucht eine Form, die es als Knoten nicht gibt & SQL-Übersetzung bis
+  SQL-Generierung & Kapitel~\ref{ch:custom-sql-expression-nodes} \\
+  \tablerule
+  Die Form hängt vom Wert eines Parameters ab & Parameterabhängig &
+  Kapitel~\ref{ch:custom-sql-expression-nodes} \\
+  \tablerule
+  Nur der Text: Kommentar, Hinweis, Schreibweise & SQL-Generierung oder Ausführung &
+  \code{Tag\allowbreak{}With}, Kapitel~\ref{ch:interceptors} \\
+  \tablerule
+  Die zurückgegebenen Objekte & Materialisierung &
+  Kapitel~\ref{ch:materialization-from-rows-to-objects} \\
+\end{datatable}
+
+\begin{tip}
+  Zum Lokalisieren genügen drei Werkzeuge: das Debug-Log
+  \code{Query\allowbreak{}Compilation\allowbreak{}Starting} zeigt den Baum nach dem
+  Funcletizer, \code{Query\allowbreak{}Execution\allowbreak{}Planned} den
+  \code{Select\allowbreak{}Expression} samt Shaper, und
+  \code{To\allowbreak{}Query\allowbreak{}String(\allowbreak{})} das fertige SQL
+  (Anhang~\ref{app:D}). Wo sich der Unterschied zwischen zweien davon zeigt, liegt die Stufe.
+\end{tip}
 
 % ------------------------------------------------------------
 \chapter{Methoden und Member übersetzen}\label{ch:translating-methods-and-members}
@@ -393,12 +677,14 @@ Nachschlagen im Modell.
 Das hat eine wichtige Folge: Alles, was den Shaper prägt, wird beim Übersetzen entschieden,
 nicht beim Ausführen. Dazu gehören die Lesemethode des Type Mappings, der Value Converter,
 der gewählte Konstruktor und die registrierten Materialization-Interceptors. Für
-\code{Tenant\allowbreak{}Id} liest der Shaper den Providerwert (\code{Guid}) und wendet den
-Ausdruck des \code{Tenant\allowbreak{}Id\allowbreak{}Converter} an, der in den Shaper
-einkompiliert ist. Werte in JSON-Spalten liest er über den
-\code{Json\allowbreak{}Value\allowbreak{}Reader\allowbreak{}Writer} des Mappings. Kein
-Plugin-Code muss dafür pro Wert laufen; deshalb ist ein Value Converter für reine
-Wertumwandlung immer billiger als ein Interceptor.
+\code{Tenant\allowbreak{}Id} liest der Shaper den Providerwert mit
+\code{Get\allowbreak{}Guid} und ruft den kompilierten Konvertierungsdelegaten des
+\code{Tenant\allowbreak{}Id\allowbreak{}Converter} auf
+(\code{Convert\allowbreak{}From\allowbreak{}Provider\allowbreak{}Typed}). Werte in
+JSON-Spalten liest er über den
+\code{Json\allowbreak{}Value\allowbreak{}Reader\allowbreak{}Writer} des Mappings. Außer dem
+Konverter selbst läuft dafür kein Plugin-Code; ein Value Converter ist für reine
+Wertumwandlung deshalb billiger als ein Interceptor, der für jede Entität aufgerufen wird.
 
 Eine Projektion wie \code{Select(\allowbreak{}o => o.\allowbreak{}Total)} erzeugt einen
 Shaper, der nur diese Spalte liest. Es entsteht keine Entität, und kein Materializer läuft.
@@ -681,7 +967,8 @@ alles andere gibt es einen einfacheren und günstigeren Weg:
   \textbf{Ziel} & \textbf{Besser} & \textbf{Warum} \\
   \tablehead
   Einen Wert anders speichern als darstellen (Format, Typ, Verschlüsselung) & Value
-  Converter & Wirkt in beide Richtungen und in Parametern, einkompiliert statt pro Aufruf \\
+  Converter & Wirkt in beide Richtungen und in Parametern, direkt im Shaper statt über einen
+  Interceptor \\
   \tablerule
   Unveränderliche Objekte, Invarianten & Constructor Binding & EF ruft den Konstruktor
   selbst auf \\
