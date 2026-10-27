@@ -374,9 +374,14 @@ Directory.Build.props     <TargetFramework>net11.0</TargetFramework>
 Directory.Packages.props  <EFCoreVersion ...>[11.0.0,12.0.0)</EFCoreVersion>
 \end{sourcecode}
 
-EF Core~\emph{n} erscheint nur für .NET~\emph{n}. Target-Framework, SDK und Pakete wechseln
-deshalb gemeinsam; ein neues EF-Paket auf dem alten Target-Framework lässt sich nicht
-einmal wiederherstellen.
+Welches Target-Framework eine EF-Version voraussetzt, folgt keiner festen Regel: EF Core~9
+zielt auf \code{net8.\allowbreak{}0}, EF Core~10 auf \code{net10.\allowbreak{}0}, die
+Release Candidates von EF Core~11 auf \code{net11.\allowbreak{}0}
+(\href{https://learn.microsoft.com/en-us/ef/core/what-is-new/}{EF Core releases and planning}). Vor dem Upgrade gehört deshalb ein Blick in
+die Pakete von EF \emph{und} Provider: Welche Frameworks bieten sie an, welches SDK
+brauchen sie? Im Beispiel verlangt EF Core~11 \code{net11.\allowbreak{}0}, also wechseln
+Target-Framework, SDK und Pakete gemeinsam; ein neues EF-Paket auf dem alten
+Target-Framework ließe sich nicht einmal wiederherstellen.
 
 \begin{datatable}{H{0.18}H{0.95}H{1.32}H{0.55}}
   \textbf{Nr.} & \textbf{Schritt} & \textbf{Vorgehen} & \textbf{Im Beispiel} \\

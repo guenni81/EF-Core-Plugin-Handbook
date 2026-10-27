@@ -405,12 +405,25 @@ voraussetzt.
 \section{Performance von Policies}
 
 PostgreSQL fügt Policies wie zusätzliche \code{WHERE}-Bedingungen in jede Abfrage ein.
-\code{current\_\allowbreak{}setting} ist \code{STABLE} und wird pro Abfrage einmal
-ausgewertet; zusammen mit dem Index ist der Aufwand gering. Teure Policies entstehen durch
-Unterabfragen (etwa Rechte aus einer anderen Tabelle) oder Funktionen, die nicht
-\code{LEAKPROOF} sind und Optimierungen verhindern. Prüfen lässt sich das mit \code{EXPLAIN
-(\allowbreak{}ANALYZE)} als App-Rolle, nicht als Owner, weil der Owner die Policies sonst
-gar nicht sieht.
+\code{current\_\allowbreak{}setting} ist \code{STABLE}. Das garantiert innerhalb eines
+Statements dasselbe Ergebnis für alle Zeilen und \emph{erlaubt} dem Optimierer, mehrere
+Aufrufe zu einem zusammenzufassen
+(\href{https://www.postgresql.org/docs/17/xfunc-volatility.html}{PostgreSQL: Function Volatility Categories}); eine
+feste Zahl von Aufrufen garantiert es nicht. Wie oft die Funktion tatsächlich läuft, hängt
+vom Plan ab. Steht der Vergleich in einer \code{Index Cond}, wertet PostgreSQL den
+Vergleichswert einmal aus und liest nur die Zeilen des Mandanten. Steht er als
+\code{Filter} über einem Seq Scan, kann er pro Zeile ausgewertet werden, und dann wiegt
+der Scan schwerer als die Funktion. Teure Policies entstehen durch Unterabfragen (etwa
+Rechte aus einer anderen Tabelle). Zusätzlich hält PostgreSQL Bedingungen aus der Abfrage,
+deren Funktionen nicht \code{LEAKPROOF} sind, hinter den Policy-Bedingungen zurück, was
+Optimierungen verhindern kann (\href{https://www.postgresql.org/docs/17/ddl-rowsecurity.html}{PostgreSQL: Row Security Policies}).
+
+Aussagekräftig ist deshalb nur der Plan unter realen Bedingungen: \code{EXPLAIN
+(\allowbreak{}ANALYZE,\allowbreak{} BUFFERS)} als App-Rolle mit gesetztem Mandanten, mit
+realistischer Datenmenge und aktuellen Statistiken. Als Owner oder Superuser gemessen fehlen
+die Policies im Plan, weil Superuser und Rollen mit \code{BYPASSRLS} sie umgehen und der
+Owner ohne \code{FORCE} ebenso. Den Overhead zeigt der Vergleich derselben Abfrage mit
+und ohne Policy, nicht die Zahl der Funktionsaufrufe.
 
 \section{Legitimer mandantenübergreifender Zugriff}
 
@@ -738,9 +751,9 @@ Das Beispiel baut nur gegen stabile Versionen (.NET 10, EF Core 10). Ein zweiter
 \code{compatibility.\allowbreak{}yml}, läuft wöchentlich und testet gegen die neuesten
 stabilen 10.0.x-Patches, denn die reguläre CI baut gegen den Anfang des Versionsbereichs.
 Einen Kanal für die nächste EF-Major-Version mit Previews und RCs beschreibt
-Kapitel~\ref{ch:versioning-and-compatibility} als Skizze; er braucht das passende Vorab-SDK, weil jede
-EF-Core-Hauptversion nur für die gleichnamige .NET-Version erscheint (EF Core 11 nur für
-\code{net11.\allowbreak{}0}).
+Kapitel~\ref{ch:versioning-and-compatibility} als Skizze; er braucht das passende Vorab-SDK, weil die
+Vorabversionen von EF Core 11 nur \code{net11.\allowbreak{}0} anbieten. Das ist eine
+Eigenschaft dieser Version, keine allgemeine Regel: EF Core 9 zielte auf .NET 8.
 
 \section{Öffentliche API absichern}
 

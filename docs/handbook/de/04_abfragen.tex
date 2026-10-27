@@ -766,13 +766,22 @@ Welchen Konstruktor er verwendet, legt das Modell fest (Constructor Binding):
 \begin{datatable}{H{0.65}H{1.35}}
   \textbf{Regel} & \textbf{Verhalten in EF Core 10} \\
   \tablehead
-  Parameterloser Konstruktor & Ist einer vorhanden, auch ein privater, verwendet EF ihn. \\
+  Kandidaten & Alle deklarierten Instanzkonstruktoren, unabhängig von ihrer Sichtbarkeit. \\
   \tablerule
-  Konstruktor mit Parametern & Sonst einer, dessen Parameter nach Name und Typ zu gemappten
-  Properties passen. Diese Properties setzt EF danach nicht noch einmal. \\
+  Bindbar & Jeder Parameter passt nach Name und Typ zu einer gemappten Property oder zu einem
+  Dienst. Über Konstruktor gesetzte Properties setzt EF danach nicht noch einmal. \\
   \tablerule
-  Dienste als Parameter & \code{Db\allowbreak{}Context}, \code{ILazy\allowbreak{}Loader} und
-  \code{IEntity\allowbreak{}Type} kann EF übergeben. \\
+  Dienste als Parameter & \code{Db\allowbreak{}Context} (auch der abgeleitete Typ),
+  \code{ILazy\allowbreak{}Loader}, der Lazy-Loading-Delegat
+  \code{Action<\allowbreak{}object,\allowbreak{} string>} und \code{IEntity\allowbreak{}Type};
+  weitere über eigene \code{IParameter\allowbreak{}Binding\allowbreak{}Factory}-Plugins. \\
+  \tablerule
+  Auswahl & EF geht die bindbaren Konstruktoren der Reihe nach durch. Ein Konstruktor
+  ersetzt den bisherigen Favoriten, wenn er mehr Dienst-Parameter hat oder weniger
+  Property-Parameter; bei Gleichstand in beidem bricht der Modellbau ab. Ein parameterloser
+  Konstruktor gewinnt also gegen Property-Konstruktoren, aber nicht gegen einen mit
+  \code{Db\allowbreak{}Context}-Parameter. Mischen Konstruktoren Dienste und Properties,
+  kann die Deklarationsreihenfolge entscheiden. \\
   \tablerule
   Übrige Properties & EF schreibt sie über das Backing-Field, wenn es eines gibt. Logik im
   Setter läuft beim Laden deshalb \emph{nicht}. \\
@@ -784,6 +793,12 @@ Welchen Konstruktor er verwendet, legt das Modell fest (Constructor Binding):
   Complex Types & Gehören zur Entität und werden mit ihr materialisiert, ohne eigenen
   Durchlauf. \\
 \end{datatable}
+
+Die Auswahl steht in
+\href{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore/Metadata/Internal/ConstructorBindingFactory.cs}{\code{Constructor\allowbreak{}Binding\allowbreak{}Factory} (EF Core 10.0.0)}.
+\code{Constructor\allowbreak{}Binding\allowbreak{}Tests} hält beide Fälle fest: Ohne
+Dienste gewinnt der parameterlose Konstruktor, neben einem Konstruktor mit
+\code{Db\allowbreak{}Context} verliert er.
 
 Dass Setter beim Laden nicht laufen, ist gewollt: Laden ist kein Erzeugen. Prüfungen, die
 beim Anlegen oder Ändern greifen sollen, gehören in Konstruktor und Methoden der Domäne. Was

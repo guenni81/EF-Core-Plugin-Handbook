@@ -394,11 +394,23 @@ simpler session model and documents that it requires session or Npgsql pooling.
 \section{Policy performance}
 
 PostgreSQL inserts policies into every query like additional \code{WHERE} conditions.
-\code{current\_\allowbreak{}setting} is \code{STABLE} and evaluated once per query; together
-with the index the overhead is small. Expensive policies come from subqueries (for example
-permissions from another table) or functions that are not \code{LEAKPROOF} and prevent
-optimizations. You can check this with \code{EXPLAIN (\allowbreak{}ANALYZE)} as the app
-role, not as owner, because the owner may not even see the policies.
+\code{current\_\allowbreak{}setting} is \code{STABLE}. That guarantees the same result for
+all rows within one statement and \emph{allows} the optimizer to combine several calls into
+one (\href{https://www.postgresql.org/docs/17/xfunc-volatility.html}{PostgreSQL: Function Volatility Categories}); it does not guarantee a fixed
+number of calls. How often the function actually runs depends on the plan. If the comparison
+is part of an \code{Index Cond}, PostgreSQL evaluates the comparison value once and reads only
+the tenant's rows. If it is a \code{Filter} over a seq scan, it may be evaluated per row, and
+then the scan weighs more than the function. Expensive policies come from subqueries (for
+example permissions from another table). In addition, PostgreSQL holds back conditions of the
+query whose functions are not \code{LEAKPROOF} behind the policy conditions, which can prevent
+optimizations (\href{https://www.postgresql.org/docs/17/ddl-rowsecurity.html}{PostgreSQL: Row Security Policies}).
+
+Only the plan under real conditions is therefore meaningful: \code{EXPLAIN
+(\allowbreak{}ANALYZE,\allowbreak{} BUFFERS)} as the app role with a tenant set, with a
+realistic amount of data and current statistics. Measured as owner or superuser, the policies
+are missing from the plan, because superusers and roles with \code{BYPASSRLS} bypass them, and
+so does the owner without \code{FORCE}. The overhead shows in comparing the same query with
+and without the policy, not in the number of function calls.
 
 \section{Legitimate cross-tenant access}
 
@@ -721,9 +733,9 @@ The sample builds against stable versions only (.NET 10, EF Core 10). A second w
 \code{compatibility.\allowbreak{}yml}, runs weekly and tests against the newest stable 10.0.x
 patches, because the regular CI builds against the beginning of the version range.
 Chapter~\ref{ch:versioning-and-compatibility} sketches a channel for the next EF major version with previews and
-RCs; it needs the matching .NET prerelease SDK, because every EF Core major version only
-ships for the .NET version of the same number (EF Core 11 only for
-\code{net11.\allowbreak{}0}).
+RCs; it needs the matching .NET prerelease SDK, because the prereleases of EF Core 11 only
+offer \code{net11.\allowbreak{}0}. That is a property of this version, not a general rule:
+EF Core 9 targeted .NET 8.
 
 \section{Protecting the public API}
 

@@ -95,6 +95,16 @@ version of EF Core (10.x = EF Core 10).
 
 ### Fixed
 
+- Handbook (both editions), factual corrections with sources: EF Core *n* does not generally
+  ship only for .NET *n* (EF Core 9 targets .NET 8; checked against the NuGet packages and
+  "EF Core releases and planning"). Constructor binding does not prefer a parameterless
+  constructor; EF prefers more service parameters, then fewer property parameters, linked to
+  `ConstructorBindingFactory` at v10.0.0 and recorded in `ConstructorBindingTests`.
+  `current_setting` being `STABLE` allows, but does not guarantee, a single evaluation per
+  statement; the policy performance section now explains the plan and how to measure it.
+  Blanket statements about protected tables and the SQL Server package follow the support
+  matrix.
+
 - `TenantSaveChangesInterceptor` rejected `DbContext.Update` of an untracked entity of the own
   tenant, because EF marks every property as modified, the tenant property included. Only an
   actual change of the value is rejected now; for an unchanged value the flag is cleared, so

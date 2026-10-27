@@ -373,8 +373,14 @@ Directory.Build.props     <TargetFramework>net11.0</TargetFramework>
 Directory.Packages.props  <EFCoreVersion ...>[11.0.0,12.0.0)</EFCoreVersion>
 \end{sourcecode}
 
-EF Core~\emph{n} only ships for .NET~\emph{n}. Target framework, SDK and packages therefore
-change together; a new EF package cannot even be restored on the old target framework.
+Which target framework an EF version requires follows no fixed rule: EF Core~9 targets
+\code{net8.\allowbreak{}0}, EF Core~10 \code{net10.\allowbreak{}0}, the release
+candidates of EF Core~11 \code{net11.\allowbreak{}0}
+(\href{https://learn.microsoft.com/en-us/ef/core/what-is-new/}{EF Core releases and planning}). Before upgrading, look into the packages of
+EF \emph{and} the provider: which frameworks do they offer, which SDK do they need? In the
+sample EF Core~11 requires \code{net11.\allowbreak{}0}, so target framework, SDK and
+packages change together; a new EF package could not even be restored on the old target
+framework.
 
 \begin{datatable}{H{0.18}H{0.95}H{1.32}H{0.55}}
   \textbf{No.} & \textbf{Step} & \textbf{Approach} & \textbf{In the sample} \\

@@ -318,9 +318,13 @@ besteht aus genau diesen Teilen, nur aus sehr viel mehr davon.
 
 Das Beispiel-Plugin \textbf{Acme.EntityFrameworkCore.Tenancy} macht EF Core mit PostgreSQL
 mandantenfähig. Die Trennung der Mandanten erzwingt die Datenbank selbst über \textbf{Row
-Level Security} (RLS): Jede Tabelle bekommt eine Policy, die nur Zeilen des Mandanten zeigt,
-dessen ID in der aktuellen Datenbank-Session gesetzt ist. Selbst eine fehlerhafte Abfrage
-oder rohes SQL kann so keine fremden Daten lesen.
+Level Security} (RLS): Jede Tabelle mit Mandantendaten bekommt eine Policy, die nur Zeilen des
+Mandanten zeigt, dessen ID in der aktuellen Datenbank-Session gesetzt ist. Abbildungen, bei
+denen eine solche Tabelle keine Mandantenspalte hätte, lehnt das Plugin beim Modellbau ab
+(Seite~\pageref{sec:supported-table-mappings}). Selbst eine fehlerhafte LINQ-Abfrage oder
+rohes SQL sieht so nur die Zeilen des gesetzten Mandanten. Wer allerdings beliebiges SQL unter
+der Anwendungsrolle ausführen kann, kann auch das Session-Setting ändern; diese Grenze
+behandelt Kapitel~\ref{ch:row-level-security-in-production}.
 
 Aus Sicht des Anwenders sieht das so aus:
 
@@ -359,7 +363,7 @@ Damit das funktioniert, nutzt das Plugin jeden Erweiterungspunkt dieses Buchs:
   \code{tenant\allowbreak{}Id.\allowbreak{}Is\allowbreak{}Empty} in LINQ & Member-Translator
   & \ref{ch:translating-methods-and-members} \\
   \tablerule
-  RLS für alle \code{ITenant\allowbreak{}Owned}-Entitäten & Convention mit Index und
+  RLS für alle Tabellen mit \code{ITenant\allowbreak{}Owned}-Entitäten & Convention mit Index und
   optionalem Query-Filter & \ref{ch:conventions} \\
   \tablerule
   Fluent API, Attribut \code{[No\allowbreak{}Tenant\allowbreak{}Isolation]} & Annotations,

@@ -752,13 +752,21 @@ Which constructor it uses is determined by the model (constructor binding):
 \begin{datatable}{H{0.65}H{1.35}}
   \textbf{Rule} & \textbf{Behavior in EF Core 10} \\
   \tablehead
-  Parameterless constructor & If there is one, even a private one, EF uses it. \\
+  Candidates & All declared instance constructors, whatever their accessibility. \\
   \tablerule
-  Constructor with parameters & Otherwise one whose parameters match mapped properties by
-  name and type. EF does not set these properties a second time. \\
+  Bindable & Every parameter matches a mapped property by name and type, or a service.
+  EF does not set properties bound through the constructor a second time. \\
   \tablerule
-  Services as parameters & EF can pass \code{Db\allowbreak{}Context},
-  \code{ILazy\allowbreak{}Loader} and \code{IEntity\allowbreak{}Type}. \\
+  Services as parameters & \code{Db\allowbreak{}Context} (also the derived type),
+  \code{ILazy\allowbreak{}Loader}, the lazy-loading delegate
+  \code{Action<\allowbreak{}object,\allowbreak{} string>} and \code{IEntity\allowbreak{}Type};
+  more through custom \code{IParameter\allowbreak{}Binding\allowbreak{}Factory} plugins. \\
+  \tablerule
+  Selection & EF goes through the bindable constructors in order. A constructor replaces
+  the current favorite if it has more service parameters or fewer property parameters; a tie
+  in both stops model building. A parameterless constructor therefore wins against property
+  constructors, but not against one with a \code{Db\allowbreak{}Context} parameter. If
+  constructors mix services and properties, the order of declaration can decide. \\
   \tablerule
   Other properties & EF writes them through the backing field if there is one. Logic in the
   setter therefore does \emph{not} run when loading. \\
@@ -771,6 +779,12 @@ Which constructor it uses is determined by the model (constructor binding):
   Complex types & Belong to the entity and are materialized with it, without a pass of
   their own. \\
 \end{datatable}
+
+The selection is implemented in
+\href{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore/Metadata/Internal/ConstructorBindingFactory.cs}{\code{Constructor\allowbreak{}Binding\allowbreak{}Factory} (EF Core 10.0.0)}.
+\code{Constructor\allowbreak{}Binding\allowbreak{}Tests} records both cases: without
+services the parameterless constructor wins, next to a constructor with a
+\code{Db\allowbreak{}Context} it loses.
 
 That setters do not run when loading is intentional: loading is not creating. Checks that
 should apply when creating or changing belong in the domain's constructors and methods. What

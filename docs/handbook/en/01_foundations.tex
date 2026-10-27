@@ -305,9 +305,13 @@ many more of them.
 
 The sample plugin \textbf{Acme.EntityFrameworkCore.Tenancy} makes EF Core multi-tenant with
 PostgreSQL. The database itself enforces tenant separation through \textbf{Row Level
-Security} (RLS): every table gets a policy that only shows rows of the tenant whose ID is
-set in the current database session. Even a faulty query or raw SQL cannot read another
-tenant's data.
+Security} (RLS): every table with tenant data gets a policy that only shows rows of the tenant
+whose ID is set in the current database session. Mappings in which such a table would lack the
+tenant column are rejected by the plugin while the model is built
+(page~\pageref{sec:supported-table-mappings}). Even a faulty LINQ query or raw SQL therefore
+only sees the rows of the tenant that is set. Whoever can run arbitrary SQL under the
+application role, however, can also change the session setting; chapter
+\ref{ch:row-level-security-in-production} deals with this limit.
 
 From the user's point of view it looks like this:
 
@@ -346,7 +350,7 @@ To make this work, the plugin uses every extension point covered in this book:
   \code{tenant\allowbreak{}Id.\allowbreak{}Is\allowbreak{}Empty} in LINQ & Member translator
   & \ref{ch:translating-methods-and-members} \\
   \tablerule
-  RLS for all \code{ITenant\allowbreak{}Owned} entities & Convention with index and optional
+  RLS for all tables of \code{ITenant\allowbreak{}Owned} entities & Convention with index and optional
   query filter & \ref{ch:conventions} \\
   \tablerule
   Fluent API, attribute \code{[No\allowbreak{}Tenant\allowbreak{}Isolation]} & Annotations,
