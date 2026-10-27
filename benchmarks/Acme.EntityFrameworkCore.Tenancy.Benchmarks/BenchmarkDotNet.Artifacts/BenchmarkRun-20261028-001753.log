@@ -1,0 +1,1080 @@
+// Validating benchmarks:
+// ***** BenchmarkRunner: Start   *****
+// ***** Found 16 benchmark(s) in total *****
+// ***** Building 1 exe(s) in Parallel: Start   *****
+// start dotnet  restore --nodeReuse:false /p:UseSharedCompilation=false /p:Deterministic=true /p:Optimize=true /p:ArtifactsPath="/mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/" /p:OutDir="/mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/bin/Release/net10.0/" /p:OutputPath="/mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/bin/Release/net10.0/" /p:PublishDir="/mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/publish/" in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1
+// command took 1.15 sec and exited with 0
+// start dotnet  build -c Release --no-restore --nodeReuse:false /p:UseSharedCompilation=false /p:Deterministic=true /p:Optimize=true /p:ArtifactsPath="/mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/" /p:OutDir="/mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/bin/Release/net10.0/" /p:OutputPath="/mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/bin/Release/net10.0/" /p:PublishDir="/mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/publish/" --output "/mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/bin/Release/net10.0/" in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1
+// command took 6.47 sec and exited with 0
+// ***** Done, took 00:00:07 (7.78 sec)   *****
+// Found 6 benchmarks:
+//   MaterializationInterceptorBenchmark.Read: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Rows=10]
+//   MaterializationInterceptorBenchmark.ReadAndVerify: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Rows=10]
+//   MaterializationInterceptorBenchmark.Read: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Rows=100]
+//   MaterializationInterceptorBenchmark.ReadAndVerify: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Rows=100]
+//   MaterializationInterceptorBenchmark.Read: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Rows=1000]
+//   MaterializationInterceptorBenchmark.ReadAndVerify: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Rows=1000]
+
+// **************************
+// Benchmark: MaterializationInterceptorBenchmark.Read: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Rows=10]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1.dll --anonymousPipes 166 167 --benchmarkName "MaterializationInterceptorBenchmark.Read(Rows: 10)" --job Dry --benchmarkId 0 in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/bin/Release/net10.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.15.8
+// Runtime=.NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX512 BITALG+VBMI2+VNNI+VPOPCNTDQ,AVX512 IFMA+VBMI,AVX512 F+BW+CD+DQ+VL,AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL VectorSize=256
+// Job: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1)
+
+[testcontainers.org 00:00:00.19] Connected to Docker:
+  Host: unix:///var/run/docker.sock
+  Server Version: 29.9.0
+  Kernel Version: 6.8.0-142-generic
+  API Version: 1.56
+  Operating System: Ubuntu 24.04.5 LTS
+  Total Memory: 62.53 GB
+[testcontainers.org 00:00:00.32] Docker container e3e29e117c02 created
+[testcontainers.org 00:00:00.36] Start Docker container e3e29e117c02
+[testcontainers.org 00:00:00.49] Wait for Docker container e3e29e117c02 to complete readiness checks
+[testcontainers.org 00:00:01.51] Docker container e3e29e117c02 ready
+[testcontainers.org 00:00:01.56] Docker container 09a59ec8d4c1 created
+[testcontainers.org 00:00:01.56] Start Docker container 09a59ec8d4c1
+[testcontainers.org 00:00:01.68] Wait for Docker container 09a59ec8d4c1 to complete readiness checks
+[testcontainers.org 00:00:01.68] Execute "pg_isready --host localhost --dbname postgres --username postgres" at Docker container 09a59ec8d4c1
+[testcontainers.org 00:00:02.74] Execute "pg_isready --host localhost --dbname postgres --username postgres" at Docker container 09a59ec8d4c1
+[testcontainers.org 00:00:02.78] Docker container 09a59ec8d4c1 ready
+// BeforeActualRun
+WorkloadActual   1: 1 op, 3600199.00 ns, 3.6002 ms/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 3600199.00 ns, 3.6002 ms/op
+// GC:  0 0 0 14848 1
+// Threading:  1 0 1
+
+[testcontainers.org 00:00:03.97] Delete Docker container 09a59ec8d4c1
+// AfterAll
+// Benchmark Process 287665 has exited with code 0.
+
+Mean = 3.600 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 3.600 ms, Q1 = 3.600 ms, Median = 3.600 ms, Q3 = 3.600 ms, Max = 3.600 ms
+IQR = 0.000 ms, LowerFence = 3.600 ms, UpperFence = 3.600 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+
+// ** Remained 15 (93,8 %) benchmark(s) to run. Estimated finish 2026-10-28 0:19 (0h 1m from now) **
+// **************************
+// Benchmark: MaterializationInterceptorBenchmark.ReadAndVerify: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Rows=10]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1.dll --anonymousPipes 166 167 --benchmarkName "MaterializationInterceptorBenchmark.ReadAndVerify(Rows: 10)" --job Dry --benchmarkId 1 in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/bin/Release/net10.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.15.8
+// Runtime=.NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX512 BITALG+VBMI2+VNNI+VPOPCNTDQ,AVX512 IFMA+VBMI,AVX512 F+BW+CD+DQ+VL,AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL VectorSize=256
+// Job: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1)
+
+[testcontainers.org 00:00:00.17] Connected to Docker:
+  Host: unix:///var/run/docker.sock
+  Server Version: 29.9.0
+  Kernel Version: 6.8.0-142-generic
+  API Version: 1.56
+  Operating System: Ubuntu 24.04.5 LTS
+  Total Memory: 62.53 GB
+[testcontainers.org 00:00:00.30] Docker container 9b1a9dd1e826 created
+[testcontainers.org 00:00:00.33] Start Docker container 9b1a9dd1e826
+[testcontainers.org 00:00:00.47] Wait for Docker container 9b1a9dd1e826 to complete readiness checks
+[testcontainers.org 00:00:01.49] Docker container 9b1a9dd1e826 ready
+[testcontainers.org 00:00:01.53] Docker container 8942365fe197 created
+[testcontainers.org 00:00:01.53] Start Docker container 8942365fe197
+[testcontainers.org 00:00:01.65] Wait for Docker container 8942365fe197 to complete readiness checks
+[testcontainers.org 00:00:01.66] Execute "pg_isready --host localhost --dbname postgres --username postgres" at Docker container 8942365fe197
+[testcontainers.org 00:00:02.72] Execute "pg_isready --host localhost --dbname postgres --username postgres" at Docker container 8942365fe197
+[testcontainers.org 00:00:02.76] Docker container 8942365fe197 ready
+// BeforeActualRun
+WorkloadActual   1: 1 op, 3502901.00 ns, 3.5029 ms/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 3502901.00 ns, 3.5029 ms/op
+// GC:  0 0 0 25240 1
+// Threading:  1 0 1
+
+[testcontainers.org 00:00:03.94] Delete Docker container 8942365fe197
+// AfterAll
+// Benchmark Process 288024 has exited with code 0.
+
+Mean = 3.503 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 3.503 ms, Q1 = 3.503 ms, Median = 3.503 ms, Q3 = 3.503 ms, Max = 3.503 ms
+IQR = 0.000 ms, LowerFence = 3.503 ms, UpperFence = 3.503 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+
+// ** Remained 14 (87,5 %) benchmark(s) to run. Estimated finish 2026-10-28 0:19 (0h 1m from now) **
+// **************************
+// Benchmark: MaterializationInterceptorBenchmark.Read: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Rows=100]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1.dll --anonymousPipes 166 167 --benchmarkName "MaterializationInterceptorBenchmark.Read(Rows: 100)" --job Dry --benchmarkId 2 in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/bin/Release/net10.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.15.8
+// Runtime=.NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX512 BITALG+VBMI2+VNNI+VPOPCNTDQ,AVX512 IFMA+VBMI,AVX512 F+BW+CD+DQ+VL,AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL VectorSize=256
+// Job: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1)
+
+[testcontainers.org 00:00:00.16] Connected to Docker:
+  Host: unix:///var/run/docker.sock
+  Server Version: 29.9.0
+  Kernel Version: 6.8.0-142-generic
+  API Version: 1.56
+  Operating System: Ubuntu 24.04.5 LTS
+  Total Memory: 62.53 GB
+[testcontainers.org 00:00:00.29] Docker container 42ccf7081a20 created
+[testcontainers.org 00:00:00.33] Start Docker container 42ccf7081a20
+[testcontainers.org 00:00:00.47] Wait for Docker container 42ccf7081a20 to complete readiness checks
+[testcontainers.org 00:00:01.49] Docker container 42ccf7081a20 ready
+[testcontainers.org 00:00:01.53] Docker container 2aaa65030cc5 created
+[testcontainers.org 00:00:01.54] Start Docker container 2aaa65030cc5
+[testcontainers.org 00:00:01.67] Wait for Docker container 2aaa65030cc5 to complete readiness checks
+[testcontainers.org 00:00:01.67] Execute "pg_isready --host localhost --dbname postgres --username postgres" at Docker container 2aaa65030cc5
+[testcontainers.org 00:00:02.72] Execute "pg_isready --host localhost --dbname postgres --username postgres" at Docker container 2aaa65030cc5
+[testcontainers.org 00:00:02.77] Docker container 2aaa65030cc5 ready
+// BeforeActualRun
+WorkloadActual   1: 1 op, 4576176.00 ns, 4.5762 ms/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 4576176.00 ns, 4.5762 ms/op
+// GC:  0 0 0 43352 1
+// Threading:  1 0 1
+
+[testcontainers.org 00:00:03.96] Delete Docker container 2aaa65030cc5
+// AfterAll
+// Benchmark Process 288352 has exited with code 0.
+
+Mean = 4.576 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 4.576 ms, Q1 = 4.576 ms, Median = 4.576 ms, Q3 = 4.576 ms, Max = 4.576 ms
+IQR = 0.000 ms, LowerFence = 4.576 ms, UpperFence = 4.576 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+
+// ** Remained 13 (81,2 %) benchmark(s) to run. Estimated finish 2026-10-28 0:19 (0h 0m from now) **
+// **************************
+// Benchmark: MaterializationInterceptorBenchmark.ReadAndVerify: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Rows=100]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1.dll --anonymousPipes 166 167 --benchmarkName "MaterializationInterceptorBenchmark.ReadAndVerify(Rows: 100)" --job Dry --benchmarkId 3 in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/bin/Release/net10.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.15.8
+// Runtime=.NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX512 BITALG+VBMI2+VNNI+VPOPCNTDQ,AVX512 IFMA+VBMI,AVX512 F+BW+CD+DQ+VL,AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL VectorSize=256
+// Job: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1)
+
+[testcontainers.org 00:00:00.16] Connected to Docker:
+  Host: unix:///var/run/docker.sock
+  Server Version: 29.9.0
+  Kernel Version: 6.8.0-142-generic
+  API Version: 1.56
+  Operating System: Ubuntu 24.04.5 LTS
+  Total Memory: 62.53 GB
+[testcontainers.org 00:00:00.29] Docker container 69f97b8aa8aa created
+[testcontainers.org 00:00:00.33] Start Docker container 69f97b8aa8aa
+[testcontainers.org 00:00:00.46] Wait for Docker container 69f97b8aa8aa to complete readiness checks
+[testcontainers.org 00:00:01.48] Docker container 69f97b8aa8aa ready
+[testcontainers.org 00:00:01.52] Docker container 51e740204c99 created
+[testcontainers.org 00:00:01.53] Start Docker container 51e740204c99
+[testcontainers.org 00:00:01.65] Wait for Docker container 51e740204c99 to complete readiness checks
+[testcontainers.org 00:00:01.66] Execute "pg_isready --host localhost --dbname postgres --username postgres" at Docker container 51e740204c99
+[testcontainers.org 00:00:02.71] Execute "pg_isready --host localhost --dbname postgres --username postgres" at Docker container 51e740204c99
+[testcontainers.org 00:00:02.75] Docker container 51e740204c99 ready
+// BeforeActualRun
+WorkloadActual   1: 1 op, 5878145.00 ns, 5.8781 ms/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 5878145.00 ns, 5.8781 ms/op
+// GC:  0 0 0 145752 1
+// Threading:  1 0 1
+
+[testcontainers.org 00:00:04.22] Delete Docker container 51e740204c99
+// AfterAll
+// Benchmark Process 288673 has exited with code 0.
+
+Mean = 5.878 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 5.878 ms, Q1 = 5.878 ms, Median = 5.878 ms, Q3 = 5.878 ms, Max = 5.878 ms
+IQR = 0.000 ms, LowerFence = 5.878 ms, UpperFence = 5.878 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+
+// ** Remained 12 (75,0 %) benchmark(s) to run. Estimated finish 2026-10-28 0:19 (0h 0m from now) **
+// **************************
+// Benchmark: MaterializationInterceptorBenchmark.Read: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Rows=1000]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1.dll --anonymousPipes 166 167 --benchmarkName "MaterializationInterceptorBenchmark.Read(Rows: 1000)" --job Dry --benchmarkId 4 in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/bin/Release/net10.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.15.8
+// Runtime=.NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX512 BITALG+VBMI2+VNNI+VPOPCNTDQ,AVX512 IFMA+VBMI,AVX512 F+BW+CD+DQ+VL,AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL VectorSize=256
+// Job: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1)
+
+[testcontainers.org 00:00:00.20] Connected to Docker:
+  Host: unix:///var/run/docker.sock
+  Server Version: 29.9.0
+  Kernel Version: 6.8.0-142-generic
+  API Version: 1.56
+  Operating System: Ubuntu 24.04.5 LTS
+  Total Memory: 62.53 GB
+[testcontainers.org 00:00:00.34] Docker container 9fecf1ff8f34 created
+[testcontainers.org 00:00:00.39] Start Docker container 9fecf1ff8f34
+[testcontainers.org 00:00:00.53] Wait for Docker container 9fecf1ff8f34 to complete readiness checks
+[testcontainers.org 00:00:01.55] Docker container 9fecf1ff8f34 ready
+[testcontainers.org 00:00:01.60] Docker container 2d5f5f660cdf created
+[testcontainers.org 00:00:01.61] Start Docker container 2d5f5f660cdf
+[testcontainers.org 00:00:01.74] Wait for Docker container 2d5f5f660cdf to complete readiness checks
+[testcontainers.org 00:00:01.74] Execute "pg_isready --host localhost --dbname postgres --username postgres" at Docker container 2d5f5f660cdf
+[testcontainers.org 00:00:02.80] Execute "pg_isready --host localhost --dbname postgres --username postgres" at Docker container 2d5f5f660cdf
+[testcontainers.org 00:00:02.84] Docker container 2d5f5f660cdf ready
+// BeforeActualRun
+WorkloadActual   1: 1 op, 5382431.00 ns, 5.3824 ms/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 5382431.00 ns, 5.3824 ms/op
+// GC:  0 0 0 324448 1
+// Threading:  2 0 1
+
+[testcontainers.org 00:00:04.21] Delete Docker container 2d5f5f660cdf
+// AfterAll
+// Benchmark Process 289201 has exited with code 0.
+
+Mean = 5.382 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 5.382 ms, Q1 = 5.382 ms, Median = 5.382 ms, Q3 = 5.382 ms, Max = 5.382 ms
+IQR = 0.000 ms, LowerFence = 5.382 ms, UpperFence = 5.382 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+
+// ** Remained 11 (68,8 %) benchmark(s) to run. Estimated finish 2026-10-28 0:19 (0h 0m from now) **
+// **************************
+// Benchmark: MaterializationInterceptorBenchmark.ReadAndVerify: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Rows=1000]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1.dll --anonymousPipes 166 167 --benchmarkName "MaterializationInterceptorBenchmark.ReadAndVerify(Rows: 1000)" --job Dry --benchmarkId 5 in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/bin/Release/net10.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.15.8
+// Runtime=.NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX512 BITALG+VBMI2+VNNI+VPOPCNTDQ,AVX512 IFMA+VBMI,AVX512 F+BW+CD+DQ+VL,AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL VectorSize=256
+// Job: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1)
+
+[testcontainers.org 00:00:00.21] Connected to Docker:
+  Host: unix:///var/run/docker.sock
+  Server Version: 29.9.0
+  Kernel Version: 6.8.0-142-generic
+  API Version: 1.56
+  Operating System: Ubuntu 24.04.5 LTS
+  Total Memory: 62.53 GB
+[testcontainers.org 00:00:00.34] Docker container 0a2ed2ecdd4f created
+[testcontainers.org 00:00:00.38] Start Docker container 0a2ed2ecdd4f
+[testcontainers.org 00:00:00.52] Wait for Docker container 0a2ed2ecdd4f to complete readiness checks
+[testcontainers.org 00:00:01.54] Docker container 0a2ed2ecdd4f ready
+[testcontainers.org 00:00:01.59] Docker container c92618a8f924 created
+[testcontainers.org 00:00:01.59] Start Docker container c92618a8f924
+[testcontainers.org 00:00:01.72] Wait for Docker container c92618a8f924 to complete readiness checks
+[testcontainers.org 00:00:01.73] Execute "pg_isready --host localhost --dbname postgres --username postgres" at Docker container c92618a8f924
+[testcontainers.org 00:00:02.78] Execute "pg_isready --host localhost --dbname postgres --username postgres" at Docker container c92618a8f924
+[testcontainers.org 00:00:02.83] Docker container c92618a8f924 ready
+// BeforeActualRun
+WorkloadActual   1: 1 op, 10207552.00 ns, 10.2076 ms/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 10207552.00 ns, 10.2076 ms/op
+// GC:  0 0 0 1348448 1
+// Threading:  5 0 1
+
+[testcontainers.org 00:00:04.06] Delete Docker container c92618a8f924
+// AfterAll
+// Benchmark Process 289568 has exited with code 0.
+
+Mean = 10.208 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 10.208 ms, Q1 = 10.208 ms, Median = 10.208 ms, Q3 = 10.208 ms, Max = 10.208 ms
+IQR = 0.000 ms, LowerFence = 10.208 ms, UpperFence = 10.208 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+
+// ** Remained 10 (62,5 %) benchmark(s) to run. Estimated finish 2026-10-28 0:19 (0h 0m from now) **
+// ***** BenchmarkRunner: Finish  *****
+
+// * Export *
+  BenchmarkDotNet.Artifacts/results/MaterializationInterceptorBenchmark-report.csv
+  BenchmarkDotNet.Artifacts/results/MaterializationInterceptorBenchmark-report-github.md
+  BenchmarkDotNet.Artifacts/results/MaterializationInterceptorBenchmark-report.html
+
+// * Detailed results *
+MaterializationInterceptorBenchmark.Read: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Rows=10]
+Runtime = .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4; GC = Concurrent Workstation
+Mean = 3.600 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 3.600 ms, Q1 = 3.600 ms, Median = 3.600 ms, Q3 = 3.600 ms, Max = 3.600 ms
+IQR = 0.000 ms, LowerFence = 3.600 ms, UpperFence = 3.600 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+-------------------- Histogram --------------------
+[3.600 ms ; 3.600 ms) | @
+---------------------------------------------------
+
+MaterializationInterceptorBenchmark.ReadAndVerify: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Rows=10]
+Runtime = .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4; GC = Concurrent Workstation
+Mean = 3.503 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 3.503 ms, Q1 = 3.503 ms, Median = 3.503 ms, Q3 = 3.503 ms, Max = 3.503 ms
+IQR = 0.000 ms, LowerFence = 3.503 ms, UpperFence = 3.503 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+-------------------- Histogram --------------------
+[3.503 ms ; 3.503 ms) | @
+---------------------------------------------------
+
+MaterializationInterceptorBenchmark.Read: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Rows=100]
+Runtime = .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4; GC = Concurrent Workstation
+Mean = 4.576 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 4.576 ms, Q1 = 4.576 ms, Median = 4.576 ms, Q3 = 4.576 ms, Max = 4.576 ms
+IQR = 0.000 ms, LowerFence = 4.576 ms, UpperFence = 4.576 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+-------------------- Histogram --------------------
+[4.576 ms ; 4.576 ms) | @
+---------------------------------------------------
+
+MaterializationInterceptorBenchmark.ReadAndVerify: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Rows=100]
+Runtime = .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4; GC = Concurrent Workstation
+Mean = 5.878 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 5.878 ms, Q1 = 5.878 ms, Median = 5.878 ms, Q3 = 5.878 ms, Max = 5.878 ms
+IQR = 0.000 ms, LowerFence = 5.878 ms, UpperFence = 5.878 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+-------------------- Histogram --------------------
+[5.878 ms ; 5.878 ms) | @
+---------------------------------------------------
+
+MaterializationInterceptorBenchmark.Read: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Rows=1000]
+Runtime = .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4; GC = Concurrent Workstation
+Mean = 5.382 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 5.382 ms, Q1 = 5.382 ms, Median = 5.382 ms, Q3 = 5.382 ms, Max = 5.382 ms
+IQR = 0.000 ms, LowerFence = 5.382 ms, UpperFence = 5.382 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+-------------------- Histogram --------------------
+[5.382 ms ; 5.382 ms) | @
+---------------------------------------------------
+
+MaterializationInterceptorBenchmark.ReadAndVerify: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Rows=1000]
+Runtime = .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4; GC = Concurrent Workstation
+Mean = 10.208 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 10.208 ms, Q1 = 10.208 ms, Median = 10.208 ms, Q3 = 10.208 ms, Max = 10.208 ms
+IQR = 0.000 ms, LowerFence = 10.208 ms, UpperFence = 10.208 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+-------------------- Histogram --------------------
+[10.208 ms ; 10.208 ms) | @
+---------------------------------------------------
+
+// * Summary *
+
+BenchmarkDotNet v0.15.8, Linux Ubuntu 24.04.5 LTS (Noble Numbat)
+11th Gen Intel Core i9-11900H 2.50GHz (Max: 785.17GHz), 1 CPU, 16 logical and 8 physical cores
+.NET SDK 10.0.202
+  [Host] : .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+  Dry    : .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+
+Job=Dry  IterationCount=1  LaunchCount=1  
+RunStrategy=ColdStart  UnrollFactor=1  WarmupCount=1  
+
+| Method        | Rows | Mean      | Error | Ratio | Allocated  | Alloc Ratio |
+|-------------- |----- |----------:|------:|------:|-----------:|------------:|
+| Read          | 10   |  3.600 ms |    NA |  1.00 |    14.5 KB |        1.00 |
+| ReadAndVerify | 10   |  3.503 ms |    NA |  0.97 |   24.65 KB |        1.70 |
+|               |      |           |       |       |            |             |
+| Read          | 100  |  4.576 ms |    NA |  1.00 |   42.34 KB |        1.00 |
+| ReadAndVerify | 100  |  5.878 ms |    NA |  1.28 |  142.34 KB |        3.36 |
+|               |      |           |       |       |            |             |
+| Read          | 1000 |  5.382 ms |    NA |  1.00 |  316.84 KB |        1.00 |
+| ReadAndVerify | 1000 | 10.208 ms |    NA |  1.90 | 1316.84 KB |        4.16 |
+
+// * Warnings *
+MinIterationTime
+  MaterializationInterceptorBenchmark.Read: Dry          -> The minimum observed iteration time is 3.6ms which is very small. It's recommended to increase it to at least 100ms using more operations.
+  MaterializationInterceptorBenchmark.ReadAndVerify: Dry -> The minimum observed iteration time is 3.503ms which is very small. It's recommended to increase it to at least 100ms using more operations.
+  MaterializationInterceptorBenchmark.Read: Dry          -> The minimum observed iteration time is 4.576ms which is very small. It's recommended to increase it to at least 100ms using more operations.
+  MaterializationInterceptorBenchmark.ReadAndVerify: Dry -> The minimum observed iteration time is 5.878ms which is very small. It's recommended to increase it to at least 100ms using more operations.
+  MaterializationInterceptorBenchmark.Read: Dry          -> The minimum observed iteration time is 5.382ms which is very small. It's recommended to increase it to at least 100ms using more operations.
+  MaterializationInterceptorBenchmark.ReadAndVerify: Dry -> The minimum observed iteration time is 10.208ms which is very small. It's recommended to increase it to at least 100ms using more operations.
+
+// * Legends *
+  Rows        : Value of the 'Rows' parameter
+  Mean        : Arithmetic mean of all measurements
+  Error       : Half of 99.9% confidence interval
+  Ratio       : Mean of the ratio distribution ([Current]/[Baseline])
+  Allocated   : Allocated memory per single operation (managed only, inclusive, 1KB = 1024B)
+  Alloc Ratio : Allocated memory ratio distribution ([Current]/[Baseline])
+  1 ms        : 1 Millisecond (0.001 sec)
+
+// * Diagnostic Output - MemoryDiagnoser *
+
+
+// ***** BenchmarkRunner: End *****
+Run time: 00:00:26 (26.64 sec), executed benchmarks: 6
+
+// Found 6 benchmarks:
+//   QueryCompilationBenchmark.Compile: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Setup=EFCore]
+//   QueryCompilationBenchmark.CacheHit: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Setup=EFCore]
+//   QueryCompilationBenchmark.Compile: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Setup=Tenancy]
+//   QueryCompilationBenchmark.CacheHit: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Setup=Tenancy]
+//   QueryCompilationBenchmark.Compile: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Setup=Tenan(...)ilter [22]]
+//   QueryCompilationBenchmark.CacheHit: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Setup=Tenan(...)ilter [22]]
+
+// **************************
+// Benchmark: QueryCompilationBenchmark.Compile: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Setup=EFCore]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1.dll --anonymousPipes 121 122 --benchmarkName "QueryCompilationBenchmark.Compile(Setup: EFCore)" --job Dry --benchmarkId 6 in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/bin/Release/net10.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.15.8
+// Runtime=.NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX512 BITALG+VBMI2+VNNI+VPOPCNTDQ,AVX512 IFMA+VBMI,AVX512 F+BW+CD+DQ+VL,AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL VectorSize=256
+// Job: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1)
+
+
+System.Reflection.TargetInvocationException: Exception has been thrown by the target of an invocation.
+ ---> System.InvalidOperationException: The property 'Order.TenantId' could not be mapped because it is of type 'TenantId', which is not a supported primitive type or a valid entity type. Either explicitly map this property, or ignore it using the '[NotMapped]' attribute or by using 'EntityTypeBuilder.Ignore' in 'OnModelCreating'.
+   at Microsoft.EntityFrameworkCore.Infrastructure.ModelValidator.ValidatePropertyMapping(IConventionTypeBase structuralType, IConventionModel model, IDiagnosticsLogger`1 logger)
+   at Microsoft.EntityFrameworkCore.Infrastructure.ModelValidator.ValidatePropertyMapping(IModel model, IDiagnosticsLogger`1 logger)
+   at Microsoft.EntityFrameworkCore.Infrastructure.ModelValidator.Validate(IModel model, IDiagnosticsLogger`1 logger)
+   at Microsoft.EntityFrameworkCore.Infrastructure.RelationalModelValidator.Validate(IModel model, IDiagnosticsLogger`1 logger)
+   at Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure.Internal.NpgsqlModelValidator.Validate(IModel model, IDiagnosticsLogger`1 logger)
+   at Microsoft.EntityFrameworkCore.Infrastructure.ModelRuntimeInitializer.Initialize(IModel model, Boolean designTime, IDiagnosticsLogger`1 validationLogger)
+   at Microsoft.EntityFrameworkCore.Infrastructure.ModelSource.CreateModel(DbContext context, ModelCreationDependencies modelCreationDependencies, Boolean designTime)
+   at Microsoft.EntityFrameworkCore.Infrastructure.ModelSource.GetModel(DbContext context, ModelCreationDependencies modelCreationDependencies, Boolean designTime)
+   at Microsoft.EntityFrameworkCore.Internal.DbContextServices.CreateModel(Boolean designTime)
+   at Microsoft.EntityFrameworkCore.Internal.DbContextServices.get_Model()
+   at Microsoft.EntityFrameworkCore.Infrastructure.EntityFrameworkServicesBuilder.<>c.<TryAddCoreServices>b__8_4(IServiceProvider p)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitFactory(FactoryCallSite factoryCallSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSiteMain(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitCache(ServiceCallSite callSite, RuntimeResolverContext context, ServiceProviderEngineScope serviceProviderEngine, RuntimeResolverLock lockType)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitScopeCache(ServiceCallSite callSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSite(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitConstructor(ConstructorCallSite constructorCallSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSiteMain(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitCache(ServiceCallSite callSite, RuntimeResolverContext context, ServiceProviderEngineScope serviceProviderEngine, RuntimeResolverLock lockType)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitScopeCache(ServiceCallSite callSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSite(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitConstructor(ConstructorCallSite constructorCallSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSiteMain(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitCache(ServiceCallSite callSite, RuntimeResolverContext context, ServiceProviderEngineScope serviceProviderEngine, RuntimeResolverLock lockType)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitScopeCache(ServiceCallSite callSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSite(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitConstructor(ConstructorCallSite constructorCallSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSiteMain(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitCache(ServiceCallSite callSite, RuntimeResolverContext context, ServiceProviderEngineScope serviceProviderEngine, RuntimeResolverLock lockType)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitScopeCache(ServiceCallSite callSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSite(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitConstructor(ConstructorCallSite constructorCallSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSiteMain(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitCache(ServiceCallSite callSite, RuntimeResolverContext context, ServiceProviderEngineScope serviceProviderEngine, RuntimeResolverLock lockType)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitScopeCache(ServiceCallSite callSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSite(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitConstructor(ConstructorCallSite constructorCallSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSiteMain(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitCache(ServiceCallSite callSite, RuntimeResolverContext context, ServiceProviderEngineScope serviceProviderEngine, RuntimeResolverLock lockType)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitScopeCache(ServiceCallSite callSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSite(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.Resolve(ServiceCallSite callSite, ServiceProviderEngineScope scope)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.DynamicServiceProviderEngine.<>c__DisplayClass2_0.<RealizeService>b__0(ServiceProviderEngineScope scope)
+   at Microsoft.Extensions.DependencyInjection.ServiceProvider.GetService(ServiceIdentifier serviceIdentifier, ServiceProviderEngineScope serviceProviderEngineScope)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.ServiceProviderEngineScope.GetService(Type serviceType)
+   at Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService(IServiceProvider provider, Type serviceType)
+   at Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService[T](IServiceProvider provider)
+   at Microsoft.EntityFrameworkCore.DbContext.get_DbContextDependencies()
+   at Microsoft.EntityFrameworkCore.DbContext.get_ContextServices()
+   at Microsoft.EntityFrameworkCore.DbContext.get_Model()
+   at QueryCompilationBenchmark.GlobalSetup() in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/QueryCompilationBenchmark.cs:line 40
+   at BenchmarkDotNet.Engines.EngineFactory.CreateReadyToRun(EngineParameters engineParameters)
+   at BenchmarkDotNet.Autogenerated.Runnable_6.Run(IHost host, String benchmarkName) in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1.notcs:line 1213
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+   --- End of inner exception stack trace ---
+   at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+   at BenchmarkDotNet.Autogenerated.UniqueProgramName.AfterAssemblyLoadingAttached(String[] args) in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1.notcs:line 57
+// AfterAll
+No Workload Results were obtained from the run.
+// Benchmark Process 289931 has exited with code 255.
+
+// ** Remained 9 (56,2 %) benchmark(s) to run. Estimated finish 2026-10-28 0:19 (0h 0m from now) **
+// **************************
+// Benchmark: QueryCompilationBenchmark.CacheHit: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Setup=EFCore]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1.dll --anonymousPipes 121 122 --benchmarkName "QueryCompilationBenchmark.CacheHit(Setup: EFCore)" --job Dry --benchmarkId 7 in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/bin/Release/net10.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.15.8
+// Runtime=.NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX512 BITALG+VBMI2+VNNI+VPOPCNTDQ,AVX512 IFMA+VBMI,AVX512 F+BW+CD+DQ+VL,AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL VectorSize=256
+// Job: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1)
+
+
+System.Reflection.TargetInvocationException: Exception has been thrown by the target of an invocation.
+ ---> System.InvalidOperationException: The property 'Order.TenantId' could not be mapped because it is of type 'TenantId', which is not a supported primitive type or a valid entity type. Either explicitly map this property, or ignore it using the '[NotMapped]' attribute or by using 'EntityTypeBuilder.Ignore' in 'OnModelCreating'.
+   at Microsoft.EntityFrameworkCore.Infrastructure.ModelValidator.ValidatePropertyMapping(IConventionTypeBase structuralType, IConventionModel model, IDiagnosticsLogger`1 logger)
+   at Microsoft.EntityFrameworkCore.Infrastructure.ModelValidator.ValidatePropertyMapping(IModel model, IDiagnosticsLogger`1 logger)
+   at Microsoft.EntityFrameworkCore.Infrastructure.ModelValidator.Validate(IModel model, IDiagnosticsLogger`1 logger)
+   at Microsoft.EntityFrameworkCore.Infrastructure.RelationalModelValidator.Validate(IModel model, IDiagnosticsLogger`1 logger)
+   at Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure.Internal.NpgsqlModelValidator.Validate(IModel model, IDiagnosticsLogger`1 logger)
+   at Microsoft.EntityFrameworkCore.Infrastructure.ModelRuntimeInitializer.Initialize(IModel model, Boolean designTime, IDiagnosticsLogger`1 validationLogger)
+   at Microsoft.EntityFrameworkCore.Infrastructure.ModelSource.CreateModel(DbContext context, ModelCreationDependencies modelCreationDependencies, Boolean designTime)
+   at Microsoft.EntityFrameworkCore.Infrastructure.ModelSource.GetModel(DbContext context, ModelCreationDependencies modelCreationDependencies, Boolean designTime)
+   at Microsoft.EntityFrameworkCore.Internal.DbContextServices.CreateModel(Boolean designTime)
+   at Microsoft.EntityFrameworkCore.Internal.DbContextServices.get_Model()
+   at Microsoft.EntityFrameworkCore.Infrastructure.EntityFrameworkServicesBuilder.<>c.<TryAddCoreServices>b__8_4(IServiceProvider p)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitFactory(FactoryCallSite factoryCallSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSiteMain(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitCache(ServiceCallSite callSite, RuntimeResolverContext context, ServiceProviderEngineScope serviceProviderEngine, RuntimeResolverLock lockType)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitScopeCache(ServiceCallSite callSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSite(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitConstructor(ConstructorCallSite constructorCallSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSiteMain(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitCache(ServiceCallSite callSite, RuntimeResolverContext context, ServiceProviderEngineScope serviceProviderEngine, RuntimeResolverLock lockType)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitScopeCache(ServiceCallSite callSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSite(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitConstructor(ConstructorCallSite constructorCallSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSiteMain(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitCache(ServiceCallSite callSite, RuntimeResolverContext context, ServiceProviderEngineScope serviceProviderEngine, RuntimeResolverLock lockType)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitScopeCache(ServiceCallSite callSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSite(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitConstructor(ConstructorCallSite constructorCallSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSiteMain(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitCache(ServiceCallSite callSite, RuntimeResolverContext context, ServiceProviderEngineScope serviceProviderEngine, RuntimeResolverLock lockType)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitScopeCache(ServiceCallSite callSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSite(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitConstructor(ConstructorCallSite constructorCallSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSiteMain(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitCache(ServiceCallSite callSite, RuntimeResolverContext context, ServiceProviderEngineScope serviceProviderEngine, RuntimeResolverLock lockType)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitScopeCache(ServiceCallSite callSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSite(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitConstructor(ConstructorCallSite constructorCallSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSiteMain(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitCache(ServiceCallSite callSite, RuntimeResolverContext context, ServiceProviderEngineScope serviceProviderEngine, RuntimeResolverLock lockType)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.VisitScopeCache(ServiceCallSite callSite, RuntimeResolverContext context)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteVisitor`2.VisitCallSite(ServiceCallSite callSite, TArgument argument)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.CallSiteRuntimeResolver.Resolve(ServiceCallSite callSite, ServiceProviderEngineScope scope)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.DynamicServiceProviderEngine.<>c__DisplayClass2_0.<RealizeService>b__0(ServiceProviderEngineScope scope)
+   at Microsoft.Extensions.DependencyInjection.ServiceProvider.GetService(ServiceIdentifier serviceIdentifier, ServiceProviderEngineScope serviceProviderEngineScope)
+   at Microsoft.Extensions.DependencyInjection.ServiceLookup.ServiceProviderEngineScope.GetService(Type serviceType)
+   at Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService(IServiceProvider provider, Type serviceType)
+   at Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService[T](IServiceProvider provider)
+   at Microsoft.EntityFrameworkCore.DbContext.get_DbContextDependencies()
+   at Microsoft.EntityFrameworkCore.DbContext.get_ContextServices()
+   at Microsoft.EntityFrameworkCore.DbContext.get_Model()
+   at QueryCompilationBenchmark.GlobalSetup() in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/QueryCompilationBenchmark.cs:line 40
+   at BenchmarkDotNet.Engines.EngineFactory.CreateReadyToRun(EngineParameters engineParameters)
+   at BenchmarkDotNet.Autogenerated.Runnable_7.Run(IHost host, String benchmarkName) in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1.notcs:line 1385
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+   --- End of inner exception stack trace ---
+   at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+   at BenchmarkDotNet.Autogenerated.UniqueProgramName.AfterAssemblyLoadingAttached(String[] args) in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1.notcs:line 57
+// AfterAll
+No Workload Results were obtained from the run.
+// Benchmark Process 289943 has exited with code 255.
+
+// ** Remained 8 (50,0 %) benchmark(s) to run. Estimated finish 2026-10-28 0:18 (0h 0m from now) **
+// **************************
+// Benchmark: QueryCompilationBenchmark.Compile: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Setup=Tenancy]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1.dll --anonymousPipes 121 122 --benchmarkName "QueryCompilationBenchmark.Compile(Setup: Tenancy)" --job Dry --benchmarkId 8 in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/bin/Release/net10.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.15.8
+// Runtime=.NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX512 BITALG+VBMI2+VNNI+VPOPCNTDQ,AVX512 IFMA+VBMI,AVX512 F+BW+CD+DQ+VL,AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL VectorSize=256
+// Job: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1)
+
+// BeforeActualRun
+WorkloadActual   1: 1 op, 237056441.00 ns, 237.0564 ms/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 237056441.00 ns, 237.0564 ms/op
+// GC:  0 0 0 156560 1
+// Threading:  0 0 1
+
+// AfterAll
+// Benchmark Process 289954 has exited with code 0.
+
+Mean = 237.056 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 237.056 ms, Q1 = 237.056 ms, Median = 237.056 ms, Q3 = 237.056 ms, Max = 237.056 ms
+IQR = 0.000 ms, LowerFence = 237.056 ms, UpperFence = 237.056 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+
+// ** Remained 7 (43,8 %) benchmark(s) to run. Estimated finish 2026-10-28 0:18 (0h 0m from now) **
+// **************************
+// Benchmark: QueryCompilationBenchmark.CacheHit: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Setup=Tenancy]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1.dll --anonymousPipes 121 122 --benchmarkName "QueryCompilationBenchmark.CacheHit(Setup: Tenancy)" --job Dry --benchmarkId 9 in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/bin/Release/net10.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.15.8
+// Runtime=.NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX512 BITALG+VBMI2+VNNI+VPOPCNTDQ,AVX512 IFMA+VBMI,AVX512 F+BW+CD+DQ+VL,AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL VectorSize=256
+// Job: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1)
+
+// BeforeActualRun
+WorkloadActual   1: 1 op, 243027723.00 ns, 243.0277 ms/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 243027723.00 ns, 243.0277 ms/op
+// GC:  0 0 0 12032 1
+// Threading:  0 0 1
+
+// AfterAll
+// Benchmark Process 289997 has exited with code 0.
+
+Mean = 243.028 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 243.028 ms, Q1 = 243.028 ms, Median = 243.028 ms, Q3 = 243.028 ms, Max = 243.028 ms
+IQR = 0.000 ms, LowerFence = 243.028 ms, UpperFence = 243.028 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+
+// ** Remained 6 (37,5 %) benchmark(s) to run. Estimated finish 2026-10-28 0:18 (0h 0m from now) **
+// **************************
+// Benchmark: QueryCompilationBenchmark.Compile: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Setup=Tenan(...)ilter [22]]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1.dll --anonymousPipes 121 122 --benchmarkName "QueryCompilationBenchmark.Compile(Setup: TenancyWithQueryFilter)" --job Dry --benchmarkId 10 in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/bin/Release/net10.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.15.8
+// Runtime=.NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX512 BITALG+VBMI2+VNNI+VPOPCNTDQ,AVX512 IFMA+VBMI,AVX512 F+BW+CD+DQ+VL,AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL VectorSize=256
+// Job: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1)
+
+// BeforeActualRun
+WorkloadActual   1: 1 op, 253153346.00 ns, 253.1533 ms/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 253153346.00 ns, 253.1533 ms/op
+// GC:  0 0 0 172168 1
+// Threading:  0 0 1
+
+// AfterAll
+// Benchmark Process 290008 has exited with code 0.
+
+Mean = 253.153 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 253.153 ms, Q1 = 253.153 ms, Median = 253.153 ms, Q3 = 253.153 ms, Max = 253.153 ms
+IQR = 0.000 ms, LowerFence = 253.153 ms, UpperFence = 253.153 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+
+// ** Remained 5 (31,2 %) benchmark(s) to run. Estimated finish 2026-10-28 0:18 (0h 0m from now) **
+// **************************
+// Benchmark: QueryCompilationBenchmark.CacheHit: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Setup=Tenan(...)ilter [22]]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1.dll --anonymousPipes 121 122 --benchmarkName "QueryCompilationBenchmark.CacheHit(Setup: TenancyWithQueryFilter)" --job Dry --benchmarkId 11 in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/bin/Release/net10.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.15.8
+// Runtime=.NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX512 BITALG+VBMI2+VNNI+VPOPCNTDQ,AVX512 IFMA+VBMI,AVX512 F+BW+CD+DQ+VL,AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL VectorSize=256
+// Job: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1)
+
+// BeforeActualRun
+WorkloadActual   1: 1 op, 248027611.00 ns, 248.0276 ms/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 248027611.00 ns, 248.0276 ms/op
+// GC:  0 0 0 12376 1
+// Threading:  0 0 1
+
+// AfterAll
+// Benchmark Process 290019 has exited with code 0.
+
+Mean = 248.028 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 248.028 ms, Q1 = 248.028 ms, Median = 248.028 ms, Q3 = 248.028 ms, Max = 248.028 ms
+IQR = 0.000 ms, LowerFence = 248.028 ms, UpperFence = 248.028 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+
+// ** Remained 4 (25,0 %) benchmark(s) to run. Estimated finish 2026-10-28 0:18 (0h 0m from now) **
+// ***** BenchmarkRunner: Finish  *****
+
+// * Export *
+  BenchmarkDotNet.Artifacts/results/QueryCompilationBenchmark-report.csv
+  BenchmarkDotNet.Artifacts/results/QueryCompilationBenchmark-report-github.md
+  BenchmarkDotNet.Artifacts/results/QueryCompilationBenchmark-report.html
+
+// * Detailed results *
+QueryCompilationBenchmark.Compile: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Setup=EFCore]
+Runtime = .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4; GC = Concurrent Workstation
+There are not any results runs
+
+QueryCompilationBenchmark.CacheHit: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Setup=EFCore]
+Runtime = .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4; GC = Concurrent Workstation
+There are not any results runs
+
+QueryCompilationBenchmark.Compile: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Setup=Tenancy]
+Runtime = .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4; GC = Concurrent Workstation
+Mean = 237.056 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 237.056 ms, Q1 = 237.056 ms, Median = 237.056 ms, Q3 = 237.056 ms, Max = 237.056 ms
+IQR = 0.000 ms, LowerFence = 237.056 ms, UpperFence = 237.056 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+-------------------- Histogram --------------------
+[237.056 ms ; 237.056 ms) | @
+---------------------------------------------------
+
+QueryCompilationBenchmark.CacheHit: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Setup=Tenancy]
+Runtime = .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4; GC = Concurrent Workstation
+Mean = 243.028 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 243.028 ms, Q1 = 243.028 ms, Median = 243.028 ms, Q3 = 243.028 ms, Max = 243.028 ms
+IQR = 0.000 ms, LowerFence = 243.028 ms, UpperFence = 243.028 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+-------------------- Histogram --------------------
+[243.028 ms ; 243.028 ms) | @
+---------------------------------------------------
+
+QueryCompilationBenchmark.Compile: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Setup=Tenan(...)ilter [22]]
+Runtime = .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4; GC = Concurrent Workstation
+Mean = 253.153 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 253.153 ms, Q1 = 253.153 ms, Median = 253.153 ms, Q3 = 253.153 ms, Max = 253.153 ms
+IQR = 0.000 ms, LowerFence = 253.153 ms, UpperFence = 253.153 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+-------------------- Histogram --------------------
+[253.153 ms ; 253.153 ms) | @
+---------------------------------------------------
+
+QueryCompilationBenchmark.CacheHit: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Setup=Tenan(...)ilter [22]]
+Runtime = .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4; GC = Concurrent Workstation
+Mean = 248.028 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 248.028 ms, Q1 = 248.028 ms, Median = 248.028 ms, Q3 = 248.028 ms, Max = 248.028 ms
+IQR = 0.000 ms, LowerFence = 248.028 ms, UpperFence = 248.028 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+-------------------- Histogram --------------------
+[248.028 ms ; 248.028 ms) | @
+---------------------------------------------------
+
+// * Summary *
+
+BenchmarkDotNet v0.15.8, Linux Ubuntu 24.04.5 LTS (Noble Numbat)
+11th Gen Intel Core i9-11900H 2.50GHz (Max: 785.17GHz), 1 CPU, 16 logical and 8 physical cores
+.NET SDK 10.0.202
+  [Host] : .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+  Dry    : .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+
+Job=Dry  IterationCount=1  LaunchCount=1  
+RunStrategy=ColdStart  UnrollFactor=1  WarmupCount=1  
+
+| Method   | Setup                | Mean     | Error | Allocated |
+|--------- |--------------------- |---------:|------:|----------:|
+| Compile  | EFCore               |       NA |    NA |        NA |
+| CacheHit | EFCore               |       NA |    NA |        NA |
+| Compile  | Tenancy              | 237.1 ms |    NA | 152.89 KB |
+| CacheHit | Tenancy              | 243.0 ms |    NA |  11.75 KB |
+| Compile  | Tenan(...)ilter [22] | 253.2 ms |    NA | 168.13 KB |
+| CacheHit | Tenan(...)ilter [22] | 248.0 ms |    NA |  12.09 KB |
+
+Benchmarks with issues:
+  QueryCompilationBenchmark.Compile: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Setup=EFCore]
+  QueryCompilationBenchmark.CacheHit: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Setup=EFCore]
+
+// * Legends *
+  Setup     : Value of the 'Setup' parameter
+  Mean      : Arithmetic mean of all measurements
+  Error     : Half of 99.9% confidence interval
+  Allocated : Allocated memory per single operation (managed only, inclusive, 1KB = 1024B)
+  1 ms      : 1 Millisecond (0.001 sec)
+
+// * Diagnostic Output - MemoryDiagnoser *
+
+
+// ***** BenchmarkRunner: End *****
+Run time: 00:00:03 (3.96 sec), executed benchmarks: 6
+
+// Found 4 benchmarks:
+//   SaveChangesInterceptorBenchmark.TrackOnly: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Entities=1]
+//   SaveChangesInterceptorBenchmark.TrackAndApplyTenant: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Entities=1]
+//   SaveChangesInterceptorBenchmark.TrackOnly: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Entities=100]
+//   SaveChangesInterceptorBenchmark.TrackAndApplyTenant: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Entities=100]
+
+// **************************
+// Benchmark: SaveChangesInterceptorBenchmark.TrackOnly: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Entities=1]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1.dll --anonymousPipes 121 122 --benchmarkName "SaveChangesInterceptorBenchmark.TrackOnly(Entities: 1)" --job Dry --benchmarkId 12 in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/bin/Release/net10.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.15.8
+// Runtime=.NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX512 BITALG+VBMI2+VNNI+VPOPCNTDQ,AVX512 IFMA+VBMI,AVX512 F+BW+CD+DQ+VL,AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL VectorSize=256
+// Job: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1)
+
+// BeforeActualRun
+WorkloadActual   1: 1 op, 68827992.00 ns, 68.8280 ms/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 68827992.00 ns, 68.8280 ms/op
+// GC:  0 0 0 2168 1
+// Threading:  0 0 1
+
+// AfterAll
+// Benchmark Process 290031 has exited with code 0.
+
+Mean = 68.828 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 68.828 ms, Q1 = 68.828 ms, Median = 68.828 ms, Q3 = 68.828 ms, Max = 68.828 ms
+IQR = 0.000 ms, LowerFence = 68.828 ms, UpperFence = 68.828 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+
+// ** Remained 3 (18,8 %) benchmark(s) to run. Estimated finish 2026-10-28 0:18 (0h 0m from now) **
+// **************************
+// Benchmark: SaveChangesInterceptorBenchmark.TrackAndApplyTenant: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Entities=1]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1.dll --anonymousPipes 121 122 --benchmarkName "SaveChangesInterceptorBenchmark.TrackAndApplyTenant(Entities: 1)" --job Dry --benchmarkId 13 in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/bin/Release/net10.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.15.8
+// Runtime=.NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX512 BITALG+VBMI2+VNNI+VPOPCNTDQ,AVX512 IFMA+VBMI,AVX512 F+BW+CD+DQ+VL,AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL VectorSize=256
+// Job: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1)
+
+// BeforeActualRun
+WorkloadActual   1: 1 op, 76500840.00 ns, 76.5008 ms/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 76500840.00 ns, 76.5008 ms/op
+// GC:  0 0 0 3176 1
+// Threading:  0 0 1
+
+// AfterAll
+// Benchmark Process 290043 has exited with code 0.
+
+Mean = 76.501 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 76.501 ms, Q1 = 76.501 ms, Median = 76.501 ms, Q3 = 76.501 ms, Max = 76.501 ms
+IQR = 0.000 ms, LowerFence = 76.501 ms, UpperFence = 76.501 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+
+// ** Remained 2 (12,5 %) benchmark(s) to run. Estimated finish 2026-10-28 0:18 (0h 0m from now) **
+// **************************
+// Benchmark: SaveChangesInterceptorBenchmark.TrackOnly: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Entities=100]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1.dll --anonymousPipes 121 122 --benchmarkName "SaveChangesInterceptorBenchmark.TrackOnly(Entities: 100)" --job Dry --benchmarkId 14 in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/bin/Release/net10.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.15.8
+// Runtime=.NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX512 BITALG+VBMI2+VNNI+VPOPCNTDQ,AVX512 IFMA+VBMI,AVX512 F+BW+CD+DQ+VL,AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL VectorSize=256
+// Job: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1)
+
+// BeforeActualRun
+WorkloadActual   1: 1 op, 79629966.00 ns, 79.6300 ms/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 79629966.00 ns, 79.6300 ms/op
+// GC:  0 0 0 137104 1
+// Threading:  0 0 1
+
+// AfterAll
+// Benchmark Process 290054 has exited with code 0.
+
+Mean = 79.630 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 79.630 ms, Q1 = 79.630 ms, Median = 79.630 ms, Q3 = 79.630 ms, Max = 79.630 ms
+IQR = 0.000 ms, LowerFence = 79.630 ms, UpperFence = 79.630 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+
+// ** Remained 1 (6,2 %) benchmark(s) to run. Estimated finish 2026-10-28 0:18 (0h 0m from now) **
+// **************************
+// Benchmark: SaveChangesInterceptorBenchmark.TrackAndApplyTenant: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Entities=100]
+// *** Execute ***
+// Launch: 1 / 1
+// Execute: dotnet Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1.dll --anonymousPipes 121 122 --benchmarkName "SaveChangesInterceptorBenchmark.TrackAndApplyTenant(Entities: 100)" --job Dry --benchmarkId 15 in /mnt/qnap/programmieren/Projekte/Wissensdatenbank/Programmieren/DotNet/EF-Core/EF-Core-Pugin-Bibel/Acme.EntityFrameworkCore.Tenancy/benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/bin/Release/net10.0/Acme.EntityFrameworkCore.Tenancy.Benchmarks-Dry-1/bin/Release/net10.0
+// Failed to set up high priority (Permission denied). In order to run benchmarks with high priority, make sure you have the right permissions.
+// BeforeAnythingElse
+
+// Benchmark Process Environment Information:
+// BenchmarkDotNet v0.15.8
+// Runtime=.NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+// GC=Concurrent Workstation
+// HardwareIntrinsics=AVX512 BITALG+VBMI2+VNNI+VPOPCNTDQ,AVX512 IFMA+VBMI,AVX512 F+BW+CD+DQ+VL,AVX2+BMI1+BMI2+F16C+FMA+LZCNT+MOVBE,AVX,SSE3+SSSE3+SSE4.1+SSE4.2+POPCNT,X86Base+SSE+SSE2,AES+PCLMUL VectorSize=256
+// Job: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1)
+
+// BeforeActualRun
+WorkloadActual   1: 1 op, 76957956.00 ns, 76.9580 ms/op
+
+// AfterActualRun
+WorkloadResult   1: 1 op, 76957956.00 ns, 76.9580 ms/op
+// GC:  0 0 0 207144 1
+// Threading:  0 0 1
+
+// AfterAll
+// Benchmark Process 290098 has exited with code 0.
+
+Mean = 76.958 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 76.958 ms, Q1 = 76.958 ms, Median = 76.958 ms, Q3 = 76.958 ms, Max = 76.958 ms
+IQR = 0.000 ms, LowerFence = 76.958 ms, UpperFence = 76.958 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+
+// ** Remained 0 (0,0 %) benchmark(s) to run. Estimated finish 2026-10-28 0:18 (0h 0m from now) **
+// ***** BenchmarkRunner: Finish  *****
+
+// * Export *
+  BenchmarkDotNet.Artifacts/results/SaveChangesInterceptorBenchmark-report.csv
+  BenchmarkDotNet.Artifacts/results/SaveChangesInterceptorBenchmark-report-github.md
+  BenchmarkDotNet.Artifacts/results/SaveChangesInterceptorBenchmark-report.html
+
+// * Detailed results *
+SaveChangesInterceptorBenchmark.TrackOnly: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Entities=1]
+Runtime = .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4; GC = Concurrent Workstation
+Mean = 68.828 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 68.828 ms, Q1 = 68.828 ms, Median = 68.828 ms, Q3 = 68.828 ms, Max = 68.828 ms
+IQR = 0.000 ms, LowerFence = 68.828 ms, UpperFence = 68.828 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+-------------------- Histogram --------------------
+[68.828 ms ; 68.828 ms) | @
+---------------------------------------------------
+
+SaveChangesInterceptorBenchmark.TrackAndApplyTenant: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Entities=1]
+Runtime = .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4; GC = Concurrent Workstation
+Mean = 76.501 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 76.501 ms, Q1 = 76.501 ms, Median = 76.501 ms, Q3 = 76.501 ms, Max = 76.501 ms
+IQR = 0.000 ms, LowerFence = 76.501 ms, UpperFence = 76.501 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+-------------------- Histogram --------------------
+[76.501 ms ; 76.501 ms) | @
+---------------------------------------------------
+
+SaveChangesInterceptorBenchmark.TrackOnly: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Entities=100]
+Runtime = .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4; GC = Concurrent Workstation
+Mean = 79.630 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 79.630 ms, Q1 = 79.630 ms, Median = 79.630 ms, Q3 = 79.630 ms, Max = 79.630 ms
+IQR = 0.000 ms, LowerFence = 79.630 ms, UpperFence = 79.630 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+-------------------- Histogram --------------------
+[79.630 ms ; 79.630 ms) | @
+---------------------------------------------------
+
+SaveChangesInterceptorBenchmark.TrackAndApplyTenant: Dry(IterationCount=1, LaunchCount=1, RunStrategy=ColdStart, UnrollFactor=1, WarmupCount=1) [Entities=100]
+Runtime = .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4; GC = Concurrent Workstation
+Mean = 76.958 ms, StdErr = 0.000 ms (0.00%), N = 1, StdDev = 0.000 ms
+Min = 76.958 ms, Q1 = 76.958 ms, Median = 76.958 ms, Q3 = 76.958 ms, Max = 76.958 ms
+IQR = 0.000 ms, LowerFence = 76.958 ms, UpperFence = 76.958 ms
+ConfidenceInterval = [NaN ms; NaN ms] (CI 99.9%), Margin = NaN ms (NaN% of Mean)
+Skewness = NaN, Kurtosis = NaN, MValue = 2
+-------------------- Histogram --------------------
+[76.958 ms ; 76.958 ms) | @
+---------------------------------------------------
+
+// * Summary *
+
+BenchmarkDotNet v0.15.8, Linux Ubuntu 24.04.5 LTS (Noble Numbat)
+11th Gen Intel Core i9-11900H 2.50GHz (Max: 785.17GHz), 1 CPU, 16 logical and 8 physical cores
+.NET SDK 10.0.202
+  [Host] : .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+  Dry    : .NET 10.0.6 (10.0.6, 10.0.626.17701), X64 RyuJIT x86-64-v4
+
+Job=Dry  IterationCount=1  LaunchCount=1  
+RunStrategy=ColdStart  UnrollFactor=1  WarmupCount=1  
+
+| Method              | Entities | Mean     | Error | Ratio | Allocated | Alloc Ratio |
+|-------------------- |--------- |---------:|------:|------:|----------:|------------:|
+| TrackOnly           | 1        | 68.83 ms |    NA |  1.00 |   2.12 KB |        1.00 |
+| TrackAndApplyTenant | 1        | 76.50 ms |    NA |  1.11 |    3.1 KB |        1.46 |
+|                     |          |          |       |       |           |             |
+| TrackOnly           | 100      | 79.63 ms |    NA |  1.00 | 133.89 KB |        1.00 |
+| TrackAndApplyTenant | 100      | 76.96 ms |    NA |  0.97 | 202.29 KB |        1.51 |
+
+// * Warnings *
+MinIterationTime
+  SaveChangesInterceptorBenchmark.TrackOnly: Dry           -> The minimum observed iteration time is 68.828ms which is very small. It's recommended to increase it to at least 100ms using more operations.
+  SaveChangesInterceptorBenchmark.TrackAndApplyTenant: Dry -> The minimum observed iteration time is 76.501ms which is very small. It's recommended to increase it to at least 100ms using more operations.
+  SaveChangesInterceptorBenchmark.TrackOnly: Dry           -> The minimum observed iteration time is 79.63ms which is very small. It's recommended to increase it to at least 100ms using more operations.
+  SaveChangesInterceptorBenchmark.TrackAndApplyTenant: Dry -> The minimum observed iteration time is 76.958ms which is very small. It's recommended to increase it to at least 100ms using more operations.
+
+// * Legends *
+  Entities    : Value of the 'Entities' parameter
+  Mean        : Arithmetic mean of all measurements
+  Error       : Half of 99.9% confidence interval
+  Ratio       : Mean of the ratio distribution ([Current]/[Baseline])
+  Allocated   : Allocated memory per single operation (managed only, inclusive, 1KB = 1024B)
+  Alloc Ratio : Allocated memory ratio distribution ([Current]/[Baseline])
+  1 ms        : 1 Millisecond (0.001 sec)
+
+// * Diagnostic Output - MemoryDiagnoser *
+
+
+// ***** BenchmarkRunner: End *****
+Run time: 00:00:02 (2.45 sec), executed benchmarks: 4
+
+Global total time: 00:00:40 (40.94 sec), executed benchmarks: 16
+// * Artifacts cleanup *
+Artifacts cleanup is finished

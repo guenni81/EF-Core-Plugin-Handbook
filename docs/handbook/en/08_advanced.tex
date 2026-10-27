@@ -1093,8 +1093,8 @@ This leads to a few rules the sample follows: \code{Method\allowbreak{}Info} and
 \code{Property\allowbreak{}Info} lookups live in static fields. The SaveChanges interceptor
 only collects entries when there are tenant-relevant changes. The connection interceptor
 costs one round trip per open, which is documented. Such assumptions should be measured, not
-guessed. The repository contains a BenchmarkDotNet project for the SaveChanges logic; it
-runs without a database:
+guessed. The repository contains a BenchmarkDotNet project; the benchmark for the
+SaveChanges logic runs without a database:
 
 % source: benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/SaveChangesInterceptorBenchmark.cs
 \begin{sourcecode}[benchmarks/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Save\allowbreak{}Changes\allowbreak{}Interceptor\allowbreak{}Benchmark.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
@@ -1128,7 +1128,8 @@ public class SaveChangesInterceptorBenchmark
 \end{sourcecode}
 
 \begin{sourcecode}[Running the benchmark]{text}
-dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks
+dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks \
+    -- --filter '*SaveChanges*' --job short
 \end{sourcecode}
 
 \begin{datatable}{H{1.67}H{0.83}H{0.83}H{0.83}H{0.83}}
@@ -1152,6 +1153,137 @@ to the database costs hundreds of microseconds; the connection interceptor's ext
 trip per open (chapter~\ref{ch:interceptors}) therefore weighs far more than the SaveChanges
 logic. That is the kind of insight a benchmark provides: it shows where optimizing is
 worthwhile and where it is not.
+
+\section{Reading and query compilation}
+
+Two more benchmarks cover the other frequencies.
+\code{Materialization\allowbreak{}Interceptor\allowbreak{}Benchmark} measures what
+\code{Verify\allowbreak{}Materialized\allowbreak{}Tenants(\allowbreak{})} costs when reading.
+It needs real rows from a \code{Db\allowbreak{}Data\allowbreak{}Reader} and starts PostgreSQL
+with Testcontainers (Docker) for that. The connection stays open, so the connection
+interceptor's round trip is not measured; \code{As\allowbreak{}No\allowbreak{}Tracking} keeps
+change tracking out. A third variant with an empty
+\code{IMaterialization\allowbreak{}Interceptor} separates EF's cost from the plugin's:
+
+% source: benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/MaterializationInterceptorBenchmark.cs
+\begin{sourcecode}[benchmarks/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Materialization\allowbreak{}Interceptor\allowbreak{}Benchmark.\allowbreak{}cs (shortened)]{csharp}
+[MemoryDiagnoser]
+public class MaterializationInterceptorBenchmark
+{
+    [Params(10, 100, 1000)]
+    public int Rows { get; set; }
+
+    // GlobalSetup: container, 1000 rows of one tenant, connections open
+
+    [Benchmark(Baseline = true)]
+    public Task<int> Read() => CountAsync(_plain);
+
+    [Benchmark]
+    public Task<int> ReadIntercepted() => CountAsync(_intercepted);
+
+    [Benchmark]
+    public Task<int> ReadAndVerify() => CountAsync(_verifying);
+
+    private async Task<int> CountAsync(BenchmarkContext db)
+        => (await db.Orders.AsNoTracking().OrderBy(o => o.Id).Take(Rows).ToListAsync()).Count;
+
+    // Create: UseAcmeTenancy(sp, t => t.VerifyMaterializedTenants(verify))
+}
+\end{sourcecode}
+
+\begin{datatable}{H{1.67}H{0.83}H{0.83}H{0.83}H{0.83}}
+  \textbf{Method} & \textbf{Rows} & \textbf{Mean} & \textbf{Ratio} & \textbf{Allocated} \\
+  \tablehead
+  \code{Read} & 10 & 200 µs & 1.00 & 12 KB \\
+  \tablerule
+  \code{Read\allowbreak{}Intercepted} & 10 & 210 µs & 1.08 & 21 KB \\
+  \tablerule
+  \code{Read\allowbreak{}And\allowbreak{}Verify} & 10 & 220 µs & 1.12 & 22 KB \\
+  \tablerule
+  \code{Read} & 100 & 278 µs & 1.00 & 36 KB \\
+  \tablerule
+  \code{Read\allowbreak{}Intercepted} & 100 & 764 µs & 2.77 & 121 KB \\
+  \tablerule
+  \code{Read\allowbreak{}And\allowbreak{}Verify} & 100 & 741 µs & 2.68 & 136 KB \\
+  \tablerule
+  \code{Read} & 1000 & 846 µs & 1.00 & 269 KB \\
+  \tablerule
+  \code{Read\allowbreak{}Intercepted} & 1000 & 3858 µs & 4.70 & 1120 KB \\
+  \tablerule
+  \code{Read\allowbreak{}And\allowbreak{}Verify} & 1000 & 4288 µs & 5.22 & 1268 KB \\
+\end{datatable}
+
+The result is surprising: most of the cost is not the check, but having a materialization
+interceptor registered at all. EF then produces, for every row, the data that
+\code{Materialization\allowbreak{}Interception\allowbreak{}Data} offers, and leaves the fast,
+compiled materialization path: at 1000 rows about 0.85 KB and 3 µs per row. The plugin's check
+(provider from the cache, read the value, compare) adds around 0.15 KB and 0.4 µs per row. At
+ten rows both disappear in the round trip; at a thousand rows reading on the client becomes
+about five times as expensive.
+
+\code{Query\allowbreak{}Compilation\allowbreak{}Benchmark} needs no database:
+\code{To\allowbreak{}Query\allowbreak{}String} runs the pipeline up to the SQL without a
+connection. \code{Compile} empties EF's query cache (the \code{IMemory\allowbreak{}Cache} of
+the internal service provider) before every call; \code{Cache\allowbreak{}Hit} runs the same
+query shape with a new parameter value. Compared are EF Core alone, the plugin, and the plugin
+with its query filter:
+
+\begin{datatable}{H{1.40}H{0.90}H{0.90}H{0.90}H{0.90}}
+  \textbf{Context} & \textbf{Compile} & \textbf{Allocated} & \textbf{Cache hit} &
+  \textbf{Allocated} \\
+  \tablehead
+  EF Core & 2.64 ms & 146 KB & 18 µs & 9.9 KB \\
+  \tablerule
+  Plugin & 2.68 ms & 147 KB & 15 µs & 9.9 KB \\
+  \tablerule
+  Plugin with query filter & 2.78 ms & 160 KB & 15 µs & 10.2 KB \\
+\end{datatable}
+
+Translator plugins, evaluatable filter, custom SQL generator and nullability processor cost
+nothing measurable when compiling; the query filter makes the expression tree, and thus the
+translation, a few percent longer. On a cache hit every difference disappears in the noise.
+All values come from a short job (.NET 10, author's machine); its error bars are wide, but the
+orders of magnitude are clear:
+
+\begin{datatable}{H{0.80}H{0.90}H{1.30}}
+  \textbf{Phase} & \textbf{Frequency} & \textbf{Plugin overhead} \\
+  \tablehead
+  Compilation & Once per query shape & Hardly measurable, a few percent with the query filter \\
+  \tablerule
+  Cache hit & Every query & Not measurable \\
+  \tablerule
+  SaveChanges & Every save & About 0.5 µs per entity (40 to 50 percent of change tracking) \\
+  \tablerule
+  Materialization & Every row read & About 3.5 µs per row with
+  \code{Verify\allowbreak{}Materialized\allowbreak{}Tenants(\allowbreak{})}, none without \\
+\end{datatable}
+
+\subsection*{When the check on reading pays off}
+
+\code{Verify\allowbreak{}Materialized\allowbreak{}Tenants(\allowbreak{})} is defense in depth:
+it does not protect against an attack that RLS does not stop, but notices when RLS does not
+apply at all, for example because the application connects as the owner, a superuser or a role
+with \code{BYPASSRLS}, or works on a self-opened connection without
+\code{Apply\allowbreak{}Tenant\allowbreak{}Session}. That leads to the recommendation:
+
+\begin{itemize}
+  \item \textbf{Turn it on} when a misconfiguration costs more than the CPU time: data with
+    high protection requirements, many environments with their own configuration, small
+    result sets as typical API queries return them. There the cost disappears in the round
+    trip.
+  \item \textbf{Turn it off} for read-heavy paths with large result sets, such as exports and
+    reports. There the database carries the isolation alone, backed by the role separation
+    (page~\pageref{sec:deployment}) and by tests that read with the application's restricted
+    role.
+  \item \textbf{In between}: always on in tests and staging, in production only for the
+    context of the sensitive data. The option applies per context configuration, not
+    globally.
+\end{itemize}
+
+\begin{sourcecode}[All benchmarks, dry run]{text}
+dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks \
+    -- --filter '*' --job dry
+\end{sourcecode}
 
 \begin{tip}
   For the startup of large models, the compiled model

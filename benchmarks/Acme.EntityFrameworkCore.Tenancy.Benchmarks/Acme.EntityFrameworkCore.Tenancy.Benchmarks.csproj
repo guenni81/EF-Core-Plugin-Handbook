@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
     Micro benchmarks for the plugin's hot paths (chapter "Plugin performance"). Not run in CI;
-    start manually from this folder with "dotnet run -c Release" (see README).
+    start manually with "dotnet run -c Release" and a filter argument (see README). The
+    materialization benchmark starts PostgreSQL with Testcontainers and needs Docker.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -9,6 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Acme.EntityFrameworkCore.Tenancy.PostgreSQL\Acme.EntityFrameworkCore.Tenancy.PostgreSQL.csproj" />

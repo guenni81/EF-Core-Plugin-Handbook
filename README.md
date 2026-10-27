@@ -116,12 +116,12 @@ per table (FILTER and BLOCK predicates) and `SESSION_CONTEXT`.
 | Testing | Model, SQL, snapshot round-trip, compiled model and Testcontainers tests | 26 |
 | Shipping | Versioning, stable annotation formats, packaging, CI, Public API analyzer | 27–28, 41 |
 | Value generation | `TenantId` keys via convention and `HasValueGeneratorFactory(Type)` | 31 |
-| Operations | RLS pitfalls, threat model, PgBouncer, legitimate cross-tenant access | 36 |
+| Operations | RLS pitfalls, threat model, PgBouncer (`UseTransactionPooling()`), legitimate cross-tenant access | 36 |
 | Relationships | Composite foreign keys with the tenant, unique per tenant, shared master data, delete rules | 37 |
-| Retrofitting | From a table without a tenant to RLS, app versions during the change, retries and lost connections | 38 |
-| Performance | BenchmarkDotNet project with measured overhead of the SaveChanges logic | 39 |
+| Retrofitting | From a table without a tenant to RLS, app versions during the change, retries and lost connections, deployment pipeline with separate roles (`docs/deployment`) | 38 |
+| Performance | BenchmarkDotNet project: overhead of the SaveChanges logic, of tenant verification on reading and of query compilation | 39 |
 | ASP.NET Core | `samples/ShopApi`, DbContext factories, background jobs | 40 |
-| Custom SQL nodes | `EF.Functions.IsNotDistinctFrom` with SQL generator and nullability processor | 42 |
+| Custom SQL nodes | `EF.Functions.IsNotDistinctFrom` with SQL generator and nullability processor; the pgvector operator `<=>` as a test example | 42 |
 | Aggregates | `EF.Functions.Every` (`bool_and`) with FILTER/DISTINCT support | 43 |
 | Runtime annotations | Tenant property in the compiled model, design-time annotations filtered | 44 |
 | Scaffolding | RLS and policies are read back from the database | 45 |
@@ -167,10 +167,12 @@ The packages as a customer gets them (pack, fresh application, `dotnet-ef`, comp
 eng/consumer-test/run.sh --nativeaot
 ```
 
-Micro benchmarks for the SaveChanges logic (BenchmarkDotNet, no database required):
+Micro benchmarks (BenchmarkDotNet): SaveChanges logic and query compilation without a
+database, materialization against PostgreSQL via Testcontainers (needs Docker). `--filter`
+selects classes, `--job dry` is a quick smoke test:
 
 ```bash
-dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks
+dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks -- --filter '*'
 ```
 
 ## The samples

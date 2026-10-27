@@ -9,6 +9,13 @@ version is given by the dependency range and the compatibility table in the READ
 
 ### Added
 
+- Benchmarks `MaterializationInterceptorBenchmark` (PostgreSQL via Testcontainers; 10, 100
+  and 1000 rows without, with an empty and with the tenant-verifying materialization
+  interceptor) and `QueryCompilationBenchmark` (first compilation and cache hit for EF Core,
+  the plugin and the plugin with query filter). The benchmark project now selects classes with
+  `--filter`. Handbook: new section "Reading and query compilation" with the results and a
+  recommendation for `VerifyMaterializedTenants()`: most of its cost comes from EF leaving the
+  compiled materialization path as soon as any materialization interceptor is registered.
 - `CustomOperatorTests`: the pgvector cosine distance `<=>` as a custom SQL expression node
   (test code only: translator, SQL generator derived from the plugin's, nullability processor),
   with checks for precedence, propagated nullability and the failure without the processor.

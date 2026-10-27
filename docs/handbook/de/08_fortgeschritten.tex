@@ -1128,7 +1128,7 @@ und \code{Property\allowbreak{}Info}-Lookups liegen in statischen Feldern. Der
 SaveChanges-Interceptor legt seine Liste erst an, wenn er tatsächlich eine mandantenfähige
 Änderung findet. Der Connection-Interceptor kostet einen Roundtrip pro Öffnen, was
 dokumentiert ist. Solche Annahmen sollte man messen, nicht raten. Das Repository enthält ein
-BenchmarkDotNet-Projekt für die SaveChanges-Logik; es läuft ohne Datenbank:
+BenchmarkDotNet-Projekt; der Benchmark für die SaveChanges-Logik läuft ohne Datenbank:
 
 % source: benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/SaveChangesInterceptorBenchmark.cs
 \begin{sourcecode}[benchmarks/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Save\allowbreak{}Changes\allowbreak{}Interceptor\allowbreak{}Benchmark.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
@@ -1162,7 +1162,8 @@ public class SaveChangesInterceptorBenchmark
 \end{sourcecode}
 
 \begin{sourcecode}[Benchmark ausführen]{text}
-dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks
+dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks \
+    -- --filter '*SaveChanges*' --job short
 \end{sourcecode}
 
 \begin{datatable}{H{1.67}H{0.83}H{0.83}H{0.83}H{0.83}}
@@ -1186,6 +1187,139 @@ klingt nach viel, doch ein einziger Roundtrip zur Datenbank kostet Hunderte Mikr
 der zusätzliche Roundtrip des Connection-Interceptors pro Öffnen
 (Kapitel~\ref{ch:interceptors}) wiegt daher weit schwerer als die SaveChanges-Logik. Genau
 diese Art Erkenntnis liefert ein Benchmark: Er zeigt, wo sich Optimieren lohnt und wo nicht.
+
+\section{Lesen und Abfragekompilierung}
+
+Zwei weitere Benchmarks decken die anderen Häufigkeiten ab.
+\code{Materialization\allowbreak{}Interceptor\allowbreak{}Benchmark} misst, was
+\code{Verify\allowbreak{}Materialized\allowbreak{}Tenants(\allowbreak{})} beim Lesen kostet. Es
+braucht echte Zeilen aus einem \code{Db\allowbreak{}Data\allowbreak{}Reader} und startet dafür
+PostgreSQL per Testcontainers (Docker). Die Verbindung bleibt offen, sodass der Roundtrip des
+Connection-Interceptors nicht mitgemessen wird; \code{As\allowbreak{}No\allowbreak{}Tracking}
+hält das Change Tracking heraus. Eine dritte Variante mit einem leeren
+\code{IMaterialization\allowbreak{}Interceptor} trennt den Aufwand von EF vom Aufwand des
+Plugins:
+
+% source: benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/MaterializationInterceptorBenchmark.cs
+\begin{sourcecode}[benchmarks/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Materialization\allowbreak{}Interceptor\allowbreak{}Benchmark.\allowbreak{}cs (gekürzt)]{csharp}
+[MemoryDiagnoser]
+public class MaterializationInterceptorBenchmark
+{
+    [Params(10, 100, 1000)]
+    public int Rows { get; set; }
+
+    // GlobalSetup: Container, 1000 Zeilen eines Mandanten, Verbindungen offen
+
+    [Benchmark(Baseline = true)]
+    public Task<int> Read() => CountAsync(_plain);
+
+    [Benchmark]
+    public Task<int> ReadIntercepted() => CountAsync(_intercepted);
+
+    [Benchmark]
+    public Task<int> ReadAndVerify() => CountAsync(_verifying);
+
+    private async Task<int> CountAsync(BenchmarkContext db)
+        => (await db.Orders.AsNoTracking().OrderBy(o => o.Id).Take(Rows).ToListAsync()).Count;
+
+    // Create: UseAcmeTenancy(sp, t => t.VerifyMaterializedTenants(verify))
+}
+\end{sourcecode}
+
+\begin{datatable}{H{1.67}H{0.83}H{0.83}H{0.83}H{0.83}}
+  \textbf{Methode} & \textbf{Zeilen} & \textbf{Mittelwert} & \textbf{Verhältnis} & \textbf{Allokiert} \\
+  \tablehead
+  \code{Read} & 10 & 200 µs & 1,00 & 12 KB \\
+  \tablerule
+  \code{Read\allowbreak{}Intercepted} & 10 & 210 µs & 1,08 & 21 KB \\
+  \tablerule
+  \code{Read\allowbreak{}And\allowbreak{}Verify} & 10 & 220 µs & 1,12 & 22 KB \\
+  \tablerule
+  \code{Read} & 100 & 278 µs & 1,00 & 36 KB \\
+  \tablerule
+  \code{Read\allowbreak{}Intercepted} & 100 & 764 µs & 2,77 & 121 KB \\
+  \tablerule
+  \code{Read\allowbreak{}And\allowbreak{}Verify} & 100 & 741 µs & 2,68 & 136 KB \\
+  \tablerule
+  \code{Read} & 1000 & 846 µs & 1,00 & 269 KB \\
+  \tablerule
+  \code{Read\allowbreak{}Intercepted} & 1000 & 3858 µs & 4,70 & 1120 KB \\
+  \tablerule
+  \code{Read\allowbreak{}And\allowbreak{}Verify} & 1000 & 4288 µs & 5,22 & 1268 KB \\
+\end{datatable}
+
+Das Ergebnis überrascht: Den größten Teil kostet nicht die Prüfung, sondern dass überhaupt ein
+Materialisierungs-Interceptor registriert ist. EF erzeugt dann für jede Zeile die Daten, die
+\code{Materialization\allowbreak{}Interception\allowbreak{}Data} anbietet, und verlässt den
+schnellen, kompilierten Materialisierungspfad: bei 1000 Zeilen etwa 0,85 KB und 3 µs pro
+Zeile. Die Prüfung des Plugins (Provider aus dem Cache, Wert lesen, vergleichen) fügt rund
+0,15 KB und 0,4 µs pro Zeile hinzu. Bei zehn Zeilen geht beides im Roundtrip unter, bei
+tausend Zeilen wird das Lesen auf dem Client etwa fünfmal so teuer.
+
+\code{Query\allowbreak{}Compilation\allowbreak{}Benchmark} braucht keine Datenbank:
+\code{To\allowbreak{}Query\allowbreak{}String} durchläuft die Pipeline bis zum SQL ohne
+Verbindung. \code{Compile} leert vor jedem Aufruf den Query-Cache von EF (den
+\code{IMemory\allowbreak{}Cache} des internen Service Providers), \code{Cache\allowbreak{}Hit}
+führt dieselbe Abfrageform mit neuem Parameterwert aus. Verglichen werden EF Core allein, das
+Plugin und das Plugin mit Query-Filter:
+
+\begin{datatable}{H{1.40}H{0.90}H{0.90}H{0.90}H{0.90}}
+  \textbf{Kontext} & \textbf{Kompilieren} & \textbf{Allokiert} & \textbf{Cache-Treffer} &
+  \textbf{Allokiert} \\
+  \tablehead
+  EF Core & 2,64 ms & 146 KB & 18 µs & 9,9 KB \\
+  \tablerule
+  Plugin & 2,68 ms & 147 KB & 15 µs & 9,9 KB \\
+  \tablerule
+  Plugin mit Query-Filter & 2,78 ms & 160 KB & 15 µs & 10,2 KB \\
+\end{datatable}
+
+Translator-Plugins, Evaluatable-Filter, eigener SQL-Generator und Nullability-Prozessor kosten
+beim Kompilieren nichts Messbares; der Query-Filter verlängert den Ausdrucksbaum und damit die
+Übersetzung um wenige Prozent. Bei einem Cache-Treffer verschwindet jeder Unterschied im
+Rauschen. Alle Werte stammen aus einem Short Job (.NET 10, Rechner des Autors); dessen
+Fehlerbalken sind breit, die Größenordnungen aber eindeutig:
+
+\begin{datatable}{H{0.80}H{0.90}H{1.30}}
+  \textbf{Phase} & \textbf{Häufigkeit} & \textbf{Mehraufwand des Plugins} \\
+  \tablehead
+  Kompilieren & Einmal pro Abfrageform & Kaum messbar, mit Query-Filter wenige Prozent \\
+  \tablerule
+  Cache-Treffer & Jede Abfrage & Nicht messbar \\
+  \tablerule
+  SaveChanges & Jedes Speichern & Etwa 0,5 µs pro Entität (40 bis 50 Prozent des Change
+  Trackings) \\
+  \tablerule
+  Materialisierung & Jede gelesene Zeile & Etwa 3,5 µs pro Zeile mit
+  \code{Verify\allowbreak{}Materialized\allowbreak{}Tenants(\allowbreak{})}, ohne: keiner \\
+\end{datatable}
+
+\subsection*{Wann die Prüfung beim Lesen lohnt}
+
+\code{Verify\allowbreak{}Materialized\allowbreak{}Tenants(\allowbreak{})} ist Defense in Depth:
+Es schützt nicht vor einem Angriff, den RLS nicht abwehrt, sondern bemerkt, wenn RLS gar nicht
+greift, etwa weil die Anwendung mit dem Eigentümer, einem Superuser oder einer Rolle mit
+\code{BYPASSRLS} verbindet oder eine selbst geöffnete Verbindung ohne
+\code{Apply\allowbreak{}Tenant\allowbreak{}Session} arbeitet. Daraus ergibt sich die
+Empfehlung:
+
+\begin{itemize}
+  \item \textbf{Einschalten}, wenn eine Fehlkonfiguration teurer ist als die Rechenzeit:
+    Daten mit hohen Schutzanforderungen, viele Umgebungen mit eigener Konfiguration, kleine
+    Ergebnismengen, wie sie typische API-Abfragen liefern. Dort geht der Aufwand im Roundtrip
+    unter.
+  \item \textbf{Ausschalten} für leselastige Pfade mit großen Ergebnismengen, etwa Exporte und
+    Berichte. Dort trägt die Datenbank die Isolation allein, abgesichert durch die
+    Rollentrennung (Seite~\pageref{sec:deployment}) und Tests, die mit der eingeschränkten
+    Rolle der Anwendung lesen.
+  \item \textbf{Dazwischen}: in Tests und Staging immer einschalten, in Produktion nur für den
+    Kontext der sensiblen Daten. Die Option gilt pro Kontextkonfiguration, nicht global.
+\end{itemize}
+
+\begin{sourcecode}[Alle Benchmarks, Probelauf]{text}
+dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks \
+    -- --filter '*' --job dry
+\end{sourcecode}
 
 \begin{tip}
   Für den Start großer Modelle ist das Compiled Model
