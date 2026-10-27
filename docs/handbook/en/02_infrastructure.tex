@@ -35,6 +35,7 @@ public sealed record TenancySettings
     public bool ForceRowLevelSecurity { get; init; } = true;
     public bool ApplyQueryFilter { get; init; }
     public bool CreateTenantIndex { get; init; } = true;
+    public bool VerifyMaterializedTenants { get; init; }
 }
 \end{sourcecode}
 
@@ -123,7 +124,7 @@ There are two classic mistakes with these methods, with opposite consequences:
   \tablerule
   A value that varies per context is in the hash (tenant, connection string, instance) & A
   new internal provider including model is created for every context. Memory and startup
-  time explode; EF warns after 20 providers with
+  time explode; from the 21st provider on, EF throws by default with
   \code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}.
   \\
 \end{datatable}

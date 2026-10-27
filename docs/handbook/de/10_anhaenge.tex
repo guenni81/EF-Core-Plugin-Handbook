@@ -49,7 +49,7 @@ Entscheidungshilfe in Kapitel~\ref{ch:choosing-the-right-extension-point}.
   \tablerule
   \code{IInterceptor} (injiziert) & Scoped & mehrfach & \ref{ch:interceptors} \\
   \tablerule
-  \code{ISingleton\allowbreak{}Interceptor} & Singleton & mehrfach & \ref{ch:interceptors} \\
+  \code{ISingleton\allowbreak{}Interceptor} & Singleton & mehrfach & \ref{ch:interceptors}, \ref{ch:materialization-from-rows-to-objects} \\
   \tablerule
   \code{IRelational\allowbreak{}Annotation\allowbreak{}Provider} & Singleton & einzeln & \ref{ch:declarative-sql-from-annotations}
   \\
@@ -151,6 +151,9 @@ und der Registrierung von \code{Add\allowbreak{}Entity\allowbreak{}Framework\all
   \tablerule
   \code{Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs}
   & Abstrakte Basis für Session-Befehle & \ref{ch:interceptors}, \ref{ch:what-belongs-in-the-core} \\
+  \tablerule
+  \code{Interceptors/\allowbreak{}Tenant\allowbreak{}Materialization\allowbreak{}Interceptor.\allowbreak{}cs}
+  & Prüfung beim Laden (optional) & \ref{ch:materialization-from-rows-to-objects} \\
   \tablerule
   \code{Tenancy\allowbreak{}Database\allowbreak{}Facade\allowbreak{}Extensions.\allowbreak{}cs}
   & \code{Database.\allowbreak{}Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})}
@@ -265,6 +268,10 @@ und der Registrierung von \code{Add\allowbreak{}Entity\allowbreak{}Framework\all
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Composition\allowbreak{}Tests.\allowbreak{}cs}
   & Decorator-Beispiel (Audit-Plugin) & \ref{ch:registering-services} \\
   \tablerule
+  \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Materialization\allowbreak{}Tests.\allowbreak{}cs}
+  & Prüfung beim Laden: Registrierung, Logik, Fehlerfall pro Context (Unit), Leck,
+  Grenzen und gemerkter Mandant (Integration) & \ref{ch:materialization-from-rows-to-objects} \\
+  \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Design\allowbreak{}Time\allowbreak{}Services\allowbreak{}Tests.\allowbreak{}cs}
   & Lebensdauern der ersetzten Design-Time-Dienste & \ref{ch:choosing-the-right-extension-point}, \ref{ch:scaffolding-in-practice} \\
   \tablerule
@@ -308,8 +315,17 @@ und der Registrierung von \code{Add\allowbreak{}Entity\allowbreak{}Framework\all
   \tablerule
   Funcletizer & Erste Query-Stufe; wertet Ausdrücke ohne Datenbezug in .NET aus. \\
   \tablerule
+  Identity Resolution & Dieselbe Entität ergibt dieselbe Instanz: beim Tracking über den
+  Change Tracker, sonst optional pro Abfrage. \\
+  \tablerule
+  Materializer & Teil des Shapers, der eine Entität erzeugt: Konstruktor, dann Properties
+  und Felder. \\
+  \tablerule
   Nullability-Prozessor & Query-Stufe, die NULL-Semantik auswertet und Vergleiche optimiert;
   muss eigene SQL-Knoten kennen. \\
+  \tablerule
+  Shaper & Kompilierter Ausdrucksbaum pro Abfrageform, der aus den Zeilen des
+  \code{Db\allowbreak{}Data\allowbreak{}Reader} das Ergebnis baut. \\
   \tablerule
   SqlExpression & Knoten im SQL-Ausdrucksbaum; eigene Knoten für Syntax, die keine Funktion
   ist. \\
@@ -410,8 +426,9 @@ Console.WriteLine(query.ToQueryString());
   Fehler im Log; nur für die Entwicklung. \\
   \tablerule
   \code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}
-  & EF warnt, wenn zu viele interne Provider entstehen: fast immer ein Hash-Fehler
-  (Kapitel~\ref{ch:the-options-extension}). \\
+  & EF bricht standardmäßig ab, wenn mehr als 20 interne Provider entstehen: fast immer ein
+  Hash-Fehler (Kapitel~\ref{ch:the-options-extension}) oder eine Singleton-Instanz pro
+  Context (Kapitel~\ref{ch:materialization-from-rows-to-objects}). \\
   \tablerule
   Der Quellcode von EF Core auf GitHub & Die maßgebliche Dokumentation interner APIs; die
   Ordnerstruktur entspricht den Namespaces. \\

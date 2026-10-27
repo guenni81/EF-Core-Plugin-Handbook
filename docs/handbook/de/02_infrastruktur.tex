@@ -36,6 +36,7 @@ public sealed record TenancySettings
     public bool ForceRowLevelSecurity { get; init; } = true;
     public bool ApplyQueryFilter { get; init; }
     public bool CreateTenantIndex { get; init; } = true;
+    public bool VerifyMaterializedTenants { get; init; }
 }
 \end{sourcecode}
 
@@ -125,8 +126,9 @@ Bei diesen beiden Methoden gibt es zwei klassische Fehler mit gegensätzlichen F
   \tablerule
   Pro Context variierender Wert im Hash (Mandant, Connection-String, Instanz) & Für jeden
   Context entsteht ein neuer interner Provider samt Modell. Speicher und Startzeit
-  explodieren; EF warnt nach 20 Providern mit
-  \code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}.
+  explodieren; ab dem 21. Provider bricht EF standardmäßig mit
+  \code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}
+  ab.
   \\
 \end{datatable}
 

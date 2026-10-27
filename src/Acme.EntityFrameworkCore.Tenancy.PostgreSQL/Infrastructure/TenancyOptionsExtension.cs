@@ -1,4 +1,5 @@
 using Acme.EntityFrameworkCore.Tenancy.Diagnostics;
+using Acme.EntityFrameworkCore.Tenancy.Interceptors;
 using Acme.EntityFrameworkCore.Tenancy.Query;
 using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal;
 using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Conventions;
@@ -6,6 +7,7 @@ using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.Internal;
 using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Internal;
 using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query;
 using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Storage;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions.Infrastructure;
@@ -79,6 +81,13 @@ public class TenancyOptionsExtension : IDbContextOptionsExtension
                 .TryAddSingleton<ITenancySingletonOptions, TenancySingletonOptions>()
                 .TryAddSingleton<TenancyLoggingDefinitions, TenancyLoggingDefinitions>());
 
+        // Optional materialization check (chapter "Materialization: from rows to objects"). A
+        // singleton interceptor belongs in the internal provider: one instance per provider,
+        // never a new instance per context. The setting is part of the hash.
+        if (Settings.VerifyMaterializedTenants)
+            new EntityFrameworkServicesBuilder(services)
+                .TryAdd<ISingletonInterceptor, TenantMaterializationInterceptor>();
+
         // 3) Replace single services of the provider. Replace instead of TryAdd: Npgsql registers
         //    via TryAdd, so our service wins regardless of the order.
         services.Replace(ServiceDescriptor
@@ -138,6 +147,7 @@ public class TenancyOptionsExtension : IDbContextOptionsExtension
             debugInfo["Acme:Tenancy:Force"] = s.ForceRowLevelSecurity.ToString();
             debugInfo["Acme:Tenancy:QueryFilter"] = s.ApplyQueryFilter.ToString();
             debugInfo["Acme:Tenancy:Index"] = s.CreateTenantIndex.ToString();
+            debugInfo["Acme:Tenancy:VerifyMaterialized"] = s.VerifyMaterializedTenants.ToString();
         }
     }
 }

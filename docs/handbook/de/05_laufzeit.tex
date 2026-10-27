@@ -30,10 +30,10 @@ unterdrücken oder Ergebnisse ersetzen.
   Savepoints & Scoped \\
   \tablerule
   \code{IIdentity\allowbreak{}Resolution\allowbreak{}Interceptor} & Konflikte beim Anhängen
-  bereits getrackter Entitäten & Scoped \\
+  bereits getrackter Entitäten; nie bei Abfragen (Kapitel~\ref{ch:materialization-from-rows-to-objects}) & Scoped \\
   \tablerule
   \code{IMaterialization\allowbreak{}Interceptor} & Erzeugen und Initialisieren von
-  Entitäten & \textbf{Singleton} \\
+  Entitäten (Kapitel~\ref{ch:materialization-from-rows-to-objects}) & \textbf{Singleton} \\
   \tablerule
   \code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor} & LINQ-Ausdruck vor der
   Kompilierung & \textbf{Singleton} \\
@@ -310,6 +310,11 @@ die Zeile schlagen sie fehl.
   Plugin, dessen Hooks nicht jeden Weg abdecken, sollte eine solche explizite API anbieten,
   statt die Lücke nur zu dokumentieren.
 \end{important}
+
+Erkennen lässt sich die Lücke zusätzlich beim Laden: Mit
+\code{Verify\allowbreak{}Materialized\allowbreak{}Tenants(\allowbreak{})} prüft das Plugin jede
+geladene Entität gegen den Mandanten des Contexts und wirft, statt fremde Zeilen
+zurückzugeben (Kapitel~\ref{ch:materialization-from-rows-to-objects}).
 
 % ------------------------------------------------------------
 \chapter{Diagnose und Logging}\label{ch:diagnostics-and-logging}

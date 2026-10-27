@@ -422,6 +422,8 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung:
 \begin{checklist}
   \item Interceptors synchron und asynchron implementieren.
   \item Singleton-Interceptors zustandslos und thread-sicher.
+  \item Singleton-Interceptors in ApplyServices registrieren oder als eine geteilte Instanz
+    übergeben, nie pro Context neu; Anfragedaten pro Aufruf über den Context holen.
   \item Eigene Event-IDs in eigenem Bereich, EventDefinitions gecacht.
   \item Sicherheitsrelevantes als Warnung, eskalierbar per ConfigureWarnings.
   \item Wo Hooks nicht laufen, eine explizite API anbieten (z. B. ApplyTenantSession).

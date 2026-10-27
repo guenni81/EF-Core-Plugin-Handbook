@@ -4,6 +4,7 @@ using Acme.EntityFrameworkCore.Tenancy.SqlServer.Runtime;
 using Acme.EntityFrameworkCore.Tenancy.SqlServer.Storage;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -92,6 +93,21 @@ public class SqlServerUnitTests
 
         Assert.IsType<SqlServerTenantIdTypeMapping>(
             ctx.GetService<IRelationalTypeMappingSource>().FindMapping(typeof(TenantId)));
+    }
+
+    [Fact]
+    public void Materialization_check_is_opt_in_and_registered_as_singleton_interceptor()
+    {
+        using var off = Contexts.Create(NoDatabase);
+        using var on = new ShopContext(new DbContextOptionsBuilder<ShopContext>()
+            .UseSqlServer(NoDatabase, sql => sql.UseAcmeTenancy().VerifyMaterializedTenants())
+            .EnableServiceProviderCaching(false)
+            .Options);
+
+        Assert.Empty(off.GetService<IEnumerable<ISingletonInterceptor>>()
+            .OfType<TenantMaterializationInterceptor>());
+        Assert.Single(on.GetService<IEnumerable<ISingletonInterceptor>>()
+            .OfType<TenantMaterializationInterceptor>());
     }
 
     [Fact]

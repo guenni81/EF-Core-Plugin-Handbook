@@ -1,6 +1,7 @@
 % ============================================================
 \setpartpreamble{\partintro
-  {Wie LINQ zu SQL wird und wie ein Plugin eigene Funktionen und Member übersetzt.}
+  {Wie LINQ zu SQL wird, wie ein Plugin eigene Funktionen und Member übersetzt und wie aus
+  Zeilen wieder Objekte werden.}
   {
     \item Kapitel~\ref{ch:the-query-pipeline}: Die Query-Pipeline
     \item Kapitel~\ref{ch:translating-methods-and-members}: Methoden und Member übersetzen
@@ -8,6 +9,7 @@
     verhindern
     \item Kapitel~\ref{ch:further-query-extension-points}: Weitere Erweiterungspunkte der
     Abfrage
+    \item Kapitel~\ref{ch:materialization-from-rows-to-objects}: Materialisierung: von Zeilen zu Objekten
   }}
 \part{Abfragen}\label{part:IV}
 
@@ -28,7 +30,7 @@ welche Stufe sitzt, weiß auch, wo ein Plugin ansetzen muss:
   und Aggregate-Translators}
   \flowstep{Postprocessing}{Nullability-Optimierung, Parameter-abhängige Anpassungen}
   \flowstep{SQL-Generierung}{QuerySqlGenerator schreibt den SQL-Text}
-  \flowstep{Materialisierung}{Zeilen werden zu Objekten. Plugin:
+  \flowstep{Materialisierung}{Zeilen werden zu Objekten (Kapitel~\ref{ch:materialization-from-rows-to-objects}). Plugin:
   IMaterializationInterceptor}
 \end{flowdiagram}
 
@@ -299,7 +301,7 @@ Punkte zurück; hier ein Überblick mit Einordnung:
   \tablerule
   \code{IMaterialization\allowbreak{}Interceptor} & Objekte bei der Materialisierung
   erzeugen, initialisieren oder prüfen & Singleton-Interceptor; muss zustandslos und
-  thread-sicher sein \\
+  thread-sicher sein; umgesetzt in Kapitel~\ref{ch:materialization-from-rows-to-objects} \\
   \tablerule
   \code{IMethod\allowbreak{}Call\allowbreak{}Translator\allowbreak{}Provider} u. a. &
   Translator-Infrastruktur ersetzen & Einzeldienste des Providers; nur in Ausnahmefällen \\
@@ -324,3 +326,379 @@ Punkte zurück; hier ein Überblick mit Einordnung:
   das: Der Setting-Name ist eine Option, der Mandant selbst wird erst in der
   Datenbank-Session ausgewertet.
 \end{note}
+
+% ------------------------------------------------------------
+\chapter{Materialisierung: von Zeilen zu Objekten}\label{ch:materialization-from-rows-to-objects}
+
+Die bisherigen Kapitel dieses Teils beschreiben den Hinweg: aus LINQ wird SQL.
+Kapitel~\ref{ch:the-update-pipeline} beschreibt den Weg von Entitäten zu INSERT, UPDATE und
+DELETE. Dieses Kapitel schließt den Kreis und beschreibt den Rückweg: Wie werden aus den
+Zeilen, die die Datenbank liefert, Objekte, und wo kann ein Plugin dabei eingreifen?
+
+\section{Der Rückweg im Überblick}
+
+\begin{flowdiagram}
+  \flowstep{SQL-Ausführung}{Der Befehl läuft; ein Command-Interceptor sieht ihn vorher und
+  nachher. Plugin: IDbCommandInterceptor}
+  \flowstep{DbDataReader}{Eine Zeile nach der anderen, Spalten in der Reihenfolge der
+  Projektion. EF-intern}
+  \flowstep{Shaping}{Der kompilierte Shaper liest die Spalten, wandelt Werte über das Type
+  Mapping um und baut das Ergebnis. EF-intern, gesteuert über Modell und Type Mappings}
+  \flowstep{Identity-Prüfung}{Beim Tracking: Ist die Entität schon im Change Tracker, gilt
+  die vorhandene Instanz. EF-intern}
+  \flowstep{Materializer}{Konstruktor aufrufen, Properties und Felder setzen. Plugin:
+  IMaterializationInterceptor; Modell: Constructor Binding}
+  \flowstep{CLR-Instanz}{Das fertige Objekt}
+  \flowstep{Tracking}{Die Instanz wird Unchanged im Change Tracker; Ereignis
+  ChangeTracker.Tracked. Anwendung}
+  \flowstep{Relationship Fixup}{Navigationen zu bereits geladenen Entitäten werden
+  verbunden. EF-intern}
+  \flowstep{Abfrageergebnis}{Liste, Enumerator oder Einzelwert}
+\end{flowdiagram}
+
+Die Identity-Prüfung steht \emph{vor} dem Materializer: Eine Entität, die der Context
+bereits trackt, wird nicht ein zweites Mal erzeugt. Wo ein Plugin eingreifen kann und was
+EF für sich behält, zeigt die folgende Übersicht:
+
+\begin{datatable}{H{0.62}H{1.24}H{1.14}}
+  \textbf{Stufe} & \textbf{Eingriff für Plugins} & \textbf{EF-intern} \\
+  \tablehead
+  Ausführung & \code{IDb\allowbreak{}Command\allowbreak{}Interceptor} kann den Befehl ändern
+  oder einen eigenen \code{Db\allowbreak{}Data\allowbreak{}Reader} liefern
+  (Kapitel~\ref{ch:interceptors}) & Verbindung, Ausführungsstrategie, Wiederholungen \\
+  \tablerule
+  Shaping & Indirekt: Type Mapping und Value Converter bestimmen, wie Werte gelesen und
+  umgewandelt werden (Kapitel~\ref{ch:type-mappings-and-value-converters}) & Aufbau und
+  Kompilierung des Shapers \\
+  \tablerule
+  Materializer & \code{IMaterialization\allowbreak{}Interceptor} mit vier Haken;
+  Constructor Binding über das Modell & Wie EF Konstruktor und Werte zusammensetzt \\
+  \tablerule
+  Tracking & Ereignisse \code{Tracked} und \code{State\allowbreak{}Changed} des Change
+  Trackers (Anwendung) & Identity Map, Zustände, Schnappschüsse für die Änderungserkennung
+  \\
+  \tablerule
+  Fixup & Kein Haken & Navigation Fixer \\
+\end{datatable}
+
+\section{Shaping: der kompilierte Rückweg}
+
+Beim Übersetzen einer Abfrage entsteht nicht nur SQL, sondern auch ein \textbf{Shaper}: ein
+Ausdrucksbaum, der beschreibt, wie aus einer Zeile des
+\code{Db\allowbreak{}Data\allowbreak{}Reader} das Ergebnis wird. EF kompiliert ihn zu einem
+Delegaten und cacht ihn zusammen mit dem SQL pro Abfrageform
+(Kapitel~\ref{ch:the-query-pipeline}). Pro Zeile läuft nur noch dieser Delegat, ohne
+Nachschlagen im Modell.
+
+Das hat eine wichtige Folge: Alles, was den Shaper prägt, wird beim Übersetzen entschieden,
+nicht beim Ausführen. Dazu gehören die Lesemethode des Type Mappings, der Value Converter,
+der gewählte Konstruktor und die registrierten Materialization-Interceptors. Für
+\code{Tenant\allowbreak{}Id} liest der Shaper den Providerwert (\code{Guid}) und wendet den
+Ausdruck des \code{Tenant\allowbreak{}Id\allowbreak{}Converter} an, der in den Shaper
+einkompiliert ist. Werte in JSON-Spalten liest er über den
+\code{Json\allowbreak{}Value\allowbreak{}Reader\allowbreak{}Writer} des Mappings. Kein
+Plugin-Code muss dafür pro Wert laufen; deshalb ist ein Value Converter für reine
+Wertumwandlung immer billiger als ein Interceptor.
+
+Eine Projektion wie \code{Select(\allowbreak{}o => o.\allowbreak{}Total)} erzeugt einen
+Shaper, der nur diese Spalte liest. Es entsteht keine Entität, und kein Materializer läuft.
+
+\section{Der Materializer: Instanz, Konstruktor, Felder}
+
+Für eine Entität erzeugt der Shaper zuerst eine Instanz und setzt dann die übrigen Werte.
+Welchen Konstruktor er verwendet, legt das Modell fest (Constructor Binding):
+
+\begin{datatable}{H{0.65}H{1.35}}
+  \textbf{Regel} & \textbf{Verhalten in EF Core 10} \\
+  \tablehead
+  Parameterloser Konstruktor & Ist einer vorhanden, auch ein privater, verwendet EF ihn. \\
+  \tablerule
+  Konstruktor mit Parametern & Sonst einer, dessen Parameter nach Name und Typ zu gemappten
+  Properties passen. Diese Properties setzt EF danach nicht noch einmal. \\
+  \tablerule
+  Dienste als Parameter & \code{Db\allowbreak{}Context}, \code{ILazy\allowbreak{}Loader} und
+  \code{IEntity\allowbreak{}Type} kann EF übergeben. \\
+  \tablerule
+  Übrige Properties & EF schreibt sie über das Backing-Field, wenn es eines gibt. Logik im
+  Setter läuft beim Laden deshalb \emph{nicht}. \\
+  \tablerule
+  Shadow-Properties & Haben kein Feld; beim Tracking liegen ihre Werte im Change Tracker. \\
+  \tablerule
+  Owned Types & Sind Entity-Typen und werden einzeln materialisiert. \\
+  \tablerule
+  Complex Types & Gehören zur Entität und werden mit ihr materialisiert, ohne eigenen
+  Durchlauf. \\
+\end{datatable}
+
+Dass Setter beim Laden nicht laufen, ist gewollt: Laden ist kein Erzeugen. Prüfungen, die
+beim Anlegen oder Ändern greifen sollen, gehören in Konstruktor und Methoden der Domäne. Was
+beim Laden gilt, garantiert die Datenbank.
+
+\section{Tracking, Identity Resolution und Fixup}
+
+Was nach dem Materializer passiert, hängt vom Tracking-Verhalten der Abfrage ab:
+
+\begin{datatable}{H{0.80}H{1.10}H{1.10}}
+  \textbf{Modus} & \textbf{Identität} & \textbf{Fixup} \\
+  \tablehead
+  Tracking (Standard) & Vor dem Materializer prüft EF den Schlüssel im Change Tracker. Bei
+  einem Treffer gibt es die vorhandene Instanz zurück, unverändert: Lokale Änderungen
+  bleiben, neue Werte aus der Datenbank werden verworfen. & Neue Instanzen werden Unchanged;
+  EF verbindet Navigationen zu allen getrackten Entitäten, auch aus früheren Abfragen. \\
+  \tablerule
+  \code{As\allowbreak{}No\allowbreak{}Tracking} & Jede Zeile ergibt eine neue Instanz, auch
+  dieselbe Entität mehrfach. & Nur innerhalb des Ergebnisses: Der Shaper verbindet, was über
+  \code{Include} geladen wurde. \\
+  \tablerule
+  \code{As\allowbreak{}No\allowbreak{}Tracking\allowbreak{}With\allowbreak{}Identity\allowbreak{}Resolution}
+  & Eine Identity Map nur für diese Abfrage: Dieselbe Entität wird einmal materialisiert. &
+  Wie ohne Tracking; danach trackt niemand die Instanzen. \\
+\end{datatable}
+
+\textbf{Relationship Fixup} ist EF-intern. Ein Plugin kann es nicht beeinflussen, eine
+Anwendung kann es über \code{Change\allowbreak{}Tracker.\allowbreak{}Tracked} und
+\code{State\allowbreak{}Changed} beobachten.
+
+\begin{important}[IIdentityResolutionInterceptor ist kein Materialisierungs-Haken]
+  Der Name legt es nahe, aber \code{IIdentity\allowbreak{}Resolution\allowbreak{}Interceptor}
+  (Scoped, mehrfach) läuft bei Abfragen nie. Er greift, wenn
+  \code{Attach}, \code{Update} oder \code{Add} eine Instanz mit einem Schlüssel anhängen
+  wollen, den der Context schon trackt, und entscheidet, was mit der getrackten Instanz
+  geschieht. EF liefert dafür
+  \code{Ignoring\allowbreak{}Identity\allowbreak{}Resolution\allowbreak{}Interceptor} und
+  \code{Updating\allowbreak{}Identity\allowbreak{}Resolution\allowbreak{}Interceptor} mit.
+  Abfragen lösen Identität ohne ihn: beim Tracking über den Change Tracker, sonst wie in der
+  Tabelle oben.
+\end{important}
+
+\section{IMaterializationInterceptor im Detail}
+
+\code{IMaterialization\allowbreak{}Interceptor} hat vier Haken, die EF für jede Entität in
+dieser Reihenfolge aufruft. Alle haben eine Standardimplementierung; ein Plugin überschreibt
+nur, was es braucht.
+
+\begin{datatable}{H{0.75}H{1.05}H{1.20}}
+  \textbf{Methode} & \textbf{Zeitpunkt} & \textbf{Möglichkeiten} \\
+  \tablehead
+  \code{Creating\allowbreak{}Instance} & Vor dem Konstruktor & Werte der Zeile lesen, auch
+  Shadow-Properties; mit \code{Suppress\allowbreak{}With\allowbreak{}Result} eine eigene
+  Instanz liefern \\
+  \tablerule
+  \code{Created\allowbreak{}Instance} & Nach dem Konstruktor & Über den Konstruktor gesetzte
+  Werte sind da; eine andere Instanz zurückgeben \\
+  \tablerule
+  \code{Initializing\allowbreak{}Instance} & Vor dem Setzen der übrigen Werte & Mit
+  \code{Suppress} das Setzen selbst übernehmen \\
+  \tablerule
+  \code{Initialized\allowbreak{}Instance} & Alle Werte gesetzt & Prüfen, ergänzen oder eine
+  andere Instanz zurückgeben \\
+\end{datatable}
+
+Jede Methode bekommt
+\code{Materialization\allowbreak{}Interception\allowbreak{}Data}: den Context, den
+\code{IEntity\allowbreak{}Type}, das Tracking-Verhalten der Abfrage und
+\code{Get\allowbreak{}Property\allowbreak{}Value} für die Werte der Zeile. Weil der Typ ein
+\code{IEntity\allowbreak{}Type} ist, laufen Complex Types nicht einzeln durch den
+Interceptor, Owned Types dagegen schon. Der Konstruktor der Struktur ist EF-intern; Tests
+rufen deshalb nicht die Haken auf, sondern die Logik dahinter (siehe unten).
+
+\begin{important}[Lebensdauer: ein Singleton, einkompiliert in den Shaper]
+  Der Interceptor ist ein \code{ISingleton\allowbreak{}Interceptor}. EF baut ihn beim
+  Übersetzen in den Shaper ein, und der Shaper wird pro internem Service Provider gecacht.
+  Eine Instanz bedient deshalb alle Contexts und alle Threads gleichzeitig; sie muss
+  zustandslos und threadsicher sein. Daten einer Anfrage holt sie bei jedem Aufruf über
+  \code{materialization\allowbreak{}Data.\allowbreak{}Context}.
+
+  Singleton-Interceptor-Instanzen gehören außerdem zum Cache-Schlüssel des internen
+  Providers. Wer pro Context eine neue Instanz über
+  \code{Add\allowbreak{}Interceptors} übergibt, bekommt pro Context einen neuen internen
+  Provider samt Modell; ab dem 21. bricht EF standardmäßig mit
+  \code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}
+  ab. Ein Plugin registriert ihn in \code{Apply\allowbreak{}Services}; eine Anwendung
+  übergibt stets dieselbe Instanz.
+\end{important}
+
+\section{Beispiel: Mandanten beim Laden prüfen}
+
+Kapitel~\ref{ch:interceptors} zeigt eine echte Lücke: Übergibt die Anwendung eine bereits
+geöffnete Verbindung, läuft der Connection-Interceptor nicht, und eine Abfrage liefert still
+die Zeilen des Mandanten, dessen Wert noch in der Session steht. Dasselbe passiert, wenn die
+Anwendung versehentlich mit einer Rolle verbindet, die RLS umgeht. Das Plugin bietet dafür
+eine optionale Prüfung an, die genau an der richtigen Stelle sitzt: Jede mandantenfähige
+Entität, die eine Abfrage materialisiert, muss zum Mandanten des Contexts gehören.
+
+\begin{sourcecode}[Anwendung]{csharp}
+options.UseNpgsql(connectionString)
+       .UseAcmeTenancy(sp, tenancy => tenancy.VerifyMaterializedTenants());
+\end{sourcecode}
+
+\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Materialization\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}Kernpaket,\allowbreak{} gekürzt)]{csharp}
+public class TenantMaterializationInterceptor : IMaterializationInterceptor
+{
+    public virtual InterceptionResult<object> CreatingInstance(
+        MaterializationInterceptionData materializationData,
+        InterceptionResult<object> result)
+    {
+        Verify(materializationData.Context, materializationData.EntityType,
+            materializationData.GetPropertyValue);
+
+        return result;
+    }
+
+    internal static void Verify(
+        DbContext context, IEntityType entityType, Func<string, object?> readValue)
+    {
+        // Laufzeit-Annotation der Isolations-Convention; ohne sie keine Isolation
+        if (entityType.GetTenantPropertyName() is not { } propertyName)
+            return;
+
+        // Bei jeder Zeile nachschlagen, nie merken: Diese Instanz teilen sich alle Contexts
+        var current = FindTenantProvider(context).CurrentTenantId;
+        var value = (TenantId)readValue(propertyName)!;
+
+        if (value != current)
+            throw new TenancyException("... Row level security did not take effect ...");
+    }
+
+    // FindTenantProvider: über die Interceptors des Contexts (wie ApplyTenantSession) zum
+    // ITenantProvider, den der SaveChanges-Interceptor dieses Contexts trägt
+}
+\end{sourcecode}
+
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Apply\allowbreak{}Services (\allowbreak{}Ergänzung)]{csharp}
+// Optionale Prüfung beim Laden: ein Singleton-Interceptor im internen Provider, eine
+// Instanz pro Provider. Die Einstellung steht im Settings-Record und damit im Hash.
+if (Settings.VerifyMaterializedTenants)
+    new EntityFrameworkServicesBuilder(services)
+        .TryAdd<ISingletonInterceptor, TenantMaterializationInterceptor>();
+\end{sourcecode}
+
+\begin{datatable}{H{0.70}H{1.30}}
+  \textbf{Entscheidung} & \textbf{Begründung} \\
+  \tablehead
+  \code{Creating\allowbreak{}Instance} statt
+  \code{Initialized\allowbreak{}Instance} & Die Prüfung liest den Wert aus der Zeile. Eine
+  fremde Zeile wird nie zum Objekt, und die Mandanten-Property darf eine Shadow-Property
+  sein. \\
+  \tablerule
+  Laufzeit-Annotation & Welche Entität isoliert ist und wie ihre Mandanten-Property heißt,
+  steht seit dem Modellbau am Entity-Typ
+  (Kapitel~\ref{ch:property-level-fluent-api-and}). Kein Raten zur Laufzeit. \\
+  \tablerule
+  Mandant pro Aufruf & Über den Context zum \code{ITenant\allowbreak{}Provider} dieses
+  Contexts. Kostet pro Entität ein Nachschlagen und einen Vergleich; deshalb ist die Prüfung
+  optional. \\
+  \tablerule
+  Kein Mandant & Ohne Mandanten liefert RLS keine Zeilen. Kommt trotzdem eine, wirkt RLS
+  nicht, und die Prüfung schlägt an. \\
+  \tablerule
+  Im Kernpaket & Die Prüfung kennt weder SQL noch Provider-Typen
+  (Kapitel~\ref{ch:what-belongs-in-the-core}); beide Provider-Pakete aktivieren sie mit einer
+  Zeile. \\
+\end{datatable}
+
+Die Integrationstests stellen die Lücke aus Kapitel~\ref{ch:interceptors} nach: Ein Context
+für Mandant A über eine Verbindung, deren Session noch Mandant B trägt. Ohne Prüfung liefert
+die Abfrage die Zeilen von B, mit Prüfung wirft sie eine
+\code{Tenancy\allowbreak{}Exception}. Eigene Zeilen passieren mit und ohne Tracking und
+über \code{From\allowbreak{}Sql}.
+
+\section{Der Fehlerfall: Anfragedaten im Singleton}
+
+Der naheliegende erste Entwurf übergibt dem Interceptor den Mandanten im Konstruktor und
+erzeugt ihn wie die anderen Interceptors pro Context. Das scheitert am Cache-Schlüssel: Jeder
+Context bekommt einen eigenen internen Provider. Der naheliegende zweite Entwurf teilt eine
+Instanz und merkt sich den Mandanten beim ersten Aufruf, um das Nachschlagen pro Zeile zu
+sparen:
+
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Materialization\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}FALSCH,\allowbreak{} gekürzt)]{csharp}
+private sealed class RememberingTenantInterceptor : IMaterializationInterceptor
+{
+    private TenantId? _tenant;                       // Anfragedaten in einem Singleton
+
+    public InterceptionResult<object> CreatingInstance(
+        MaterializationInterceptionData materializationData,
+        InterceptionResult<object> result)
+    {
+        // "Optimierung": den Mandanten nur einmal ermitteln
+        _tenant ??= _tenantOf(materializationData.Context);
+
+        if (materializationData.GetPropertyValue<TenantId>(nameof(Order.TenantId)) != _tenant)
+            throw new TenancyException("Row of another tenant.");
+
+        return result;
+    }
+}
+\end{sourcecode}
+
+Der Test zeigt beide Folgen. Die zweite Anfrage für Mandant B bekommt einen Fehler für ihre
+eigenen Zeilen, weil der Interceptor sich Mandant A gemerkt hat. Schlimmer: Ein Context für
+B über eine Verbindung, deren Session noch A trägt, liefert die Zeilen von A, und der
+gemerkte Mandant A lässt sie passieren. Die Prüfung verhindert das Leck nicht, sie verdeckt
+es. Unter Last kommt eine Race Condition hinzu, denn alle Threads schreiben dasselbe Feld.
+
+\begin{tip}
+  Ein Singleton-Interceptor hat nur zwei Quellen für Daten: was zur Konfiguration gehört
+  (über Konstruktor oder Singleton-Options, für alle Contexts gleich) und was der Aufruf
+  mitbringt (\code{Context}, Entity-Typ, Werte der Zeile). Alles andere gehört in die
+  Anwendung oder in einen Scoped-Dienst, den der Interceptor über den Context erreicht.
+\end{tip}
+
+\section{Grenzen}
+
+\begin{datatable}{H{0.65}H{1.35}}
+  \textbf{Grenze} & \textbf{Folge} \\
+  \tablehead
+  Nur Entitäten & Projektionen einzelner Spalten oder in DTOs laufen nicht durch den
+  Materializer. Ein Integrationstest belegt, dass
+  \code{Select(\allowbreak{}o => o.\allowbreak{}Total)} auch Werte eines fremden Mandanten
+  ungeprüft liefert; schützen kann hier nur die Datenbank. \\
+  \tablerule
+  Keine getrackten Entitäten & Ist eine Entität schon getrackt, wird sie nicht erneut
+  materialisiert; der Interceptor sieht nur die erste Abfrage. \\
+  \tablerule
+  Kein Filter & Zeilen auslassen kann der Interceptor nicht, nur werfen oder die Instanz
+  ersetzen. Filtern ist Aufgabe von Query-Filter oder Datenbank. \\
+  \tablerule
+  Kein SQL & Er sieht das Ergebnis, nicht die Abfrage; \code{Execute\allowbreak{}Update},
+  \code{Execute\allowbreak{}Delete} und Skalarabfragen materialisieren nichts. \\
+  \tablerule
+  Heißer Pfad & Er läuft für jede Entität jeder Abfrage
+  (Kapitel~\ref{ch:plugin-performance}); teure Arbeit vervielfacht sich mit der
+  Ergebnisgröße. \\
+  \tablerule
+  Exception bricht die Abfrage ab & Auch alle übrigen Zeilen sind verloren. Das ist für eine
+  Sicherheitsprüfung richtig, für eine Bequemlichkeitsfunktion nicht. \\
+\end{datatable}
+
+\section{Wann Materialisierung, wann etwas anderes?}
+
+Der Interceptor ist der richtige Ort für Querschnittsaufgaben, die \emph{jede} geladene
+Entität betreffen, über alle Abfragen, mit und ohne Tracking, auch bei rohem SQL. Für fast
+alles andere gibt es einen einfacheren und günstigeren Weg:
+
+\begin{datatable}{H{1.00}H{0.95}H{1.05}}
+  \textbf{Ziel} & \textbf{Besser} & \textbf{Warum} \\
+  \tablehead
+  Einen Wert anders speichern als darstellen (Format, Typ, Verschlüsselung) & Value
+  Converter & Wirkt in beide Richtungen und in Parametern, einkompiliert statt pro Aufruf \\
+  \tablerule
+  Unveränderliche Objekte, Invarianten & Constructor Binding & EF ruft den Konstruktor
+  selbst auf \\
+  \tablerule
+  Nur einige Spalten oder ein DTO & Projektion mit \code{Select} & Keine Entität, kein
+  Tracking, weniger Daten \\
+  \tablerule
+  Dieselbe Einstellung für viele Typen (Konverter, Feldzugriff) & Convention & Einmal beim
+  Modellbau statt bei jeder Zeile \\
+  \tablerule
+  Abgeleitete Werte, Geschäftsregeln & Domänenlogik (Methode, berechnete Property) & Laden
+  ist kein Geschäftsvorfall \\
+  \tablerule
+  Reagieren, wenn eine Anwendung Entitäten lädt & \code{Change\allowbreak{}Tracker.\allowbreak{}Tracked}
+  & Öffentliche API ohne Plugin; nur bei Tracking \\
+  \tablerule
+  Prüfung oder Ergänzung jeder geladenen Entität, auch ohne Tracking &
+  \code{IMaterialization\allowbreak{}Interceptor} & Der einzige Haken, der alle Wege zur
+  Entität sieht \\
+\end{datatable}

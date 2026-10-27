@@ -29,7 +29,7 @@ backed by more than 100 tests.
 | English | [EF-Core-Plugin-Handbook.pdf](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/docs/handbook/out/EF-Core-Plugin-Handbook.pdf) | [`docs/handbook/en`](https://github.com/guenni81/EF-Core-Plugin-Handbook/tree/main/docs/handbook/en) |
 | Deutsch | [EF-Core-Plugin-Handbuch.pdf](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/docs/handbook/out/EF-Core-Plugin-Handbuch.pdf) | [`docs/handbook/de`](https://github.com/guenni81/EF-Core-Plugin-Handbook/tree/main/docs/handbook/de) |
 
-43 chapters in 9 parts plus 4 appendices, about 130 pages, for developers who already use
+44 chapters in 9 parts plus 4 appendices, about 130 pages, for developers who already use
 EF Core and want to extend it. The PDFs are typeset with LaTeX (LuaLaTeX) so that text and
 code excerpts are versioned together with the code. See [`docs/handbook/README.md`](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/docs/handbook/README.md)
 for how to build them.
@@ -107,21 +107,22 @@ per table (FILTER and BLOCK predicates) and `SESSION_CONTEXT`.
 | Composability | Tested together with EFCore.NamingConventions | 9 |
 | Type mapping | `TenantId` → `uuid` via `IRelationalTypeMappingSourcePlugin`, JSON, compiled models | 11 |
 | Queries | `EF.Functions.CurrentTenant()`, `TenantId.IsEmpty`, `IEvaluatableExpressionFilterPlugin` | 12–15 |
-| Run time | SaveChanges and connection interceptors, `Database.ApplyTenantSession()` | 16 |
-| Diagnostics | Custom event IDs, `EventDefinition`, warning-as-error, `DiagnosticSource` | 17 |
-| Migrations | Annotation-driven RLS, custom operations (roles, privileges) | 18–20, 33 |
-| Design time | Annotation code generator, `[DesignTimeServicesReference]` | 21–23 |
-| Testing | Model, SQL, snapshot round-trip, compiled model and Testcontainers tests | 24 |
-| Shipping | Versioning, stable annotation formats, packaging, CI, Public API analyzer | 25–26, 37 |
-| Value generation | `TenantId` keys via convention and `HasValueGeneratorFactory(Type)` | 29 |
-| Operations | RLS pitfalls, PgBouncer, legitimate cross-tenant access | 34 |
-| Performance | BenchmarkDotNet project with measured overhead of the SaveChanges logic | 35 |
-| ASP.NET Core | `samples/ShopApi`, DbContext factories, background jobs | 36 |
-| Custom SQL nodes | `EF.Functions.IsNotDistinctFrom` with SQL generator and nullability processor | 38 |
-| Aggregates | `EF.Functions.Every` (`bool_and`) with FILTER/DISTINCT support | 39 |
-| Runtime annotations | Tenant property in the compiled model, design-time annotations filtered | 40 |
-| Scaffolding | RLS and policies are read back from the database | 41 |
-| Second provider | SQL Server: security policies and `SESSION_CONTEXT` on the same core | 42–43 |
+| Materialization | Shaping, constructor binding, tracking; `VerifyMaterializedTenants()` checks every loaded entity in a singleton interceptor | 16 |
+| Run time | SaveChanges and connection interceptors, `Database.ApplyTenantSession()` | 17 |
+| Diagnostics | Custom event IDs, `EventDefinition`, warning-as-error, `DiagnosticSource` | 18 |
+| Migrations | Annotation-driven RLS, custom operations (roles, privileges) | 19–21, 34 |
+| Design time | Annotation code generator, `[DesignTimeServicesReference]` | 22–24 |
+| Testing | Model, SQL, snapshot round-trip, compiled model and Testcontainers tests | 25 |
+| Shipping | Versioning, stable annotation formats, packaging, CI, Public API analyzer | 26–27, 38 |
+| Value generation | `TenantId` keys via convention and `HasValueGeneratorFactory(Type)` | 30 |
+| Operations | RLS pitfalls, PgBouncer, legitimate cross-tenant access | 35 |
+| Performance | BenchmarkDotNet project with measured overhead of the SaveChanges logic | 36 |
+| ASP.NET Core | `samples/ShopApi`, DbContext factories, background jobs | 37 |
+| Custom SQL nodes | `EF.Functions.IsNotDistinctFrom` with SQL generator and nullability processor | 39 |
+| Aggregates | `EF.Functions.Every` (`bool_and`) with FILTER/DISTINCT support | 40 |
+| Runtime annotations | Tenant property in the compiled model, design-time annotations filtered | 41 |
+| Scaffolding | RLS and policies are read back from the database | 42 |
+| Second provider | SQL Server: security policies and `SESSION_CONTEXT` on the same core | 43–44 |
 | Debugging | Model debug view, resolved services, convention set, query trees, logging | App. D |
 
 ## Repository layout

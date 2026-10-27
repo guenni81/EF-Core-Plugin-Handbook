@@ -23,4 +23,10 @@ public sealed record TenancySettings
 
     /// <summary>Create an index on the tenant column if none starts with it.</summary>
     public bool CreateTenantIndex { get; init; } = true;
+
+    /// <summary>
+    /// Check every materialized tenant-owned entity against the current tenant (defense in
+    /// depth, off by default). Registers a singleton materialization interceptor.
+    /// </summary>
+    public bool VerifyMaterializedTenants { get; init; }
 }

@@ -1,10 +1,12 @@
 using Acme.EntityFrameworkCore.Tenancy.Diagnostics;
+using Acme.EntityFrameworkCore.Tenancy.Interceptors;
 using Acme.EntityFrameworkCore.Tenancy.Query;
 using Acme.EntityFrameworkCore.Tenancy.SqlServer.Conventions;
 using Acme.EntityFrameworkCore.Tenancy.SqlServer.Metadata.Internal;
 using Acme.EntityFrameworkCore.Tenancy.SqlServer.Migrations.Internal;
 using Acme.EntityFrameworkCore.Tenancy.SqlServer.Query;
 using Acme.EntityFrameworkCore.Tenancy.SqlServer.Storage;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions.Infrastructure;
@@ -74,6 +76,12 @@ public class SqlServerTenancyOptionsExtension : IDbContextOptionsExtension
             .TryAddProviderSpecificServices(m => m
                 .TryAddSingleton<ISqlServerTenancySingletonOptions, SqlServerTenancySingletonOptions>()
                 .TryAddSingleton<TenancyLoggingDefinitions, TenancyLoggingDefinitions>());
+
+        // Optional materialization check from the core package; a singleton interceptor in the
+        // internal provider, part of the hash through the settings
+        if (Settings.VerifyMaterializedTenants)
+            new EntityFrameworkServicesBuilder(services)
+                .TryAdd<ISingletonInterceptor, TenantMaterializationInterceptor>();
 
         // Single-instance services of the provider: replace them; the classes derive from the
         // SQL Server implementations, so all non-tenancy behaviour stays unchanged

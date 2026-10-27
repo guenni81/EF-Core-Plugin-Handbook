@@ -421,6 +421,8 @@ For every new plugin, in the order of development:
 \begin{checklist}
   \item Implement interceptors synchronously and asynchronously.
   \item Singleton interceptors stateless and thread-safe.
+  \item Register singleton interceptors in ApplyServices or pass one shared instance, never a
+    new one per context; get per-request data on every call through the context.
   \item Own event IDs in an own range, EventDefinitions cached.
   \item Security-relevant cases as warnings, escalatable via ConfigureWarnings.
   \item Where hooks cannot run, offer an explicit API (e.g. ApplyTenantSession).

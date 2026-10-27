@@ -1,12 +1,14 @@
 % ============================================================
 \setpartpreamble{\partintro
-  {How LINQ becomes SQL and how a plugin translates its own functions and members.}
+  {How LINQ becomes SQL, how a plugin translates its own functions and members, and how rows
+  become objects again.}
   {
     \item Chapter~\ref{ch:the-query-pipeline}: The query pipeline
     \item Chapter~\ref{ch:translating-methods-and-members}: Translating methods and members
     \item Chapter~\ref{ch:preventing-client-side-evaluation}: Preventing client-side
     evaluation
     \item Chapter~\ref{ch:further-query-extension-points}: Further query extension points
+    \item Chapter~\ref{ch:materialization-from-rows-to-objects}: Materialization: from rows to objects
   }}
 \part{Queries}\label{part:IV}
 
@@ -26,7 +28,8 @@ each stage sits tells you where a plugin has to hook in:
   aggregate translators}
   \flowstep{Postprocessing}{Nullability optimization, parameter-dependent adjustments}
   \flowstep{SQL generation}{QuerySqlGenerator writes the SQL text}
-  \flowstep{Materialization}{Rows become objects. Plugin: IMaterializationInterceptor}
+  \flowstep{Materialization}{Rows become objects (chapter~\ref{ch:materialization-from-rows-to-objects}). Plugin:
+  IMaterializationInterceptor}
 \end{flowdiagram}
 
 The compiled query is cached. Translators therefore run only once per query shape, not on
@@ -290,7 +293,8 @@ an overview with classification:
   tree before translation & Singleton interceptor; ideal for query rewrites, tags, hints \\
   \tablerule
   \code{IMaterialization\allowbreak{}Interceptor} & Create, initialize or check objects
-  during materialization & Singleton interceptor; must be stateless and thread-safe \\
+  during materialization & Singleton interceptor; must be stateless and thread-safe;
+  implemented in chapter~\ref{ch:materialization-from-rows-to-objects} \\
   \tablerule
   \code{IMethod\allowbreak{}Call\allowbreak{}Translator\allowbreak{}Provider} etc. & Replace
   translator infrastructure & Single provider services; only in exceptional cases \\
@@ -314,3 +318,377 @@ an overview with classification:
   depend on options and model, never on runtime state. The sample meets this: the setting
   name is an option; the tenant itself is only evaluated in the database session.
 \end{note}
+
+% ------------------------------------------------------------
+\chapter{Materialization: from rows to objects}\label{ch:materialization-from-rows-to-objects}
+
+The previous chapters of this part describe the way there: LINQ becomes SQL.
+Chapter~\ref{ch:the-update-pipeline} describes the way from entities to INSERT, UPDATE and
+DELETE. This chapter closes the circle and describes the way back: how do the rows the
+database returns become objects, and where can a plugin intervene?
+
+\section{The way back at a glance}
+
+\begin{flowdiagram}
+  \flowstep{SQL execution}{The command runs; a command interceptor sees it before and
+  after. Plugin: IDbCommandInterceptor}
+  \flowstep{DbDataReader}{One row after the other, columns in the order of the projection.
+  EF internal}
+  \flowstep{Shaping}{The compiled shaper reads the columns, converts values through the type
+  mapping and builds the result. EF internal, driven by model and type mappings}
+  \flowstep{Identity check}{With tracking: if the entity is already in the change tracker,
+  the existing instance is used. EF internal}
+  \flowstep{Materializer}{Call the constructor, set properties and fields. Plugin:
+  IMaterializationInterceptor; model: constructor binding}
+  \flowstep{CLR instance}{The finished object}
+  \flowstep{Tracking}{The instance becomes Unchanged in the change tracker; event
+  ChangeTracker.Tracked. Application}
+  \flowstep{Relationship fixup}{Navigations to entities already loaded are connected. EF
+  internal}
+  \flowstep{Query result}{List, enumerator or single value}
+\end{flowdiagram}
+
+The identity check comes \emph{before} the materializer: an entity the context already
+tracks is not created a second time. The following overview shows where a plugin can
+intervene and what EF keeps to itself:
+
+\begin{datatable}{H{0.62}H{1.24}H{1.14}}
+  \textbf{Stage} & \textbf{Intervention for plugins} & \textbf{EF internal} \\
+  \tablehead
+  Execution & \code{IDb\allowbreak{}Command\allowbreak{}Interceptor} can change the command or
+  supply its own \code{Db\allowbreak{}Data\allowbreak{}Reader} (chapter~\ref{ch:interceptors})
+  & Connection, execution strategy, retries \\
+  \tablerule
+  Shaping & Indirectly: type mapping and value converter determine how values are read and
+  converted (chapter~\ref{ch:type-mappings-and-value-converters}) & Building and compiling
+  the shaper \\
+  \tablerule
+  Materializer & \code{IMaterialization\allowbreak{}Interceptor} with four hooks; constructor
+  binding through the model & How EF combines constructor and values \\
+  \tablerule
+  Tracking & The change tracker's \code{Tracked} and \code{State\allowbreak{}Changed} events
+  (application) & Identity map, states, snapshots for change detection \\
+  \tablerule
+  Fixup & No hook & Navigation fixer \\
+\end{datatable}
+
+\section{Shaping: the compiled way back}
+
+Translating a query produces not only SQL but also a \textbf{shaper}: an expression tree
+that describes how a row of the \code{Db\allowbreak{}Data\allowbreak{}Reader} becomes the
+result. EF compiles it into a delegate and caches it together with the SQL per query shape
+(chapter~\ref{ch:the-query-pipeline}). Per row, only this delegate runs, without looking
+anything up in the model.
+
+This has an important consequence: everything that shapes the shaper is decided at
+translation time, not at execution time. That includes the type mapping's reader method,
+the value converter, the chosen constructor and the registered materialization
+interceptors. For \code{Tenant\allowbreak{}Id}, the shaper reads the provider value
+(\code{Guid}) and applies the expression of the
+\code{Tenant\allowbreak{}Id\allowbreak{}Converter}, which is compiled into the shaper.
+Values in JSON columns are read through the mapping's
+\code{Json\allowbreak{}Value\allowbreak{}Reader\allowbreak{}Writer}. No plugin code has to
+run per value; that is why a value converter is always cheaper than an interceptor for pure
+value conversion.
+
+A projection such as \code{Select(\allowbreak{}o => o.\allowbreak{}Total)} produces a shaper
+that only reads that column. No entity is created and no materializer runs.
+
+\section{The materializer: instance, constructor, fields}
+
+For an entity, the shaper first creates an instance and then sets the remaining values.
+Which constructor it uses is determined by the model (constructor binding):
+
+\begin{datatable}{H{0.65}H{1.35}}
+  \textbf{Rule} & \textbf{Behavior in EF Core 10} \\
+  \tablehead
+  Parameterless constructor & If there is one, even a private one, EF uses it. \\
+  \tablerule
+  Constructor with parameters & Otherwise one whose parameters match mapped properties by
+  name and type. EF does not set these properties a second time. \\
+  \tablerule
+  Services as parameters & EF can pass \code{Db\allowbreak{}Context},
+  \code{ILazy\allowbreak{}Loader} and \code{IEntity\allowbreak{}Type}. \\
+  \tablerule
+  Other properties & EF writes them through the backing field if there is one. Logic in the
+  setter therefore does \emph{not} run when loading. \\
+  \tablerule
+  Shadow properties & Have no field; with tracking their values live in the change tracker.
+  \\
+  \tablerule
+  Owned types & Are entity types and are materialized individually. \\
+  \tablerule
+  Complex types & Belong to the entity and are materialized with it, without a pass of
+  their own. \\
+\end{datatable}
+
+That setters do not run when loading is intentional: loading is not creating. Checks that
+should apply when creating or changing belong in the domain's constructors and methods. What
+holds when loading is guaranteed by the database.
+
+\section{Tracking, identity resolution and fixup}
+
+What happens after the materializer depends on the query's tracking behavior:
+
+\begin{datatable}{H{0.80}H{1.10}H{1.10}}
+  \textbf{Mode} & \textbf{Identity} & \textbf{Fixup} \\
+  \tablehead
+  Tracking (default) & Before the materializer, EF looks up the key in the change tracker.
+  On a hit it returns the existing instance unchanged: local changes stay, new values from
+  the database are discarded. & New instances become Unchanged; EF connects navigations to
+  all tracked entities, including those from earlier queries. \\
+  \tablerule
+  \code{As\allowbreak{}No\allowbreak{}Tracking} & Every row yields a new instance, even the
+  same entity several times. & Only within the result: the shaper connects what was loaded
+  with \code{Include}. \\
+  \tablerule
+  \code{As\allowbreak{}No\allowbreak{}Tracking\allowbreak{}With\allowbreak{}Identity\allowbreak{}Resolution}
+  & An identity map for this query only: the same entity is materialized once. & As without
+  tracking; afterwards nobody tracks the instances. \\
+\end{datatable}
+
+\textbf{Relationship fixup} is EF internal. A plugin cannot influence it; an application can
+observe it through \code{Change\allowbreak{}Tracker.\allowbreak{}Tracked} and
+\code{State\allowbreak{}Changed}.
+
+\begin{important}[IIdentityResolutionInterceptor is not a materialization hook]
+  The name suggests otherwise, but \code{IIdentity\allowbreak{}Resolution\allowbreak{}Interceptor}
+  (scoped, multiple) never runs for queries. It applies when \code{Attach}, \code{Update} or
+  \code{Add} want to attach an instance with a key the context already tracks, and decides
+  what happens to the tracked instance. EF ships
+  \code{Ignoring\allowbreak{}Identity\allowbreak{}Resolution\allowbreak{}Interceptor} and
+  \code{Updating\allowbreak{}Identity\allowbreak{}Resolution\allowbreak{}Interceptor} for this.
+  Queries resolve identity without it: with tracking through the change tracker, otherwise as
+  in the table above.
+\end{important}
+
+\section{IMaterializationInterceptor in detail}
+
+\code{IMaterialization\allowbreak{}Interceptor} has four hooks that EF calls for every entity
+in this order. All of them have a default implementation; a plugin only overrides what it
+needs.
+
+\begin{datatable}{H{0.75}H{1.05}H{1.20}}
+  \textbf{Method} & \textbf{When} & \textbf{Options} \\
+  \tablehead
+  \code{Creating\allowbreak{}Instance} & Before the constructor & Read the row's values,
+  including shadow properties; supply your own instance with
+  \code{Suppress\allowbreak{}With\allowbreak{}Result} \\
+  \tablerule
+  \code{Created\allowbreak{}Instance} & After the constructor & Values set through the
+  constructor are present; return a different instance \\
+  \tablerule
+  \code{Initializing\allowbreak{}Instance} & Before the remaining values are set & Take over
+  setting them with \code{Suppress} \\
+  \tablerule
+  \code{Initialized\allowbreak{}Instance} & All values set & Check, complete or return a
+  different instance \\
+\end{datatable}
+
+Every method receives \code{Materialization\allowbreak{}Interception\allowbreak{}Data}: the
+context, the \code{IEntity\allowbreak{}Type}, the query's tracking behavior and
+\code{Get\allowbreak{}Property\allowbreak{}Value} for the row's values. Because the type is
+an \code{IEntity\allowbreak{}Type}, complex types do not pass through the interceptor
+individually, while owned types do. The struct's constructor is EF internal; tests therefore
+do not call the hooks but the logic behind them (see below).
+
+\begin{important}[Lifetime: a singleton, compiled into the shaper]
+  The interceptor is an \code{ISingleton\allowbreak{}Interceptor}. EF builds it into the
+  shaper at translation time, and the shaper is cached per internal service provider. One
+  instance therefore serves all contexts and all threads at the same time; it must be
+  stateless and thread-safe. It gets the data of a request on every call through
+  \code{materialization\allowbreak{}Data.\allowbreak{}Context}.
+
+  Singleton interceptor instances are also part of the internal provider's cache key.
+  Passing a new instance per context through \code{Add\allowbreak{}Interceptors} creates a
+  new internal provider including model for every context; from the 21st on, EF throws by
+  default with
+  \code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}.
+  A plugin registers it in \code{Apply\allowbreak{}Services}; an application always passes
+  the same instance.
+\end{important}
+
+\section{Example: checking tenants while loading}
+
+Chapter~\ref{ch:interceptors} shows a real gap: if the application passes a connection that
+is already open, the connection interceptor does not run, and a query silently returns the
+rows of the tenant whose value is still in the session. The same happens if the application
+accidentally connects with a role that bypasses RLS. The plugin offers an optional check for
+this that sits exactly in the right place: every tenant-owned entity a query materializes
+must belong to the context's tenant.
+
+\begin{sourcecode}[Application]{csharp}
+options.UseNpgsql(connectionString)
+       .UseAcmeTenancy(sp, tenancy => tenancy.VerifyMaterializedTenants());
+\end{sourcecode}
+
+\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Materialization\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}core package,\allowbreak{} shortened)]{csharp}
+public class TenantMaterializationInterceptor : IMaterializationInterceptor
+{
+    public virtual InterceptionResult<object> CreatingInstance(
+        MaterializationInterceptionData materializationData,
+        InterceptionResult<object> result)
+    {
+        Verify(materializationData.Context, materializationData.EntityType,
+            materializationData.GetPropertyValue);
+
+        return result;
+    }
+
+    internal static void Verify(
+        DbContext context, IEntityType entityType, Func<string, object?> readValue)
+    {
+        // Runtime annotation of the isolation convention; without it, no isolation
+        if (entityType.GetTenantPropertyName() is not { } propertyName)
+            return;
+
+        // Looked up for every row instead of being remembered: this instance is shared by all
+        // contexts, and every context can have a different tenant
+        var current = FindTenantProvider(context).CurrentTenantId;
+        var value = (TenantId)readValue(propertyName)!;
+
+        if (value != current)
+            throw new TenancyException("... Row level security did not take effect ...");
+    }
+
+    // FindTenantProvider: through the context's interceptors (like ApplyTenantSession) to
+    // the ITenantProvider carried by this context's SaveChanges interceptor
+}
+\end{sourcecode}
+
+\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Apply\allowbreak{}Services (\allowbreak{}addition)]{csharp}
+// Optional materialization check (chapter "Materialization: from rows to objects"). A
+// singleton interceptor belongs in the internal provider: one instance per provider,
+// never a new instance per context. The setting is part of the hash.
+if (Settings.VerifyMaterializedTenants)
+    new EntityFrameworkServicesBuilder(services)
+        .TryAdd<ISingletonInterceptor, TenantMaterializationInterceptor>();
+\end{sourcecode}
+
+\begin{datatable}{H{0.70}H{1.30}}
+  \textbf{Decision} & \textbf{Reason} \\
+  \tablehead
+  \code{Creating\allowbreak{}Instance} instead of \code{Initialized\allowbreak{}Instance} &
+  The check reads the value from the row. A foreign row never becomes an object, and the
+  tenant property may be a shadow property. \\
+  \tablerule
+  Runtime annotation & Which entity is isolated and what its tenant property is called has
+  been on the entity type since model building
+  (chapter~\ref{ch:property-level-fluent-api-and}). No guessing at run time. \\
+  \tablerule
+  Tenant per call & Through the context to this context's
+  \code{ITenant\allowbreak{}Provider}. Costs one lookup and one comparison per entity; that
+  is why the check is optional. \\
+  \tablerule
+  No tenant & Without a tenant, RLS returns no rows. If one arrives anyway, RLS is not in
+  effect and the check fires. \\
+  \tablerule
+  In the core package & The check knows neither SQL nor provider types
+  (chapter~\ref{ch:what-belongs-in-the-core}); both provider packages activate it with one
+  line. \\
+\end{datatable}
+
+The integration tests reproduce the gap from chapter~\ref{ch:interceptors}: a context for
+tenant A over a connection whose session still carries tenant B. Without the check, the
+query returns B's rows; with the check, it throws a
+\code{Tenancy\allowbreak{}Exception}. Own rows pass with and without tracking and through
+\code{From\allowbreak{}Sql}.
+
+\section{The failure case: request data in a singleton}
+
+The obvious first design passes the tenant to the interceptor's constructor and creates it
+per context like the other interceptors. That fails because of the cache key: every context
+gets an internal provider of its own. The obvious second design shares one instance and
+remembers the tenant on the first call to save the lookup per row:
+
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Materialization\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}WRONG,\allowbreak{} shortened)]{csharp}
+private sealed class RememberingTenantInterceptor : IMaterializationInterceptor
+{
+    private TenantId? _tenant;                       // per-request state in a singleton
+
+    public InterceptionResult<object> CreatingInstance(
+        MaterializationInterceptionData materializationData,
+        InterceptionResult<object> result)
+    {
+        // "Optimization": look up the tenant only once
+        _tenant ??= _tenantOf(materializationData.Context);
+
+        if (materializationData.GetPropertyValue<TenantId>(nameof(Order.TenantId)) != _tenant)
+            throw new TenancyException("Row of another tenant.");
+
+        return result;
+    }
+}
+\end{sourcecode}
+
+The test shows both consequences. The second request for tenant B gets an error for its own
+rows, because the interceptor remembered tenant A. Worse: a context for B over a connection
+whose session still carries A returns A's rows, and the remembered tenant A lets them
+through. The check does not prevent the leak, it hides it. Under load there is also a race
+condition, because all threads write the same field.
+
+\begin{tip}
+  A singleton interceptor has only two sources of data: what belongs to the configuration
+  (through the constructor or singleton options, the same for all contexts) and what the call
+  brings along (\code{Context}, entity type, the row's values). Everything else belongs in
+  the application or in a scoped service the interceptor reaches through the context.
+\end{tip}
+
+\section{Limits}
+
+\begin{datatable}{H{0.65}H{1.35}}
+  \textbf{Limit} & \textbf{Consequence} \\
+  \tablehead
+  Entities only & Projections of individual columns or into DTOs do not pass through the
+  materializer. An integration test shows that
+  \code{Select(\allowbreak{}o => o.\allowbreak{}Total)} returns values of another tenant
+  unchecked; only the database can protect here. \\
+  \tablerule
+  No tracked entities & If an entity is already tracked, it is not materialized again; the
+  interceptor only sees the first query. \\
+  \tablerule
+  No filter & The interceptor cannot skip rows, only throw or replace the instance.
+  Filtering is the job of query filters or the database. \\
+  \tablerule
+  No SQL & It sees the result, not the query; \code{Execute\allowbreak{}Update},
+  \code{Execute\allowbreak{}Delete} and scalar queries materialize nothing. \\
+  \tablerule
+  Hot path & It runs for every entity of every query (chapter~\ref{ch:plugin-performance});
+  expensive work multiplies with the size of the result. \\
+  \tablerule
+  An exception aborts the query & All other rows are lost as well. That is right for a
+  security check, not for a convenience feature. \\
+\end{datatable}
+
+\section{When materialization, when something else?}
+
+The interceptor is the right place for cross-cutting tasks that concern \emph{every} loaded
+entity, across all queries, with and without tracking, even with raw SQL. For almost
+everything else there is a simpler and cheaper way:
+
+\begin{datatable}{H{1.00}H{0.95}H{1.05}}
+  \textbf{Goal} & \textbf{Better} & \textbf{Why} \\
+  \tablehead
+  Store a value differently than it is presented (format, type, encryption) & Value
+  converter & Works in both directions and in parameters, compiled in instead of called per
+  value \\
+  \tablerule
+  Immutable objects, invariants & Constructor binding & EF calls the constructor itself \\
+  \tablerule
+  Only some columns or a DTO & Projection with \code{Select} & No entity, no tracking, less
+  data \\
+  \tablerule
+  The same setting for many types (converter, field access) & Convention & Once during model
+  building instead of for every row \\
+  \tablerule
+  Derived values, business rules & Domain logic (method, computed property) & Loading is not
+  a business event \\
+  \tablerule
+  React when an application loads entities &
+  \code{Change\allowbreak{}Tracker.\allowbreak{}Tracked} & Public API without a plugin; only
+  with tracking \\
+  \tablerule
+  Check or complete every loaded entity, even without tracking &
+  \code{IMaterialization\allowbreak{}Interceptor} & The only hook that sees every way to the
+  entity \\
+\end{datatable}

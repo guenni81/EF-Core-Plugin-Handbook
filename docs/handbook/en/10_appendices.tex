@@ -49,7 +49,7 @@ chapter~\ref{ch:choosing-the-right-extension-point}.
   \tablerule
   \code{IInterceptor} (injected) & Scoped & multiple & \ref{ch:interceptors} \\
   \tablerule
-  \code{ISingleton\allowbreak{}Interceptor} & Singleton & multiple & \ref{ch:interceptors} \\
+  \code{ISingleton\allowbreak{}Interceptor} & Singleton & multiple & \ref{ch:interceptors}, \ref{ch:materialization-from-rows-to-objects} \\
   \tablerule
   \code{IRelational\allowbreak{}Annotation\allowbreak{}Provider} & Singleton & single & \ref{ch:declarative-sql-from-annotations}
   \\
@@ -151,6 +151,9 @@ and the registrations of \code{Add\allowbreak{}Entity\allowbreak{}Framework\allo
   \tablerule
   \code{Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs}
   & Abstract base for session commands & \ref{ch:interceptors}, \ref{ch:what-belongs-in-the-core} \\
+  \tablerule
+  \code{Interceptors/\allowbreak{}Tenant\allowbreak{}Materialization\allowbreak{}Interceptor.\allowbreak{}cs}
+  & Check while loading (optional) & \ref{ch:materialization-from-rows-to-objects} \\
   \tablerule
   \code{Tenancy\allowbreak{}Database\allowbreak{}Facade\allowbreak{}Extensions.\allowbreak{}cs}
   & \code{Database.\allowbreak{}Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})}
@@ -265,6 +268,10 @@ and the registrations of \code{Add\allowbreak{}Entity\allowbreak{}Framework\allo
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Composition\allowbreak{}Tests.\allowbreak{}cs}
   & Decorator example (audit plugin) & \ref{ch:registering-services} \\
   \tablerule
+  \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Materialization\allowbreak{}Tests.\allowbreak{}cs}
+  & Check while loading: registration, logic, failure case per context (unit), leak, limits
+  and remembered tenant (integration) & \ref{ch:materialization-from-rows-to-objects} \\
+  \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Design\allowbreak{}Time\allowbreak{}Services\allowbreak{}Tests.\allowbreak{}cs}
   & Lifetimes of the replaced design-time services & \ref{ch:choosing-the-right-extension-point}, \ref{ch:scaffolding-in-practice} \\
   \tablerule
@@ -308,8 +315,17 @@ and the registrations of \code{Add\allowbreak{}Entity\allowbreak{}Framework\allo
   \tablerule
   Funcletizer & First query stage; evaluates expressions without data reference in .NET. \\
   \tablerule
+  Identity resolution & The same entity yields the same instance: with tracking through the
+  change tracker, otherwise optionally per query. \\
+  \tablerule
+  Materializer & Part of the shaper that creates an entity: constructor, then properties and
+  fields. \\
+  \tablerule
   Nullability processor & Query stage that evaluates NULL semantics and optimizes
   comparisons; must know custom SQL nodes. \\
+  \tablerule
+  Shaper & Compiled expression tree per query shape that builds the result from the rows of
+  the \code{Db\allowbreak{}Data\allowbreak{}Reader}. \\
   \tablerule
   SqlExpression & Node in the SQL expression tree; custom nodes for syntax that is not a
   function. \\
@@ -409,8 +425,9 @@ Console.WriteLine(query.ToQueryString());
   errors in the log; for development only. \\
   \tablerule
   \code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}
-  & EF warns when too many internal providers are created: almost always a hash mistake
-  (chapter~\ref{ch:the-options-extension}). \\
+  & EF throws by default when more than 20 internal providers are created: almost always a
+  hash mistake (chapter~\ref{ch:the-options-extension}) or a singleton instance per context
+  (chapter~\ref{ch:materialization-from-rows-to-objects}). \\
   \tablerule
   EF Core's source code on GitHub & The authoritative documentation for internal APIs; the
   folder structure matches the namespaces. \\

@@ -10,7 +10,7 @@
   zwei Beispiel-Apps, Unit- und Integrationstests \\
   Geprüft & Der Beispielcode wird gegen EF Core 10 und Npgsql 10 gebaut; Unit- und
   Integrationstests laufen gegen echtes PostgreSQL und SQL Server. \\
-  Aufbau & 9 Teile, 43 Kapitel, 4 Anhänge \\
+  Aufbau & 9 Teile, 44 Kapitel, 4 Anhänge \\
   Lizenz & MIT-Lizenz, © 2026 guenni81. Frei nutzbar, kopierbar, veränderbar und
   weitergebbar, auch kommerziell; siehe letzte Seite. \\
 \end{handbookmeta}
@@ -523,7 +523,7 @@ Abschnitt mit einer Tabelle.
     {Type Mapping, Value Converter, Value Generation (Seite~\pageref{sec:decide-model})}
   \decision{Soll sich das SQL einer LINQ-Abfrage ändern oder das geladene Objekt?}
     {Translators, Filter, Query-Interceptor, Materialisierung
-    (Seite~\pageref{sec:decide-queries})}
+    (Seite~\pageref{sec:decide-queries}, Kapitel~\ref{ch:materialization-from-rows-to-objects})}
   \decision{Soll beim Speichern, Verbinden oder Ausführen eingegriffen werden?}
     {SaveChanges-, Connection-, Command- und Transaction-Interceptor, Update-Pipeline
     (Seite~\pageref{sec:decide-runtime})}
@@ -838,7 +838,7 @@ steht deshalb vor ihm:
   \code{Change\allowbreak{}Tracker.\allowbreak{}Tracked} in der Anwendung. &
   Zustand pro Context im Interceptor halten; teure Arbeit pro Zeile; pro Context eine neue
   Instanz übergeben. &
-  \ref{ch:further-query-extension-points}, \ref{ch:interceptors} \\
+  \ref{ch:materialization-from-rows-to-objects} \\
 \end{datatable}
 
 \section{Ausführung und Speichern}\phantomsection\label{sec:decide-runtime}

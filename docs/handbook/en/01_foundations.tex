@@ -9,7 +9,7 @@
   package, two provider packages, two sample apps, unit and integration tests \\
   Verified & The sample code is built against EF Core 10 and Npgsql 10; unit and integration
   tests run against real PostgreSQL and SQL Server. \\
-  Structure & 9 parts, 43 chapters, 4 appendices \\
+  Structure & 9 parts, 44 chapters, 4 appendices \\
   License & MIT License, © 2026 guenni81. Free to use, copy, modify and share, including
   commercially; see the last page. \\
 \end{handbookmeta}
@@ -507,7 +507,7 @@ table.
     {Type mapping, value converter, value generation (page~\pageref{sec:decide-model})}
   \decision{Should the SQL of a LINQ query change, or the loaded object?}
     {Translators, filter, query interceptor, materialization
-    (page~\pageref{sec:decide-queries})}
+    (page~\pageref{sec:decide-queries}, chapter~\ref{ch:materialization-from-rows-to-objects})}
   \decision{Should the plugin intervene when saving, connecting or executing?}
     {SaveChanges, connection, command and transaction interceptors, update pipeline
     (page~\pageref{sec:decide-runtime})}
@@ -817,7 +817,7 @@ and therefore comes first:
   \code{Change\allowbreak{}Tracker.\allowbreak{}Tracked} event in the application. &
   Keeping per-context state in the interceptor; expensive work per row; passing a new
   instance per context. &
-  \ref{ch:further-query-extension-points}, \ref{ch:interceptors} \\
+  \ref{ch:materialization-from-rows-to-objects} \\
 \end{datatable}
 
 \section{Execution and saving}\phantomsection\label{sec:decide-runtime}

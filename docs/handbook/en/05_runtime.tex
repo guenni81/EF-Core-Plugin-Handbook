@@ -30,10 +30,10 @@ operations or replace results.
   savepoints & Scoped \\
   \tablerule
   \code{IIdentity\allowbreak{}Resolution\allowbreak{}Interceptor} & Conflicts when attaching
-  already tracked entities & Scoped \\
+  already tracked entities; never for queries (chapter~\ref{ch:materialization-from-rows-to-objects}) & Scoped \\
   \tablerule
-  \code{IMaterialization\allowbreak{}Interceptor} & Creating and initializing entities &
-  \textbf{Singleton} \\
+  \code{IMaterialization\allowbreak{}Interceptor} & Creating and initializing entities
+  (chapter~\ref{ch:materialization-from-rows-to-objects}) & \textbf{Singleton} \\
   \tablerule
   \code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor} & LINQ expression before
   compilation & \textbf{Singleton} \\
@@ -305,6 +305,11 @@ The SQL Server tests check exactly this case; without the line they fail.
   cannot cover every path should offer such an explicit API instead of only documenting the
   gap.
 \end{important}
+
+The gap can also be detected while loading: with
+\code{Verify\allowbreak{}Materialized\allowbreak{}Tenants(\allowbreak{})} the plugin checks
+every loaded entity against the context's tenant and throws instead of returning another
+tenant's rows (chapter~\ref{ch:materialization-from-rows-to-objects}).
 
 % ------------------------------------------------------------
 \chapter{Diagnostics and logging}\label{ch:diagnostics-and-logging}

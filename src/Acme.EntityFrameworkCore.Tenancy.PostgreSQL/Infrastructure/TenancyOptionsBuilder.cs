@@ -49,6 +49,16 @@ public class TenancyOptionsBuilder
         => With(s => s with { CreateTenantIndex = create });
 
     /// <summary>
+    /// Throws when a query materializes an entity of another tenant (default: off). Detects
+    /// situations in which row level security does not take effect, such as a connection opened
+    /// outside of EF. Requires <c>UseAcmeTenancy(applicationServices)</c>.
+    /// </summary>
+    /// <param name="verify">Whether to check materialized entities.</param>
+    /// <returns>The same builder for chaining.</returns>
+    public virtual TenancyOptionsBuilder VerifyMaterializedTenants(bool verify = true)
+        => With(s => s with { VerifyMaterializedTenants = verify });
+
+    /// <summary>
     /// Applies a change to the settings. Options extensions are immutable, so a modified copy
     /// replaces the registered extension.
     /// </summary>
