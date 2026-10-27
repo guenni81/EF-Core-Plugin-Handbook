@@ -41,7 +41,10 @@ operations or replace results.
 
 The two singleton interceptors implement \code{ISingleton\allowbreak{}Interceptor}. They are
 used once per internal provider, not per context, and must therefore be stateless and
-thread-safe.
+thread-safe. Registered in the internal provider, however, EF only finds the materialization
+interceptor under \code{ISingleton\allowbreak{}Interceptor}; it calls a query expression
+interceptor only when it is registered as \code{IInterceptor}
+(chapter~\ref{ch:bulk-operations-and-the-limits}).
 
 \section{Two ways to register}
 

@@ -74,6 +74,74 @@ public async Task ExecuteUpdate_bypasses_interceptor_but_not_rls()
   \code{Set\allowbreak{}Property} on protected columns. Raw SQL remains open regardless.
 \end{important}
 
+\section{Example: protecting the tenant column in bulk updates}
+
+The sample implements exactly this interceptor, as an option:
+\code{Use\allowbreak{}Acme\allowbreak{}Tenancy(\allowbreak{}t => t.\allowbreak{}Protect\allowbreak{}Bulk\allowbreak{}Operations(\allowbreak{}))}
+for PostgreSQL, \code{sql.\allowbreak{}Protect\allowbreak{}Bulk\allowbreak{}Operations(\allowbreak{})} for SQL
+Server. EF Core~10 no longer takes the setters of \code{Execute\allowbreak{}Update} as an
+expression tree but as an \code{Action<\allowbreak{}Update\allowbreak{}Setters\allowbreak{}Builder<\allowbreak{}T>>}.
+In the tree the interceptor sees, they then appear as an array of tuples:
+\code{Execute\allowbreak{}Update(\allowbreak{}source,\allowbreak{} new[] \{ new Tuple(\allowbreak{}e => e.\allowbreak{}Tenant\allowbreak{}Id,\allowbreak{} value),\allowbreak{} .\allowbreak{}.\allowbreak{}. \})}.
+The first element of each tuple is the property lambda, and that is what the visitor checks:
+
+% source: src/Acme.EntityFrameworkCore.Tenancy/Interceptors/TenantQueryExpressionInterceptor.cs
+\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Query\allowbreak{}Expression\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}core package,\allowbreak{} shortened)]{csharp}
+protected override Expression VisitMethodCall(MethodCallExpression node)
+{
+    if (node.Method.DeclaringType == typeof(EntityFrameworkQueryableExtensions)
+        && node.Method.Name is nameof(EntityFrameworkQueryableExtensions.ExecuteUpdate)
+            or nameof(EntityFrameworkQueryableExtensions.ExecuteUpdateAsync)
+        && node.Arguments.Count > 1
+        && node.Arguments[1] is NewArrayExpression setters)
+    {
+        foreach (var setter in setters.Expressions)
+        {
+            if (setter is NewExpression { Arguments: [var selector, ..] }
+                && Unquote(selector) is LambdaExpression lambda)
+                Check(lambda);
+        }
+    }
+
+    return base.VisitMethodCall(node);
+}
+
+private void Check(LambdaExpression selector)
+{
+    var parameter = selector.Parameters[0];
+    var name = selector.Body switch
+    {
+        // e => e.TenantId
+        MemberExpression member when member.Expression == parameter => member.Member.Name,
+        // e => EF.Property<TenantId>(e, "TenantId"), also for shadow properties
+        MethodCallExpression
+        {
+            Method.Name: nameof(EF.Property),
+            Arguments: [var target, ConstantExpression { Value: string property }]
+        } when target == parameter => property,
+        _ => null,
+    };
+    // ...
+}
+\end{sourcecode}
+
+If the property being set is the tenant property according to the runtime annotation, the
+interceptor throws a \code{Tenancy\allowbreak{}Exception}, before any connection is opened. It runs
+once per query shape, before translation and the query cache; later executions cost nothing.
+Other columns and ordinary queries pass unchanged. RLS remains the actual boundary: the
+interceptor only stops reassigning rows early and with a clear message; it does not check
+\code{Execute\allowbreak{}Delete} or raw SQL.
+
+The registration holds a trap. \code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor}, like
+\code{IMaterialization\allowbreak{}Interceptor}, derives from
+\code{ISingleton\allowbreak{}Interceptor}. Registered under that type in the internal provider,
+however, EF never calls it: EF takes query expression interceptors from the
+\code{IInterceptor} registrations and the options, materialization interceptors also from the
+\code{ISingleton\allowbreak{}Interceptor} registrations. The plugin therefore registers it as
+\code{IInterceptor}; stateless as it is, an instance per context does no harm.
+\code{Bulk\allowbreak{}Operation\allowbreak{}Tests} records both registrations, the integration
+tests show an allowed and a rejected update against PostgreSQL.
+
 % ------------------------------------------------------------
 \chapter{Value generation}\label{ch:value-generation}
 

@@ -9,6 +9,11 @@ version is given by the dependency range and the compatibility table in the READ
 
 ### Added
 
+- `ProtectBulkOperations()` (PostgreSQL options builder, SQL Server provider builder) with the
+  new `TenantQueryExpressionInterceptor` from the core package: `ExecuteUpdate` calls that set
+  the tenant property fail with a `TenancyException` when the query is compiled. It is
+  registered as `IInterceptor`, because EF never calls query expression interceptors that are
+  registered as `ISingletonInterceptor` (recorded in `BulkOperationTests`; appendix A corrected).
 - Tests for the session interceptor and transactions against PostgreSQL and SQL Server:
   connection opened by `BeginTransactionAsync`, `ApplyTenantSession` inside an explicit
   transaction, reading and writing under an ambient `TransactionScope`. No code change was

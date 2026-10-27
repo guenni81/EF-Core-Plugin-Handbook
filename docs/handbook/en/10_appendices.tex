@@ -155,10 +155,17 @@ against the same tables.
   \code{Add\allowbreak{}Interceptors} or injected & ● combinable, order &
   \ref{ch:interceptors} \\
   \tablerule
-  \code{ISingleton\allowbreak{}Interceptor}: Materialization, QueryExpression
-  \cellmeta{Materialization, LINQ tree before compilation} & Singleton, multiple &
-  public & \code{Try\allowbreak{}Add} or one shared instance & ● combinable &
-  \ref{ch:materialization-from-rows-to-objects}, \ref{ch:further-query-extension-points} \\
+  \code{IMaterialization\allowbreak{}Interceptor} (an \code{ISingleton\allowbreak{}Interceptor})
+  \cellmeta{Materialization} & Singleton, multiple & public & \code{Try\allowbreak{}Add} as
+  \code{ISingleton\allowbreak{}Interceptor} or one shared instance & ● combinable &
+  \ref{ch:materialization-from-rows-to-objects} \\
+  \tablerule
+  \code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor} (also an
+  \code{ISingleton\allowbreak{}Interceptor}) \cellmeta{LINQ tree before compilation} &
+  Singleton by interface, multiple & public & one shared instance or
+  \code{Try\allowbreak{}Add} as \code{IInterceptor}; registered as
+  \code{ISingleton\allowbreak{}Interceptor} EF never calls it & ● combinable &
+  \ref{ch:further-query-extension-points}, \ref{ch:bulk-operations-and-the-limits} \\
   \tablerule
   \code{IModification\allowbreak{}Command\allowbreak{}Factory}
   \cellmeta{Update pipeline: one command per row} & Singleton, single & provider base† &

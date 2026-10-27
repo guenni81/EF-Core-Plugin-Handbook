@@ -1,1 +1,4 @@
 #nullable enable
+Acme.EntityFrameworkCore.Tenancy.SqlServer.Infrastructure.SqlServerTenancySettings.ProtectBulkOperations.get -> bool
+Acme.EntityFrameworkCore.Tenancy.SqlServer.Infrastructure.SqlServerTenancySettings.ProtectBulkOperations.init -> void
+static Microsoft.EntityFrameworkCore.SqlServerTenancyOptionsBuilderExtensions.ProtectBulkOperations(this Microsoft.EntityFrameworkCore.Infrastructure.SqlServerDbContextOptionsBuilder! sqlServerOptionsBuilder, bool protect = true) -> Microsoft.EntityFrameworkCore.Infrastructure.SqlServerDbContextOptionsBuilder!

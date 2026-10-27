@@ -88,6 +88,13 @@ public class TenancyOptionsExtension : IDbContextOptionsExtension
             new EntityFrameworkServicesBuilder(services)
                 .TryAdd<ISingletonInterceptor, TenantMaterializationInterceptor>();
 
+        // Optional check of bulk updates (chapter "Bulk operations and the limits of
+        // interceptors"). Registered as IInterceptor: EF does not call query expression
+        // interceptors registered as ISingletonInterceptor (BulkOperationTests)
+        if (Settings.ProtectBulkOperations)
+            new EntityFrameworkServicesBuilder(services)
+                .TryAdd<IInterceptor, TenantQueryExpressionInterceptor>();
+
         // 3) Replace single services of the provider. Replace instead of TryAdd: Npgsql registers
         //    via TryAdd, so our service wins regardless of the order.
         services.Replace(ServiceDescriptor
@@ -148,6 +155,7 @@ public class TenancyOptionsExtension : IDbContextOptionsExtension
             debugInfo["Acme:Tenancy:QueryFilter"] = s.ApplyQueryFilter.ToString();
             debugInfo["Acme:Tenancy:Index"] = s.CreateTenantIndex.ToString();
             debugInfo["Acme:Tenancy:VerifyMaterialized"] = s.VerifyMaterializedTenants.ToString();
+            debugInfo["Acme:Tenancy:ProtectBulkOperations"] = s.ProtectBulkOperations.ToString();
         }
     }
 }

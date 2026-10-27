@@ -82,4 +82,19 @@ public class DetachedUpdateTests : IClassFixture<PostgresFixture>
         var ex = Assert.Throws<TenancyException>(() => db.SaveChanges());
         Assert.Contains("must not be changed", ex.Message);
     }
+
+    [Fact]
+    public async Task Bulk_update_of_other_columns_runs_and_of_the_tenant_column_is_rejected()
+    {
+        var (tenant, id) = await CreateOrderAsync(10);
+        await using var db = _fixture.CreateAppContext(
+            new MutableTenantProvider { CurrentTenantId = tenant }, t => t.ProtectBulkOperations());
+
+        Assert.Equal(1, await db.Orders.Where(o => o.Id == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(o => o.Total, 20m)));
+        await Assert.ThrowsAsync<TenancyException>(() => db.Orders.Where(o => o.Id == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(o => o.TenantId, TenantId.New())));
+
+        Assert.Equal(20, await TotalAsync(tenant, id));
+    }
 }

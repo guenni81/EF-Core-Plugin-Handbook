@@ -1,1 +1,4 @@
 #nullable enable
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings.ProtectBulkOperations.get -> bool
+Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancySettings.ProtectBulkOperations.init -> void
+virtual Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder.ProtectBulkOperations(bool protect = true) -> Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure.TenancyOptionsBuilder!

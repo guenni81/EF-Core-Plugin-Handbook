@@ -41,7 +41,10 @@ unterdrücken oder Ergebnisse ersetzen.
 
 Die beiden Singleton-Interceptors implementieren \code{ISingleton\allowbreak{}Interceptor}.
 Sie werden einmal pro internem Provider verwendet, nicht pro Context, und müssen deshalb
-zustandslos und thread-sicher sein.
+zustandslos und thread-sicher sein. Im internen Provider registriert, findet EF aber nur den
+Materialisierungs-Interceptor unter \code{ISingleton\allowbreak{}Interceptor}; einen
+Query-Expression-Interceptor ruft es nur auf, wenn er als \code{IInterceptor} registriert ist
+(Kapitel~\ref{ch:bulk-operations-and-the-limits}).
 
 \section{Zwei Wege der Registrierung}
 

@@ -76,6 +76,74 @@ public async Task ExecuteUpdate_bypasses_interceptor_but_not_rls()
   offen.
 \end{important}
 
+\section{Beispiel: die Mandantenspalte bei Massen-Updates schützen}
+
+Das Beispiel setzt genau diesen Interceptor um, als Option:
+\code{Use\allowbreak{}Acme\allowbreak{}Tenancy(\allowbreak{}t => t.\allowbreak{}Protect\allowbreak{}Bulk\allowbreak{}Operations(\allowbreak{}))}
+für PostgreSQL, \code{sql.\allowbreak{}Protect\allowbreak{}Bulk\allowbreak{}Operations(\allowbreak{})} für SQL
+Server. EF Core~10 nimmt die Setter von \code{Execute\allowbreak{}Update} nicht mehr als
+Ausdrucksbaum, sondern als \code{Action<\allowbreak{}Update\allowbreak{}Setters\allowbreak{}Builder<\allowbreak{}T>>}
+entgegen. Im Baum, den der Interceptor sieht, stehen sie danach als Array von Tupeln:
+\code{Execute\allowbreak{}Update(\allowbreak{}source,\allowbreak{} new[] \{ new Tuple(\allowbreak{}e => e.\allowbreak{}Tenant\allowbreak{}Id,\allowbreak{} wert),\allowbreak{} .\allowbreak{}.\allowbreak{}. \})}.
+Das erste Element jedes Tupels ist das Property-Lambda, und genau das prüft der Visitor:
+
+% source: src/Acme.EntityFrameworkCore.Tenancy/Interceptors/TenantQueryExpressionInterceptor.cs
+\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Query\allowbreak{}Expression\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}Kernpaket,\allowbreak{} gekürzt)]{csharp}
+protected override Expression VisitMethodCall(MethodCallExpression node)
+{
+    if (node.Method.DeclaringType == typeof(EntityFrameworkQueryableExtensions)
+        && node.Method.Name is nameof(EntityFrameworkQueryableExtensions.ExecuteUpdate)
+            or nameof(EntityFrameworkQueryableExtensions.ExecuteUpdateAsync)
+        && node.Arguments.Count > 1
+        && node.Arguments[1] is NewArrayExpression setters)
+    {
+        foreach (var setter in setters.Expressions)
+        {
+            if (setter is NewExpression { Arguments: [var selector, ..] }
+                && Unquote(selector) is LambdaExpression lambda)
+                Check(lambda);
+        }
+    }
+
+    return base.VisitMethodCall(node);
+}
+
+private void Check(LambdaExpression selector)
+{
+    var parameter = selector.Parameters[0];
+    var name = selector.Body switch
+    {
+        // e => e.TenantId
+        MemberExpression member when member.Expression == parameter => member.Member.Name,
+        // e => EF.Property<TenantId>(e, "TenantId"), auch für Shadow-Properties
+        MethodCallExpression
+        {
+            Method.Name: nameof(EF.Property),
+            Arguments: [var target, ConstantExpression { Value: string property }]
+        } when target == parameter => property,
+        _ => null,
+    };
+    // ...
+}
+\end{sourcecode}
+
+Ist die gesetzte Property die Mandanten-Property laut Laufzeit-Annotation, wirft der
+Interceptor eine \code{Tenancy\allowbreak{}Exception}, noch bevor eine Verbindung geöffnet wird.
+Er läuft einmal pro Abfrageform, vor Übersetzung und Query-Cache; spätere Ausführungen kosten
+nichts. Andere Spalten und gewöhnliche Abfragen passieren unverändert. RLS bleibt die
+eigentliche Grenze: Der Interceptor verhindert nur das Umhängen von Zeilen früh und mit klarer
+Meldung, \code{Execute\allowbreak{}Delete} und rohes SQL prüft er nicht.
+
+Eine Falle steckt in der Registrierung. \code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor}
+erbt wie \code{IMaterialization\allowbreak{}Interceptor} von
+\code{ISingleton\allowbreak{}Interceptor}. Im internen Provider unter diesem Typ registriert,
+ruft EF ihn aber nie auf: Query-Expression-Interceptoren holt EF aus den
+\code{IInterceptor}-Registrierungen und den Options, Materialisierungs-Interceptoren auch aus
+den \code{ISingleton\allowbreak{}Interceptor}-Registrierungen. Das Plugin registriert ihn deshalb
+als \code{IInterceptor}; zustandslos, wie er ist, schadet die Instanz pro Context nicht.
+\code{Bulk\allowbreak{}Operation\allowbreak{}Tests} hält beide Registrierungen fest, die
+Integrationstests zeigen ein erlaubtes und ein abgelehntes Update gegen PostgreSQL.
+
 % ------------------------------------------------------------
 \chapter{Value Generation}\label{ch:value-generation}
 

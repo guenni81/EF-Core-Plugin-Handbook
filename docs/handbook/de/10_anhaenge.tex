@@ -157,10 +157,17 @@ Beispiels gegen dieselben Tabellen.
   \code{Add\allowbreak{}Interceptors} oder injiziert & ● kombinierbar, Reihenfolge &
   \ref{ch:interceptors} \\
   \tablerule
-  \code{ISingleton\allowbreak{}Interceptor}: Materialization, QueryExpression
-  \cellmeta{Materialisierung, LINQ-Baum vor der Kompilierung} & Singleton, mehrfach &
-  öffentlich & \code{Try\allowbreak{}Add} oder eine geteilte Instanz & ● kombinierbar &
-  \ref{ch:materialization-from-rows-to-objects}, \ref{ch:further-query-extension-points} \\
+  \code{IMaterialization\allowbreak{}Interceptor} (ein \code{ISingleton\allowbreak{}Interceptor})
+  \cellmeta{Materialisierung} & Singleton, mehrfach & öffentlich & \code{Try\allowbreak{}Add}
+  als \code{ISingleton\allowbreak{}Interceptor} oder eine geteilte Instanz & ● kombinierbar &
+  \ref{ch:materialization-from-rows-to-objects} \\
+  \tablerule
+  \code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor} (ebenfalls
+  \code{ISingleton\allowbreak{}Interceptor}) \cellmeta{LINQ-Baum vor der Kompilierung} &
+  Singleton per Interface, mehrfach & öffentlich & eine geteilte Instanz oder
+  \code{Try\allowbreak{}Add} als \code{IInterceptor}; als \code{ISingleton\allowbreak{}Interceptor}
+  registriert ruft EF ihn nie & ● kombinierbar & \ref{ch:further-query-extension-points},
+  \ref{ch:bulk-operations-and-the-limits} \\
   \tablerule
   \code{IModification\allowbreak{}Command\allowbreak{}Factory}
   \cellmeta{Update-Pipeline: ein Befehl pro Zeile} & Singleton, einzeln & Provider-Basis† &

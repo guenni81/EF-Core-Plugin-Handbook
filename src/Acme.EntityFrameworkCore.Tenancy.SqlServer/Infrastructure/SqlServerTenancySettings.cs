@@ -23,6 +23,12 @@ public sealed partial record SqlServerTenancySettings
     /// </summary>
     public bool VerifyMaterializedTenants { get; init; }
 
+    /// <summary>
+    /// Reject ExecuteUpdate calls that set the tenant property (off by default). Registers a
+    /// singleton query expression interceptor.
+    /// </summary>
+    public bool ProtectBulkOperations { get; init; }
+
     // Stricter than SQL Server's identifier rules (only the 128-character limit matches): no
     // quotes, brackets or spaces that could break out of the nested EXEC(N'...') literals
     [GeneratedRegex(@"^[A-Za-z_][A-Za-z0-9_]{0,127}$")]

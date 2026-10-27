@@ -83,6 +83,13 @@ public class SqlServerTenancyOptionsExtension : IDbContextOptionsExtension
             new EntityFrameworkServicesBuilder(services)
                 .TryAdd<ISingletonInterceptor, TenantMaterializationInterceptor>();
 
+        // Optional check of bulk updates (chapter "Bulk operations and the limits of
+        // interceptors"). Registered as IInterceptor: EF does not call query expression
+        // interceptors registered as ISingletonInterceptor (BulkOperationTests)
+        if (Settings.ProtectBulkOperations)
+            new EntityFrameworkServicesBuilder(services)
+                .TryAdd<IInterceptor, TenantQueryExpressionInterceptor>();
+
         // Single-instance services of the provider: replace them; the classes derive from the
         // SQL Server implementations, so all non-tenancy behaviour stays unchanged
         services.Replace(ServiceDescriptor

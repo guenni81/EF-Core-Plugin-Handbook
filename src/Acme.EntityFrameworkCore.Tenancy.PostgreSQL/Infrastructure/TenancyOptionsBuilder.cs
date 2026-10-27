@@ -59,6 +59,16 @@ public class TenancyOptionsBuilder
         => With(s => s with { VerifyMaterializedTenants = verify });
 
     /// <summary>
+    /// Rejects <c>ExecuteUpdate</c> calls that set the tenant property, when the query is
+    /// compiled (default: off). Bulk operations bypass the SaveChanges interceptor; row level
+    /// security still limits which rows they reach.
+    /// </summary>
+    /// <param name="protect">Whether to check bulk updates.</param>
+    /// <returns>The same builder for chaining.</returns>
+    public virtual TenancyOptionsBuilder ProtectBulkOperations(bool protect = true)
+        => With(s => s with { ProtectBulkOperations = protect });
+
+    /// <summary>
     /// Applies a change to the settings. Options extensions are immutable, so a modified copy
     /// replaces the registered extension.
     /// </summary>

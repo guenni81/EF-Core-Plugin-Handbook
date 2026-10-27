@@ -29,4 +29,10 @@ public sealed record TenancySettings
     /// depth, off by default). Registers a singleton materialization interceptor.
     /// </summary>
     public bool VerifyMaterializedTenants { get; init; }
+
+    /// <summary>
+    /// Reject ExecuteUpdate calls that set the tenant property (off by default). Registers a
+    /// singleton query expression interceptor.
+    /// </summary>
+    public bool ProtectBulkOperations { get; init; }
 }
