@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Acme.EntityFrameworkCore.Tenancy;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace Acme.EntityFrameworkCore.Tenancy;
 /// The PostgreSQL package maps it to uuid via a type mapping plugin, without configuration.
 /// </summary>
 /// <param name="Value">The underlying Guid.</param>
+[JsonConverter(typeof(TenantIdJsonConverter))]   // a GUID string in web APIs, not an object
 public readonly record struct TenantId(Guid Value)
 {
     /// <summary>Empty ID (00000000-0000-0000-0000-000000000000).</summary>

@@ -7,6 +7,12 @@ version is given by the dependency range and the compatibility table in the READ
 
 ## [Unreleased]
 
+### Added
+
+- `TenantIdJsonConverter` (core package): `TenantId` serializes with System.Text.Json as a plain
+  GUID string, also as a dictionary key, selected by an attribute on the type; invalid values
+  throw `JsonException`. The ShopApi sample no longer needs its own converter.
+
 ### Changed
 
 - `TenantMaterializationInterceptor` looks up the tenant provider once per context instance

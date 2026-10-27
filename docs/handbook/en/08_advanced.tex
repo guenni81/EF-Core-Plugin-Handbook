@@ -228,6 +228,16 @@ Assert.Same(TenantIdJsonReaderWriter.Instance,
     property.GetTypeMapping().JsonValueReaderWriter);
 \end{sourcecode}
 
+JSON outside the database is a separate matter. System.Text.Json does not know EF's
+\code{Json\allowbreak{}Value\allowbreak{}Reader\allowbreak{}Writer} and would write
+\code{TenantId} as an object with \code{Value} and \code{IsEmpty}. A
+\code{[Json\allowbreak{}Converter(\allowbreak{}typeof(\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Json\allowbreak{}Converter))]}
+on the type in the core package turns it into a plain GUID, also as a dictionary key, without a
+web API having to register anything; invalid values lead to a
+\code{Json\allowbreak{}Exception}. Both ways need a building block of their own, because EF and
+System.Text.Json serialize independently of each other
+(\code{Tenant\allowbreak{}Id\allowbreak{}Json\allowbreak{}Converter\allowbreak{}Tests}).
+
 \begin{note}
   PostgreSQL arrays (\code{List<\allowbreak{}Tenant\allowbreak{}Id>} as \code{uuid[]}) are
   not JSON: Npgsql maps primitive collections natively as arrays. Whether a provider

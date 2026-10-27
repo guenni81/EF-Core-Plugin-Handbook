@@ -19,9 +19,7 @@ builder.Services.AddDbContext<ShopApiContext>((sp, options) => options
     .UseNpgsql(builder.Configuration.GetConnectionString("Shop"))
     .UseAcmeTenancy(sp));
 
-// TenantId as a plain GUID in JSON responses
-builder.Services.ConfigureHttpJsonOptions(json =>
-    json.SerializerOptions.Converters.Add(new TenantIdJsonConverter()));
+// TenantId needs no JSON configuration: its converter (core package) writes a plain GUID
 
 // 3. In a real application: builder.Services.AddAuthentication().AddJwtBearer(...);
 //    The identity provider issues the "tenant_id" claim.
