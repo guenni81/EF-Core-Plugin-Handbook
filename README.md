@@ -114,16 +114,18 @@ per table (FILTER and BLOCK predicates) and `SESSION_CONTEXT`.
 | Migrations | Annotation-driven RLS, custom operations (roles, privileges) | 20–22, 35 |
 | Design time | Annotation code generator, `[DesignTimeServicesReference]` | 23–25 |
 | Testing | Model, SQL, snapshot round-trip, compiled model and Testcontainers tests | 26 |
-| Shipping | Versioning, stable annotation formats, packaging, CI, Public API analyzer | 27–28, 39 |
+| Shipping | Versioning, stable annotation formats, packaging, CI, Public API analyzer | 27–28, 41 |
 | Value generation | `TenantId` keys via convention and `HasValueGeneratorFactory(Type)` | 31 |
-| Operations | RLS pitfalls, PgBouncer, legitimate cross-tenant access | 36 |
-| Performance | BenchmarkDotNet project with measured overhead of the SaveChanges logic | 37 |
-| ASP.NET Core | `samples/ShopApi`, DbContext factories, background jobs | 38 |
-| Custom SQL nodes | `EF.Functions.IsNotDistinctFrom` with SQL generator and nullability processor | 40 |
-| Aggregates | `EF.Functions.Every` (`bool_and`) with FILTER/DISTINCT support | 41 |
-| Runtime annotations | Tenant property in the compiled model, design-time annotations filtered | 42 |
-| Scaffolding | RLS and policies are read back from the database | 43 |
-| Second provider | SQL Server: security policies and `SESSION_CONTEXT` on the same core | 44–45 |
+| Operations | RLS pitfalls, threat model, PgBouncer, legitimate cross-tenant access | 36 |
+| Relationships | Composite foreign keys with the tenant, unique per tenant, shared master data, delete rules | 37 |
+| Retrofitting | From a table without a tenant to RLS, app versions during the change, retries and lost connections | 38 |
+| Performance | BenchmarkDotNet project with measured overhead of the SaveChanges logic | 39 |
+| ASP.NET Core | `samples/ShopApi`, DbContext factories, background jobs | 40 |
+| Custom SQL nodes | `EF.Functions.IsNotDistinctFrom` with SQL generator and nullability processor | 42 |
+| Aggregates | `EF.Functions.Every` (`bool_and`) with FILTER/DISTINCT support | 43 |
+| Runtime annotations | Tenant property in the compiled model, design-time annotations filtered | 44 |
+| Scaffolding | RLS and policies are read back from the database | 45 |
+| Second provider | SQL Server: security policies and `SESSION_CONTEXT` on the same core | 46–47 |
 | Debugging | Model debug view, resolved services, convention set, query trees, logging | App. D |
 
 ## Repository layout

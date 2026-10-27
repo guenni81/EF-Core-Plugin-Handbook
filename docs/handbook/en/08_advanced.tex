@@ -12,6 +12,9 @@
     \item Chapter~\ref{ch:advanced-migrations}: Advanced migrations
     \item Chapter~\ref{ch:row-level-security-in-production}: Row Level Security in
     production
+    \item Chapter~\ref{ch:tenant-safe-relationships}: Tenant-safe relationships
+    \item Chapter~\ref{ch:retrofitting-and-operating}: Retrofitting and operating
+    multi-tenancy
     \item Chapter~\ref{ch:plugin-performance}: Plugin performance
     \item Chapter~\ref{ch:using-the-plugin-in-asp}: Using the plugin in ASP.NET Core
     \item Chapter~\ref{ch:ci-and-api-stability}: CI and API stability
@@ -376,6 +379,65 @@ policies ineffective or unusable:
   Separate roles for cross-tenant access (see below) \\
 \end{datatable}
 
+\section{The threat model}\label{sec:threat-model}
+
+RLS is a layer of protection with clear limits. Whoever uses it should know what it protects
+against, what it relies on and where it ends:
+
+\begin{datatable}{H{0.45}H{1.55}}
+  \textbf{Aspect} & \textbf{In the sample} \\
+  \tablehead
+  Protected & The rows of tenant-owned tables in the supported mappings
+  (page~\pageref{sec:supported-table-mappings}). Not protected are shared master data, the
+  schema and, without composite keys, the existence of foreign values
+  (chapter~\ref{ch:tenant-safe-relationships}). \\
+  \tablerule
+  Trusted & The database server and its roles; the migration role as table owner; the code of
+  the application and the plugin, including the interceptors; the
+  \code{ITenant\allowbreak{}Provider} and the source it reads the tenant from. \\
+  \tablerule
+  Assumptions & The app role is neither superuser nor owner and has no \code{BYPASSRLS}. The
+  tenant comes from an authenticated claim, not from a header or parameter the client chooses
+  freely. EF opens the connections, and there is no transaction pooling. \\
+  \tablerule
+  Limit & The app role may set the session setting itself; it has to, so that the interceptor
+  can set it. Whoever runs arbitrary SQL under this role switches the tenant with it. \\
+\end{datatable}
+
+The limit is not a flaw of the plugin but a property of the session model.
+\code{Threat\allowbreak{}Model\allowbreak{}Tests} shows it against PostgreSQL: one
+\code{SELECT set\_\allowbreak{}config(\allowbreak{}'app.\allowbreak{}tenant\_\allowbreak{}id',
+\allowbreak{} .\allowbreak{}.\allowbreak{}.\allowbreak{})} under the app role is enough, and the
+query after it returns the other tenant's rows.
+\code{Sql\allowbreak{}Server\allowbreak{}Threat\allowbreak{}Model\allowbreak{}Tests} shows the
+same with \code{sp\_\allowbreak{}set\_\allowbreak{}session\_\allowbreak{}context}. This defines
+what RLS protects against here and what it does not:
+
+\begin{itemize}
+  \item \textbf{Protected:} forgotten filters, faulty LINQ queries, the application's raw SQL
+    with a wrong \code{WHERE}, bulk operations, reports that accidentally run through the app
+    role. In all these cases the plugin sets the tenant, and the code does not change it.
+  \item \textbf{Not protected:} SQL injection and compromised application code. Both can change
+    the setting, even within a single statement, since \code{set\_\allowbreak{}config} is a
+    function. What helps against them are parameters instead of concatenated strings (EF
+    parameterizes LINQ and \code{From\allowbreak{}Sql}/\code{Sql\allowbreak{}Query} with
+    interpolated strings; \code{From\allowbreak{}Sql\allowbreak{}Raw} with concatenated values
+    does not) and privileges that give the app role only the tables it needs.
+  \item \textbf{Outside the database:} a forged or wrongly assigned claim grants access to
+    exactly that tenant. That is the job of authentication; the plugin takes the tenant from
+    the \code{ITenant\allowbreak{}Provider}.
+\end{itemize}
+
+The sample deliberately does not implement possible hardenings. SQL Server can freeze the key
+until the end of the connection with \code{sp\_\allowbreak{}set\_\allowbreak{}session\_\allowbreak{}context
+.\allowbreak{}.\allowbreak{}.\allowbreak{}, @read\_only = 1}
+(\href{https://learn.microsoft.com/en-us/sql/relational-databases/security/row-level-security}{SQL Server: Row-Level Security});
+the test above shows that a later change then fails. The price: \code{Apply\allowbreak{}Tenant\allowbreak{}Session},
+too, can no longer change the tenant of an open connection. PostgreSQL has no read-only setting;
+there remain a role per tenant with \code{SET ROLE} or a signed tenant token checked by a
+\code{SECURITY DEFINER} function. Both move complexity into the database and are only named as a
+direction here. Cross-tenant access still belongs in roles of its own (section below).
+
 \section{Transaction pooling}
 
 PgBouncer in “transaction” mode shares a server connection between clients per transaction.
@@ -457,6 +519,253 @@ reporting role sees all tenants, it cannot write, and the app role cannot help i
   deliberately always creates roles with \code{NOBYPASSRLS}: bypass roles do not belong in
   the application's migrations.
 \end{important}
+
+% ------------------------------------------------------------
+\chapter{Tenant-safe relationships}\label{ch:tenant-safe-relationships}
+
+Which table mappings the plugin protects and which it rejects while the model is built is set by
+the matrix on page~\pageref{sec:supported-table-mappings}; this chapter does not repeat it. It is
+about the second axis: relationships between protected tables. RLS governs which \emph{rows} a
+session sees. Whether a row only refers to rows of the same tenant is not governed by RLS. That
+is \emph{referential tenant consistency}, and it comes from the model.
+
+The sample uses customer, order and item: \code{Customer} → \code{Order} →
+\code{Order\allowbreak{}Item}, all three \code{ITenant\allowbreak{}Owned}, plus a shared
+\code{Product} without a tenant.
+
+\section{Visibility is not consistency}
+
+PostgreSQL documents explicitly that checks of foreign keys, unique and primary keys bypass RLS
+to maintain data integrity, and warns of “covert channels” through these checks
+(\href{https://www.postgresql.org/docs/17/ddl-rowsecurity.html}{PostgreSQL: Row Security Policies}).
+The SQL Server documentation says nothing explicit about it;
+\code{Sql\allowbreak{}Server\allowbreak{}Threat\allowbreak{}Model\allowbreak{}Tests} shows that
+the foreign key check there also sees rows the filter predicate hides. With foreign keys on the
+ID alone, as EF creates them by default, this follows:
+
+\begin{datatable}{H{0.70}H{1.30}}
+  \textbf{Observation} & \textbf{Cause} \\
+  \tablehead
+  Tenant A adds an item to an order of B & The FK check finds the order, although A cannot
+  see it. \\
+  \tablerule
+  A learns whether a foreign ID exists & Unknown IDs fail on the foreign key, foreign ones
+  do not. \\
+  \tablerule
+  The own item vanishes from \code{Include(\allowbreak{}i => i.\allowbreak{}Order)} & A required
+  navigation becomes an \code{INNER JOIN}, and the order is invisible. \\
+  \tablerule
+  A deletes an own order, an item of B disappears & The cascading delete is a referential action
+  and bypasses RLS as well. \\
+  \tablerule
+  A learns that an e-mail address exists at B & A global unique index reports the
+  collision. \\
+\end{datatable}
+
+\code{Relationship\allowbreak{}Tests} proves every row against PostgreSQL with a restricted
+role. None of these cases is a read leak in the strict sense; A sees no foreign row. But the
+data loses its tenant boundary, and the error messages answer questions A should not be able
+to ask.
+
+\section{Composite foreign keys}
+
+The solution is to make the tenant part of every reference. The principal gets an alternate key
+of tenant and ID, the dependent side a foreign key of its tenant column and the ID:
+
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Relationship\allowbreak{}Tests.\allowbreak{}cs › Tenant\allowbreak{}Safe\allowbreak{}Context]{csharp}
+modelBuilder.Entity<Customer>(b =>
+{
+    b.HasAlternateKey(c => new { c.TenantId, c.Id });
+    b.HasIndex(c => new { c.TenantId, c.Email }).IsUnique();   // unique per tenant
+});
+
+modelBuilder.Entity<Order>(b =>
+{
+    b.HasAlternateKey(o => new { o.TenantId, o.Id });
+    b.HasOne(o => o.Customer).WithMany(c => c.Orders)
+        .HasForeignKey(o => new { o.TenantId, o.CustomerId })
+        .HasPrincipalKey(c => new { c.TenantId, c.Id })
+        .OnDelete(DeleteBehavior.Restrict);                   // customers are not cascaded
+});
+
+modelBuilder.Entity<OrderItem>()
+    .HasOne(i => i.Order).WithMany(o => o.Items)
+    .HasForeignKey(i => new { i.TenantId, i.OrderId })
+    .HasPrincipalKey(o => new { o.TenantId, o.Id })
+    .OnDelete(DeleteBehavior.Cascade);                         // items belong to the order
+\end{sourcecode}
+
+Now an item of A refers to the pair (A, ID). An order of B never satisfies it, and the error is
+the same as for an unknown ID: there is nothing left to learn. The tenant column is part of the
+foreign key and the tenant property at the same time. The SaveChanges interceptor sets it on new
+items, and fixup through the navigation sets the same value. No index is needed for the policy,
+because key and foreign key start with the tenant column; the index convention recognizes that.
+
+The price is an additional unique index per principal and a wider foreign key. The plugin does
+not create these keys automatically. A convention could, but it would have to rewrite every
+relationship between protected types and reconcile it with explicit configuration. The sample
+leaves the decision to the application's model.
+
+\section{Uniqueness per tenant}
+
+A unique index over a business column applies to the whole table, that is across all tenants.
+Uniqueness per tenant is almost always what is meant: \code{(TenantId, Email)} instead of
+\code{Email}. Where uniqueness really has to be global, for example for the tenants'
+subdomains, the column belongs in the tenant directory, which deliberately holds no tenant data.
+
+\section{Shared master data}
+
+\code{Product} has no tenant, no policy and is readable by everyone. Foreign keys from tenant data
+to master data are unproblematic; the test reads the product through the item. The opposite
+direction, master data with references to tenant data, must not exist. Writing to master data
+should not be allowed to the app role; \code{Grant\allowbreak{}Table\allowbreak{}Privileges}
+grants privileges on all tables of a schema, a finer grant is up to the application's
+migrations.
+
+\section{Join tables}
+
+The plugin rejects implicit many-to-many tables when one side is tenant-owned. A join entity with
+a tenant property of its own is protected (page~\pageref{sec:supported-table-mappings}). For
+consistency it gets the same composite foreign keys as every dependent table:
+\code{(TenantId, LeftId)} and \code{(TenantId, RightId)} on the alternate keys of both sides.
+Then a link can only connect two rows of the same tenant.
+
+\section{Delete rules}
+
+Cascading deletes run in the database as referential actions and bypass RLS. With composite
+foreign keys they still stay within the tenant, because every dependent row carries the same
+tenant. Without them a cascade deletes foreign rows; the test
+\code{Naive\allowbreak{}\_cascade\allowbreak{}\_deletes\allowbreak{}\_rows\allowbreak{}\_of\allowbreak{}\_another\allowbreak{}\_tenant}
+shows exactly that. For roots such as the customer, \code{Restrict} is usually right, for parts of
+an aggregate such as items \code{Cascade}. EF also cascades in the change tracker, but only for
+loaded entities; the rule in the database is what counts.
+
+
+% ------------------------------------------------------------
+\chapter{Retrofitting and operating multi-tenancy}\label{ch:retrofitting-and-operating}
+
+The previous chapters assume a new database. Usually, however, there already are tables with
+data, a running application and users who keep working during the change. This chapter shows the
+way from a table without a tenant column to RLS, and after that operation under retries and lost
+connections. All steps are executable in \code{Operations\allowbreak{}Tests} against PostgreSQL.
+
+\section{From a table without a tenant to RLS}
+
+Whoever simply lets an existing entity implement \code{ITenant\allowbreak{}Owned} gets a single
+migration: a column with the empty tenant as default, RLS, policy, index. After it nobody sees the
+old rows any more. A backfill in the same migration does not reliably help either: with
+\code{FORCE ROW LEVEL SECURITY} the policy also applies to the migration role, and without a tenant
+set its \code{UPDATE} finds no row. The way therefore leads through two migrations, following the
+pattern expand, fill, protect:
+
+\begin{datatable}{H{0.22}H{0.90}H{1.88}}
+  \textbf{No.} & \textbf{Step} & \textbf{Approach} \\
+  \tablehead
+  1 & Expand & The entity implements \code{ITenant\allowbreak{}Owned} but stays excluded with
+  \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})}.
+  The migration only adds the column. \\
+  \tablerule
+  2 & Fill & As owner, in the same or a migration of its own: every row gets its tenant from
+  whatever knows the assignment, for example a mapping table or the tenant of the parent row. \\
+  \tablerule
+  3 & Switch the application & An app version whose model no longer has the exclusion: the
+  interceptor sets the tenant on new rows. The database does not protect yet; the model does not
+  check that. \\
+  \tablerule
+  4 & Close the gap & Assign rows that were created without a tenant between steps 1 and 3. \\
+  \tablerule
+  5 & Protect & Second migration: exclusion removed, so \code{ENABLE}/\code{FORCE}, policy and
+  index. First of all a guard that stops as long as a row has no tenant. \\
+  \tablerule
+  6 & Tighten & Optionally composite keys and unique indexes per tenant
+  (chapter~\ref{ch:tenant-safe-relationships}). \\
+\end{datatable}
+
+The guard is a step of its own at the start of \code{Up}, before the operations EF generates:
+
+\begin{sourcecode}[Guard (\allowbreak{}SQL)]{postgresql}
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM "Tickets"
+             WHERE "TenantId" = '00000000-0000-0000-0000-000000000000') THEN
+    RAISE EXCEPTION 'Tickets without a tenant: backfill first';
+  END IF;
+END $$;
+\end{sourcecode}
+
+\begin{sourcecode}[Migrations/\allowbreak{}…\allowbreak{}\_Enable\allowbreak{}Ticket\allowbreak{}Isolation.\allowbreak{}cs]{csharp}
+protected override void Up(MigrationBuilder migrationBuilder)
+{
+    // Before anything else: do not protect without a complete assignment
+    migrationBuilder.Sql(TicketGuardSql);      // the guard above, as a constant
+
+    // ... generated by EF: ENABLE/FORCE ROW LEVEL SECURITY, CREATE POLICY, CREATE INDEX
+}
+\end{sourcecode}
+
+The migration runs in a transaction. If the guard fires, the table stays without RLS, and no
+half-done state arises;
+\code{Guard\allowbreak{}\_stops\allowbreak{}\_enabling\allowbreak{}\_rls\allowbreak{}\_while\allowbreak{}\_rows\allowbreak{}\_lack\allowbreak{}\_a\allowbreak{}\_tenant}
+checks this. After a complete assignment every tenant sees exactly its rows.
+
+\subsection*{App versions, Down and rollback}
+
+During the change two app versions often run at the same time, and each meets one of the two
+states of the database:
+
+\begin{datatable}{H{0.95}H{1.00}H{1.05}}
+  \textbf{Database} & \textbf{App without tenant} & \textbf{App with tenant} \\
+  \tablehead
+  After migration 1 (column, no RLS) & Runs; new rows without a tenant (step 4) & Runs, sets
+  the tenant; not yet protected \\
+  \tablerule
+  After migration 2 (RLS) & Fail closed: reads nothing, writes fail & Protected \\
+\end{datatable}
+
+The old app version must therefore no longer run once migration 2 is applied. Rolling the
+application back to a version without a tenant thus first requires the Down of migration 2. The
+Down removes policy and RLS; column and values stay, but the table is unprotected again. The test
+checks both. A Down of migration 1 drops the column and with it the assignment; it belongs in
+development only.
+
+Policy changes follow the same pattern. If the setting name changes
+(\code{Use\allowbreak{}Setting\allowbreak{}Name}), the migration replaces the policy in its
+transaction. Between the migration and the new app version the policy reads a setting the running
+app does not set, and the database refuses everything until both match. A transition in which the
+interceptor sets both settings is conceivable but not implemented. For SQL Server,
+page~\pageref{sec:sqlserver-session-settings} describes the same case.
+
+\section{Retries, transactions and lost connections}
+
+The plugin sets the tenant when EF opens a connection. This determines the behavior under EF's
+resilience mechanisms:
+
+\begin{itemize}
+  \item \textbf{Retries.} An execution strategy such as
+    \code{Enable\allowbreak{}Retry\allowbreak{}On\allowbreak{}Failure} repeats an operation after
+    a transient error on a newly opened connection. The interceptor runs again, the tenant is set.
+    The test ends the session on the server with \code{pg\_\allowbreak{}terminate\_\allowbreak{}backend};
+    the next query fails, is repeated and returns only rows of the tenant.
+  \item \textbf{Explicit transactions.} With a retrying strategy EF refuses commands in a
+    transaction the application began itself, because a retry would have to repeat the whole
+    transaction. The transaction therefore belongs into
+    \code{Create\allowbreak{}Execution\allowbreak{}Strategy(\allowbreak{}).\allowbreak{}Execute\allowbreak{}Async(\allowbreak{}…)}.
+    Inside, EF opens the connection once, sets the tenant and keeps it until the commit. If the
+    connection breaks in the middle of the transaction, the strategy repeats the whole delegate on
+    a new connection; side effects outside the database then have to be idempotent.
+  \item \textbf{Session reinitialization.} Npgsql resets a connection's state when it returns to
+    the pool, as long as \code{No Reset On Close} is not enabled
+    (\href{https://www.npgsql.org/doc/connection-string-parameters.html}{Npgsql: Connection String Parameters}).
+    SQL Server also clears the session context when the connection is returned. The plugin relies
+    on neither, but sets the tenant on every open; only connections that EF does not open need
+    \code{Apply\allowbreak{}Tenant\allowbreak{}Session} (chapter~\ref{ch:interceptors}).
+\end{itemize}
+
+Not implemented are transaction-local settings for transaction pooling (section “Transaction
+pooling” in chapter~\ref{ch:row-level-security-in-production}) and a read-only session key
+(section “The threat model”). \code{Operations\allowbreak{}Tests} contains the lost connection and
+the transaction inside the strategy; the cases of open connections are in
+\code{Connection\allowbreak{}Lifetime\allowbreak{}Tests}.
+
 
 % ------------------------------------------------------------
 \chapter{Plugin performance}\label{ch:plugin-performance}

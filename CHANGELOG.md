@@ -72,6 +72,20 @@ version of EF Core (10.x = EF Core 10).
   lifetime and cardinality was checked again against EF Core 10 and Npgsql 10. New
   `\tablegroup` macro for group headings in tables.
 
+- Handbook (both editions): new chapter "Tenant-safe relationships" (visibility versus
+  referential consistency, composite foreign keys with the tenant, uniqueness per tenant, shared
+  master data, join tables, delete rules), a threat model in "Row Level Security in production"
+  (protected data, trusted components, assumptions, the app role setting the session itself,
+  SQL injection, hardening options not implemented) and the new chapter "Retrofitting and
+  operating multi-tenancy" (expand, fill, guard, protect; app versions, Down and rollback;
+  retries, explicit transactions, lost connections, session reinitialization). Sources: the
+  PostgreSQL, SQL Server and Npgsql documentation.
+- Tests for these statements: `RelationshipTests` (cross-tenant reference, existence leak,
+  vanishing `Include`, cascade into another tenant, composite keys, unique per tenant),
+  `ThreatModelTests` and `SqlServerThreatModelTests` (the app role switching tenants, FK check
+  on SQL Server, `@read_only`), `OperationsTests` (retrofit with guard, Down, retry after a
+  terminated session, transaction inside the execution strategy); `TestDatabase` helper.
+
 ### Changed
 
 - SQL Server upgrade note: the first migration after upgrading from 10.0 contains an
