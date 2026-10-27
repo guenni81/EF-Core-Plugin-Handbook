@@ -461,7 +461,8 @@ must be prepared for it in four places:
   Type mappings & Public type with a public static property \code{Default} (used for
   NativeAOT); converters/comparers as shared instances &
   \code{Tenant\allowbreak{}Id\allowbreak{}Type\allowbreak{}Mapping.\allowbreak{}Default},
-  \code{Tenant\allowbreak{}Id\allowbreak{}Converter.\allowbreak{}Instance} \\
+  \code{Tenant\allowbreak{}Id\allowbreak{}Converter.\allowbreak{}Instance},
+  \code{Tenant\allowbreak{}Id\allowbreak{}Value\allowbreak{}Comparer} \\
   \tablerule
   JSON reader/writer & Static \code{Instance} and \code{Constructor\allowbreak{}Expression}
   & \code{Tenant\allowbreak{}Id\allowbreak{}Json\allowbreak{}Reader\allowbreak{}Writer} \\
@@ -489,7 +490,7 @@ shows both in the sample.
 
 \section{Trimming and AOT}
 
-Both packages set
+All three packages set
 \code{<\allowbreak{}Is\allowbreak{}Aot\allowbreak{}Compatible>true<\allowbreak{}/\allowbreak{}Is\allowbreak{}Aot\allowbreak{}Compatible>}.
 The compiler then reports code that uses reflection without annotations. The JSON
 serialization of the policies uses a source generator instead of reflection:
@@ -513,6 +514,72 @@ them (upgrade playbook in chapter~\ref{ch:versioning-and-compatibility}).
   critical parts are therefore type mappings, converters, translators (run at build time)
   and interceptors.
 \end{note}
+
+\section{What is actually checked as a consumer}\label{sec:consumer-test}
+
+\code{Is\allowbreak{}Aot\allowbreak{}Compatible} runs analyzers but proves nothing at run time.
+A unit test that generates compiled model code and checks text in it
+(\code{Compiled\allowbreak{}Model\allowbreak{}Tests}) does not compile or load the model either.
+\code{eng/\allowbreak{}consumer-\allowbreak{}test/\allowbreak{}run.\allowbreak{}sh} therefore
+checks the plugin the way an application gets it, in a temporary directory that is deleted at
+the end:
+
+\begin{datatable}{H{0.55}H{1.45}}
+  \textbf{Step} & \textbf{Check} \\
+  \tablehead
+  Packages & \code{dotnet pack} of the three libraries into a local source; a fresh project
+  references the packages, not the projects. Its own NuGet cache, package source mapping with
+  \code{Acme.*} only from the local source and a SHA-512 comparison prove that exactly the
+  packages just built are resolved. \\
+  \tablerule
+  Tooling & \code{dotnet-ef} as a local tool. The design-time services are found without any
+  help. Migration and SQL script contain RLS, \code{FORCE}, policy and index (PostgreSQL) and
+  security policy and session key (SQL Server).
+  \code{has-\allowbreak{}pending-\allowbreak{}model-\allowbreak{}changes} then reports no
+  change. \\
+  \tablerule
+  Runtime model & \code{TenantId} becomes \code{uuid}, the runtime annotation names the
+  property, \code{Current\allowbreak{}Tenant(\allowbreak{})} and the query filter are
+  translated. \\
+  \tablerule
+  Compiled model & \code{dotnet ef dbcontext optimize}, compile, load with
+  \code{Use\allowbreak{}Model}, the same checks. \\
+  \tablerule
+  NativeAOT (\code{-\allowbreak{}-nativeaot}) & Publish with \code{Publish\allowbreak{}Aot} and
+  precompiled queries, then run against PostgreSQL in Docker: two tenants write through the
+  interceptors, one reads, RLS returns only its rows. No trim or AOT warning may come from an
+  Acme assembly. \\
+\end{datatable}
+
+CI runs the flow in a job of its own with the newest stable 10.0.x patch for the tooling and
+prints the versions. The test found things the unit tests could not show:
+
+\begin{itemize}
+  \item \textbf{Query filters and compiled models exclude each other.} EF Core~10 rejects
+    \code{optimize}: “Compiled model can't be generated, because query filters are not
+    supported.” Whoever enables the plugin's optional filter gives up compiled model and
+    NativeAOT; protection then comes from RLS alone. The test expects this error explicitly, so
+    that a later EF version that supports filters stands out.
+  \item \textbf{Value comparers through reflection.} The type mapping for \code{TenantId} brought
+    no comparers of its own. The compiled model then only refers to
+    \code{Tenant\allowbreak{}Id\allowbreak{}Type\allowbreak{}Mapping.\allowbreak{}Default}, and
+    EF creates the comparer on first tracking with \code{Make\allowbreak{}Generic\allowbreak{}Method},
+    which made the NativeAOT application fail. Since then both mappings carry shared instances
+    from \code{Tenant\allowbreak{}Id\allowbreak{}Value\allowbreak{}Comparer}, like converter and
+    JSON reader.
+  \item \textbf{Limits of EF itself.} Precompiled queries and NativeAOT are experimental in EF
+    Core~10 (warning EF9100). \code{Publish\allowbreak{}Aot} must not be in the project, because
+    EF otherwise refuses to build the model at design time already. The package
+    \code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tasks}
+    generates model and queries on publish; an additional, manually generated model gets in its
+    way. Precompilation rejects \code{o.\allowbreak{}Total > 0} on a \code{decimal} property,
+    \code{0m} works. EF, EF Relational and Npgsql report trim and AOT warnings themselves
+    (IL2104, IL3053).
+\end{itemize}
+
+Not checked is SQL Server under NativeAOT; the package is marked for it, a run with a real
+database is missing.
+
 
 % ------------------------------------------------------------
 \chapter{Scaffolding (reverse engineering)}\label{ch:scaffolding-reverse-engineering}

@@ -346,7 +346,7 @@ findet, und vor allem, welche er nicht findet:
   \code{Migration\allowbreak{}Sql\allowbreak{}Tests},
   \code{Migration\allowbreak{}Script\allowbreak{}Tests},
   \code{Annotation\allowbreak{}Format\allowbreak{}Tests},
-  \code{Compiled\allowbreak{}Model\allowbreak{}Tests} \\
+  \code{Compiled\allowbreak{}Model\allowbreak{}Tests}, Verbrauchertest \\
   \tablerule
   Performance Regression & Ein heißer Pfad allokiert mehr oder wird langsamer & Das
   Benchmark-Projekt (Kapitel~\ref{ch:plugin-performance}) \\
@@ -425,12 +425,14 @@ Target-Framework ließe sich nicht einmal wiederherstellen.
   10 & Snapshot-Roundtrip & Snapshot erzeugen, kompilieren, vergleichen; eine neue Migration
   auf einem bestehenden Projekt muss leer sein & \code{Snapshot\allowbreak{}Tests} \\
   \tablerule
-  11 & Compiled Models & Generieren und das Ergebnis prüfen, auch die Laufzeit-Annotations &
-  \code{Compiled\allowbreak{}Model\allowbreak{}Tests} \\
+  11 & Compiled Models & Generieren, kompilieren, mit \code{Use\allowbreak{}Model} laden, auch die
+  Laufzeit-Annotations & \code{Compiled\allowbreak{}Model\allowbreak{}Tests},
+  \code{run.\allowbreak{}sh} (Seite~\pageref{sec:consumer-test}) \\
   \tablerule
-  12 & Trimming und NativeAOT & Neue IL-Warnungen (IL2xxx, IL3xxx) im Build lesen; die
-  experimentelle API für vorkompilierte Abfragen (EF9100) ändert sich besonders oft &
-  \code{Is\allowbreak{}Aot\allowbreak{}Compatible} \\
+  12 & Trimming und NativeAOT & Neue IL-Warnungen (IL2xxx, IL3xxx) im Build lesen und eine
+  NativeAOT-Anwendung starten; die experimentelle API für vorkompilierte Abfragen (EF9100)
+  ändert sich besonders oft & \code{Is\allowbreak{}Aot\allowbreak{}Compatible},
+  \code{run.\allowbreak{}sh -\allowbreak{}-nativeaot} \\
   \tablerule
   13 & Integrationstests & Gegen echte Datenbanken, mit den Provider-Versionen der neuen
   Linie & Integrations- und SQL-Server-Tests \\

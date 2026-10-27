@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A fresh application that uses the plugin the way customers do: through the NuGet packages
+       built by run.sh, not through project references. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Acme.EntityFrameworkCore.Tenancy.PostgreSQL" Version="$(AcmeVersion)" />
+    <PackageReference Include="Acme.EntityFrameworkCore.Tenancy.SqlServer" Version="$(AcmeVersion)" />
+    <!-- Needed by dotnet-ef in the startup project; never shipped with the application -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="$(EFCoreVersion)">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

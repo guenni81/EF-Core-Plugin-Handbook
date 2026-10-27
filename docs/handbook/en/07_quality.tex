@@ -346,7 +346,7 @@ above all which one does not:
   \code{Migration\allowbreak{}Sql\allowbreak{}Tests},
   \code{Migration\allowbreak{}Script\allowbreak{}Tests},
   \code{Annotation\allowbreak{}Format\allowbreak{}Tests},
-  \code{Compiled\allowbreak{}Model\allowbreak{}Tests} \\
+  \code{Compiled\allowbreak{}Model\allowbreak{}Tests}, consumer test \\
   \tablerule
   Performance regression & A hot path allocates more or becomes slower & The benchmark
   project (chapter~\ref{ch:plugin-performance}) \\
@@ -425,12 +425,14 @@ framework.
   10 & Snapshot round trip & Generate the snapshot, compile it, compare; a new migration on an
   existing project must be empty & \code{Snapshot\allowbreak{}Tests} \\
   \tablerule
-  11 & Compiled models & Generate and check the result, including the runtime annotations &
-  \code{Compiled\allowbreak{}Model\allowbreak{}Tests} \\
+  11 & Compiled models & Generate, compile, load with \code{Use\allowbreak{}Model}, including the
+  runtime annotations & \code{Compiled\allowbreak{}Model\allowbreak{}Tests},
+  \code{run.\allowbreak{}sh} (page~\pageref{sec:consumer-test}) \\
   \tablerule
-  12 & Trimming and NativeAOT & Read new IL warnings (IL2xxx, IL3xxx) in the build; the
-  experimental API for precompiled queries (EF9100) changes particularly often &
-  \code{Is\allowbreak{}Aot\allowbreak{}Compatible} \\
+  12 & Trimming and NativeAOT & Read new IL warnings (IL2xxx, IL3xxx) in the build and start a
+  NativeAOT application; the experimental API for precompiled queries (EF9100) changes
+  particularly often & \code{Is\allowbreak{}Aot\allowbreak{}Compatible},
+  \code{run.\allowbreak{}sh -\allowbreak{}-nativeaot} \\
   \tablerule
   13 & Integration tests & Against real databases, with the provider versions of the new line
   & Integration and SQL Server tests \\

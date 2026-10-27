@@ -27,6 +27,20 @@ jobs:
       - name: SQL Server tests (unit + SQL Server via Testcontainers)
         run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests -c Release --no-build
 
+  # The packages as a customer gets them: pack, fresh application, dotnet-ef (migrations, no
+  # phantom changes, compiled model) and a NativeAOT application against PostgreSQL in Docker.
+  # Uses the newest stable EF Core 10.0.x patch for the tooling; the script prints the versions.
+  consumer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Consumer test (packages, tooling, compiled model, NativeAOT)
+        run: eng/consumer-test/run.sh --nativeaot
+
   # Builds both editions of the handbook with LuaLaTeX. Fails if a code excerpt exceeds
   # the maximum line length, a reference is undefined or the LaTeX sources are broken.
   handbook:

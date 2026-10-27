@@ -4,3 +4,6 @@ Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantMaterializationInterceptor.T
 virtual Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantMaterializationInterceptor.CreatingInstance(Microsoft.EntityFrameworkCore.Diagnostics.MaterializationInterceptionData materializationData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<object!> result) -> Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<object!>
 Acme.EntityFrameworkCore.Tenancy.Metadata.TenantTableMappingValidator
 static Acme.EntityFrameworkCore.Tenancy.Metadata.TenantTableMappingValidator.Validate(Microsoft.EntityFrameworkCore.Metadata.IReadOnlyModel! model, System.Func<Microsoft.EntityFrameworkCore.Metadata.IReadOnlyEntityType!, bool>! isOptedOut) -> void
+Acme.EntityFrameworkCore.Tenancy.TenantIdValueComparer
+static Acme.EntityFrameworkCore.Tenancy.TenantIdValueComparer.Instance.get -> Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<Acme.EntityFrameworkCore.Tenancy.TenantId>!
+static Acme.EntityFrameworkCore.Tenancy.TenantIdValueComparer.Provider.get -> Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<System.Guid>!

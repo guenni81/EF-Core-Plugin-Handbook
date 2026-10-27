@@ -86,6 +86,14 @@ version of EF Core (10.x = EF Core 10).
   on SQL Server, `@read_only`), `OperationsTests` (retrofit with guard, Down, retry after a
   terminated session, transaction inside the execution strategy); `TestDatabase` helper.
 
+- `eng/consumer-test/run.sh`: packs the three libraries and checks them as a customer gets
+  them, in a temporary directory with its own NuGet cache: package source mapping and SHA-512
+  prove the packages just built are resolved; `dotnet-ef` as a local tool creates migrations and
+  scripts for PostgreSQL and SQL Server (RLS objects, no pending model changes), a compiled model
+  is generated, compiled and loaded with `UseModel`; `--nativeaot` publishes a NativeAOT
+  application with precompiled queries and runs it against PostgreSQL in Docker. New CI job
+  `consumer`. Handbook (both editions): section "What is actually checked as a consumer".
+
 ### Changed
 
 - SQL Server upgrade note: the first migration after upgrading from 10.0 contains an
@@ -108,6 +116,13 @@ version of EF Core (10.x = EF Core 10).
   patches.
 
 ### Fixed
+
+- NativeAOT: the `TenantId` type mappings had no value comparers of their own, so EF created
+  them through `MakeGenericMethod` on first tracking and a NativeAOT application failed. Both
+  mappings now use the shared instances of the new `TenantIdValueComparer`.
+- Documented limit: EF Core 10 generates no compiled model for entities with query filters, so
+  the plugin's optional query filter excludes compiled models and NativeAOT; the consumer test
+  expects this error explicitly.
 
 - Handbook (both editions), factual corrections with sources: EF Core *n* does not generally
   ship only for .NET *n* (EF Core 9 targets .NET 8; checked against the NuGet packages and
