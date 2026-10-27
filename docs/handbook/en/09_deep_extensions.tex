@@ -669,7 +669,7 @@ has to solve anew per database:
   \tablerule
   Table owner & Only bound with \code{FORCE} & No FORCE; predicates are part of the query \\
   \tablerule
-  \code{DROP TABLE} & Policies disappear with it & Policy must go first (SCHEMABINDING) \\
+  \code{DROP TABLE}, renaming & Policies disappear with it or follow & Policy must go first and be recreated afterwards (SCHEMABINDING) \\
   \tablerule
   DDL in batches & Transactional, freely combinable & \code{CREATE
   FUNCTION/\allowbreak{}SCHEMA} alone in a batch:
@@ -736,7 +736,7 @@ protected virtual void CreatePolicy(string table, string? schema, string column,
         + $"EXEC({Literal(functionSql)})");
 
     Statement(builder,
-        $"CREATE SECURITY POLICY {PolicyName(table)} "
+        $"CREATE SECURITY POLICY {PolicyName(table, schema ?? "dbo")} "
         + $"ADD FILTER PREDICATE {predicate} ON {target}, "
         + $"ADD BLOCK PREDICATE {predicate} ON {target} AFTER INSERT, "
         + $"ADD BLOCK PREDICATE {predicate} ON {target} AFTER UPDATE "
@@ -746,7 +746,8 @@ protected virtual void CreatePolicy(string table, string? schema, string column,
 protected override void Generate(DropTableOperation operation, IModel? model,
     MigrationCommandListBuilder builder, bool terminate = true)
 {
-    DropPolicy(operation.Name, builder);       // SCHEMABINDING: the policy first
+    // SCHEMABINDING: the policy first, found by the table it binds
+    DropPolicy(operation.Name, TableSchema(operation.Schema, model), builder);
     base.Generate(operation, model, builder, terminate);
 }
 \end{sourcecode}
@@ -762,6 +763,71 @@ therefore qualified by the callers with the model's default schema or, failing t
   doubles quotes correctly; identifiers go through \code{Delimit\allowbreak{}Identifier}.
   Session key and schema are additionally validated during configuration.
 \end{important}
+
+\section{Schema changes on protected tables}\label{sec:sqlserver-schema-bound-changes}
+
+\code{SCHEMABINDING} protects the predicate function, but it also binds the table. SQL Server
+rejects \code{sp\_\allowbreak{}rename} for the table and the tenant column, \code{ALTER SCHEMA
+.\allowbreak{}.\allowbreak{}.\allowbreak{} TRANSFER}, \code{ALTER COLUMN} and \code{DROP COLUMN}
+as long as a security policy binds the table: “object participates in enforced dependencies”.
+This cannot be solved per operation. EF orders a migration's operations itself, and when the
+tenant column is renamed, the \code{Rename\allowbreak{}Column\allowbreak{}Operation} comes
+\emph{before} the \code{Alter\allowbreak{}Table\allowbreak{}Operation} that carries the changed
+annotation. A plain table rename produces no \code{Alter\allowbreak{}Table\allowbreak{}Operation}
+at all.
+
+The generator therefore overrides the entry point that receives the whole operation list. It
+finds all tables whose bound objects change, follows their renames and wraps the list. At the
+front it removes the policies of the affected tables under their old names. At the end it
+recreates them with the final table, schema and column names from the target model:
+
+\begin{sourcecode}[Generated SQL when renaming the tenant column (\allowbreak{}shortened)]{sql}
+DECLARE @policy nvarchar(400) = (SELECT TOP (1) ... FROM sys.security_policies AS p
+    WHERE EXISTS (SELECT 1 FROM sys.security_predicates AS s WHERE s.object_id = p.object_id
+        AND s.target_object_id = OBJECT_ID(N'[dbo].[Invoice]')
+        AND s.predicate_definition LIKE N'%[[]fn[_]tenant[_]predicate]%'));
+IF @policy IS NOT NULL EXEC(N'DROP SECURITY POLICY ' + @policy);
+EXEC sp_rename N'[Invoice].[TenantId]', N'Mandant', 'COLUMN';
+EXEC sp_rename N'[Invoice].[IX_Invoice_TenantId]', N'IX_Invoice_Mandant', 'INDEX';
+IF SCHEMA_ID(N'acme') IS NULL EXEC(N'CREATE SCHEMA [acme]');
+IF OBJECT_ID(N'[acme].[fn_tenant_predicate]', N'IF') IS NULL EXEC(N'CREATE FUNCTION ...');
+CREATE SECURITY POLICY [acme].[tenant_dbo_Invoice]
+    ADD FILTER PREDICATE [acme].[fn_tenant_predicate]([Mandant]) ON [dbo].[Invoice], ...
+\end{sourcecode}
+
+Three decisions are built into this:
+
+\begin{itemize}
+  \item \textbf{A transaction instead of switching off.} EF runs a migration's commands in a
+    transaction, and DDL is transactional in SQL Server. If a step fails, SQL Server also
+    rolls back the removal of the policy. A permanently removed policy, or one switched off
+    with \code{STATE = OFF}, cannot come about this way. The Down path is the same wrapping
+    with the names swapped.
+  \item \textbf{Removal by binding, not by name.} Only a policy whose predicate uses the
+    plugin's predicate function and that binds exactly this table is dropped. Policies of
+    others and tables without RLS stay untouched, and policies under an earlier name are
+    found all the same.
+  \item \textbf{Schema-qualified names.} Up to 10.0 the policy was called
+    \code{tenant\_\allowbreak{}Table}, so tables with the same name in two schemas collided.
+    New policies are called \code{tenant\_\allowbreak{}Schema\_\allowbreak{}Table}. Existing
+    installations keep the old name until the table is touched the next time; then the
+    generator replaces the policy. The remaining ambiguity (schema \code{a\_b} with table
+    \code{c} versus schema \code{a} with table \code{b\_c}) and names longer than 128
+    characters are rejected by the convention while the model is built.
+\end{itemize}
+
+Limits: restoring needs the target model. That is the normal case, since
+\code{dotnet ef migrations add} creates a designer file for every migration. If it is
+missing, or a changed table does not appear in it, the generator stops instead of dropping a
+policy. The application's own schema-bound objects (views with \code{SCHEMABINDING}, its own
+security policies) are not handled by the plugin; they still block the same operations. Data
+operations that EF sorts between the schema changes run inside the transaction without a
+policy, that is with the rights of the migration role.
+\code{Sql\allowbreak{}Server\allowbreak{}Migration\allowbreak{}Tests} checks with diffs
+generated by EF against a real SQL Server: create, rename column and table, move schema, every
+step back and drop, with read and write isolation through the app login after every step. In
+addition: tables with the same name in two schemas, a policy under the old name and someone
+else's policy on a table without RLS.
 
 \section{Run time: same flow, different command}
 

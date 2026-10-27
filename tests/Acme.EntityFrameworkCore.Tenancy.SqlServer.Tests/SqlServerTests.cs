@@ -158,9 +158,9 @@ public class SqlServerUnitTests
 
         var sql = Contexts.CreateSql(ctx);
 
-        Assert.Contains(sql, s => s.StartsWith("CREATE SECURITY POLICY [acme].[tenant_Orders]")
+        Assert.Contains(sql, s => s.StartsWith("CREATE SECURITY POLICY [acme].[tenant_dbo_Orders]")
                                   && s.Contains("AFTER INSERT") && s.Contains("AFTER UPDATE"));
-        Assert.DoesNotContain(sql, s => s.Contains("[tenant_AuditEntries]"));
+        Assert.DoesNotContain(sql, s => s.Contains("AuditEntries]", StringComparison.Ordinal) && s.Contains("SECURITY POLICY", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -179,7 +179,9 @@ public class SqlServerUnitTests
 
         var sql = Contexts.Sql(ctx, [new DropTableOperation { Name = "Orders" }]);
 
-        Assert.StartsWith("DROP SECURITY POLICY IF EXISTS [acme].[tenant_Orders]", sql[0]);
+        // Found by the table it is bound to, so the pre-10.1 name tenant_Orders is covered too
+        Assert.Contains("s.target_object_id = OBJECT_ID(N'[dbo].[Orders]')", sql[0]);
+        Assert.Contains("EXEC(N'DROP SECURITY POLICY ' + @policy)", sql[0]);
         Assert.Contains("DROP TABLE", sql[1]);
     }
 }
@@ -191,6 +193,12 @@ public sealed class SqlServerFixture : IAsyncLifetime
     private readonly MsSqlContainer _container = new MsSqlBuilder().Build();
 
     public string AppConnectionString { get; private set; } = "";
+
+    /// <summary>The server administrator's connection (master); tests create their own databases.</summary>
+    public string AdminConnectionString => _container.GetConnectionString();
+
+    /// <summary>Password of the server login <c>shop_app</c>.</summary>
+    public static string AppLoginPassword => AppPassword;
 
     public async Task InitializeAsync()
     {

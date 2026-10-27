@@ -1,6 +1,7 @@
 using Acme.EntityFrameworkCore.Tenancy.Diagnostics;
 using Acme.EntityFrameworkCore.Tenancy.Metadata;
 using Acme.EntityFrameworkCore.Tenancy.SqlServer.Metadata;
+using Acme.EntityFrameworkCore.Tenancy.SqlServer.Metadata.Internal;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -52,6 +53,10 @@ public class SqlServerTenantIsolationConvention : IModelFinalizingConvention
         // before any table is annotated (same contract as the PostgreSQL package)
         TenantTableMappingValidator.Validate(modelBuilder.Metadata, IsOptedOut);
 
+        // Policy name -> table: each protected table needs its own policy name
+        var policies = new Dictionary<string, StoreObjectIdentifier>(StringComparer.OrdinalIgnoreCase);
+        var defaultSchema = modelBuilder.Metadata.GetDefaultSchema() ?? "dbo";
+
         foreach (var entityType in modelBuilder.Metadata.GetEntityTypes())
         {
             // Derived types share the root's table (TPH) and owned types the owner's (validated
@@ -82,6 +87,7 @@ public class SqlServerTenantIsolationConvention : IModelFinalizingConvention
             entityType.Builder.HasAnnotation(TenancyAnnotationNames.TenantProperty, property.Name);
             entityType.Builder.HasAnnotation(
                 SqlServerRlsAnnotationNames.TenantColumn, property.GetColumnName(table));
+            EnsureUniquePolicyName(policies, table, defaultSchema);
 
             // Every query filters by the tenant column via the predicate: index it unless an
             // existing index or key already starts with it
@@ -93,6 +99,25 @@ public class SqlServerTenantIsolationConvention : IModelFinalizingConvention
 
             _logger.TenantIsolationApplied(_loggingDefinitions, entityType);
         }
+    }
+
+    // SQL Server compares names case-insensitively by default; a collision would only show up as
+    // a failing CREATE SECURITY POLICY in the database
+    private static void EnsureUniquePolicyName(
+        Dictionary<string, StoreObjectIdentifier> policies, StoreObjectIdentifier table, string defaultSchema)
+    {
+        var name = SqlServerTenancyNames.PolicyName(table.Schema ?? defaultSchema, table.Name);
+        if (name.Length > SqlServerTenancyNames.MaxIdentifierLength)
+            throw new InvalidOperationException(
+                $"The security policy name '{name}' for table '{table.DisplayName()}' is longer than "
+                + $"{SqlServerTenancyNames.MaxIdentifierLength} characters. Shorten the table or schema name.");
+
+        if (policies.TryGetValue(name, out var other) && other != table)
+            throw new InvalidOperationException(
+                $"Tables '{other.DisplayName()}' and '{table.DisplayName()}' would get the same security "
+                + $"policy name '{name}'. Rename one of them.");
+
+        policies[name] = table;
     }
 
     private static bool IsOptedOut(IReadOnlyEntityType entityType)

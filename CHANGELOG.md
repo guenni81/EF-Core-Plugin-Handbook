@@ -74,6 +74,12 @@ version of EF Core (10.x = EF Core 10).
 
 ### Changed
 
+- SQL Server: security policies are dropped by the table they bind and the plugin's predicate
+  function instead of by name, so policies created by 10.0 (`tenant_<table>`) are found and
+  replaced with the new name the next time their table changes; policies of others are never
+  dropped. `PolicyName(string)` and `DropPolicy(string, builder)` of the migrations SQL
+  generator are obsolete.
+
 - `Directory.Packages.props`: the EF Core range lives in the `EFCoreVersion` property;
   `Microsoft.Extensions.DependencyInjection` follows it, and the unit tests take Roslyn from
   `Microsoft.EntityFrameworkCore.Design` instead of pinning their own version. Pinned
@@ -81,6 +87,20 @@ version of EF Core (10.x = EF Core 10).
   patches.
 
 ### Fixed
+
+- SQL Server: renaming a tenant column or a protected table, moving it to another schema, and
+  altering or dropping its columns failed with "object participates in enforced
+  dependencies", because the schema-bound security policy was only handled for
+  `AlterTableOperation`, after EF's `RenameColumnOperation`, and not at all for
+  `RenameTableOperation`. The generator now drops the policies of all affected tables before
+  the migration's operations and recreates them afterwards with the final table, schema and
+  column names from the target model, inside the migration's transaction (Up and Down). It
+  stops instead of dropping a policy when there is no target model. Integration tests against
+  SQL Server with EF-generated diffs: create, rename column and table, move schema, migrate
+  back, drop, isolation checked after every step.
+- SQL Server: tables with the same name in different schemas got the same policy name. New
+  policies are named `tenant_<schema>_<table>`; ambiguous or overlong names are rejected while
+  the model is built.
 
 - Security: tenant isolation skipped derived and owned entity types without checking their
   tables. A TPC hierarchy with an abstract `ITenantOwned` base created concrete tables without
