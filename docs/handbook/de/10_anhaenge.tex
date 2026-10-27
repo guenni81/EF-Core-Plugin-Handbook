@@ -16,111 +16,246 @@
 % ------------------------------------------------------------
 \chapter{Erweiterungspunkte und Lebensdauern}\label{app:A}
 
-Lebensdauern und Kardinalität laut den Service-Tabellen von EF Core 10
+Dieser Anhang führt vom Mechanismus zu seinen Eigenschaften und zum Detailkapitel. Den
+umgekehrten Weg, vom Problem zum Mechanismus, geht die Entscheidungshilfe in
+Kapitel~\ref{ch:choosing-the-right-extension-point}. Lebensdauer und Kardinalität stammen
+aus den Service-Tabellen von EF Core~10
 (\code{Entity\allowbreak{}Framework\allowbreak{}Services\allowbreak{}Builder},
-\code{Entity\allowbreak{}Framework\allowbreak{}Relational\allowbreak{}Services\allowbreak{}Builder}).
-„Mehrfach“ heißt: Plugin-Interface, alle Registrierungen werden verwendet. Singleton heißt
-einmal pro internem Provider, Scoped einmal pro Context-Instanz, mit Pooling über mehrere
-Anfragen hinweg (Kapitel~\ref{ch:state-lifetimes-and-thread-safety}). Welcher Dienst für
-welches Problem in Frage kommt und was vorher geprüft werden sollte, zeigt die
-Entscheidungshilfe in Kapitel~\ref{ch:choosing-the-right-extension-point}.
+\code{Entity\allowbreak{}Framework\allowbreak{}Relational\allowbreak{}Services\allowbreak{}Builder},
+\code{Entity\allowbreak{}Framework\allowbreak{}Relational\allowbreak{}Design\allowbreak{}Services\allowbreak{}Builder}),
+die Angaben zur Provider-Implementierung aus Npgsql~10;
+\code{Service\allowbreak{}Registration\allowbreak{}Tests} prüft die Registrierungen des
+Beispiels gegen dieselben Tabellen.
 
-\begin{datatable}{H{2.13}H{0.80}H{0.71}H{0.36}}
-  \textbf{Dienst} & \textbf{Lebensdauer} & \textbf{Art} & \textbf{Kap.} \\
+\begin{datatable}{H{0.55}H{1.45}}
+  \textbf{Kennzeichen} & \textbf{Bedeutung} \\
   \tablehead
-  \code{IConvention\allowbreak{}Set\allowbreak{}Plugin} & Scoped & mehrfach & \ref{ch:conventions} \\
+  Singleton, Scoped & Einmal pro internem Provider bzw. pro Context-Instanz, mit Pooling über
+  mehrere Anfragen (Kapitel~\ref{ch:state-lifetimes-and-thread-safety}); „DT“: im Service
+  Provider von \code{dotnet ef} \\
   \tablerule
-  \code{ISingleton\allowbreak{}Options} & Singleton & mehrfach & \ref{ch:registering-services}, \ref{ch:state-lifetimes-and-thread-safety} \\
+  mehrfach, einzeln & Plugin-Interface, EF fragt alle Registrierungen; bzw. Einzeldienst mit
+  genau einem Gewinner \\
   \tablerule
-  \code{IResettable\allowbreak{}Service} & Scoped & mehrfach & \ref{ch:state-lifetimes-and-thread-safety} \\
+  öffentlich, Provider-Basis, pubternal & Wie in der Entscheidungshilfe: nur öffentliche
+  API; Ersetzen heißt von der Provider-Implementierung erben; schon EFs eigener Typ ist
+  intern \\
   \tablerule
-  \code{IType\allowbreak{}Mapping\allowbreak{}Source\allowbreak{}Plugin} & Singleton &
-  mehrfach & \ref{ch:type-mappings-and-value-converters} \\
+  \code{Try\allowbreak{}Add}, \code{Replace}, \code{Replace\allowbreak{}Service} & Im
+  \code{Apply\allowbreak{}Services} der Extension ergänzen bzw. ersetzen; vom Anwender am
+  Options-Builder ersetzt \\
   \tablerule
-  \code{IRelational\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source\allowbreak{}Plugin}
-  & Singleton & mehrfach & \ref{ch:type-mappings-and-value-converters} \\
+  † & Erhöhtes Upgrade-Risiko: Ersetzen oder Ableiten berührt interne API von EF oder Npgsql
+  (EF1001, Upgrade-Playbook in Kapitel~\ref{ch:versioning-and-compatibility}) \\
   \tablerule
-  \code{IMethod\allowbreak{}Call\allowbreak{}Translator\allowbreak{}Plugin} & Scoped &
-  mehrfach & \ref{ch:translating-methods-and-members} \\
+  ● ◐ ○ & Bevorzugter Mechanismus; mit Bedacht einsetzen; letzte Option \\
   \tablerule
-  \code{IMember\allowbreak{}Translator\allowbreak{}Plugin} & Scoped & mehrfach & \ref{ch:translating-methods-and-members} \\
-  \tablerule
-  \code{IAggregate\allowbreak{}Method\allowbreak{}Call\allowbreak{}Translator\allowbreak{}Plugin}
-  & Scoped & mehrfach & \ref{ch:aggregate-translators} \\
-  \tablerule
-  \code{IEvaluatable\allowbreak{}Expression\allowbreak{}Filter\allowbreak{}Plugin} &
-  Singleton & mehrfach & \ref{ch:preventing-client-side-evaluation} \\
-  \tablerule
-  \code{IInterceptor} (injiziert) & Scoped & mehrfach & \ref{ch:interceptors} \\
-  \tablerule
-  \code{ISingleton\allowbreak{}Interceptor} & Singleton & mehrfach & \ref{ch:interceptors}, \ref{ch:materialization-from-rows-to-objects} \\
-  \tablerule
-  \code{IRelational\allowbreak{}Annotation\allowbreak{}Provider} & Singleton & einzeln & \ref{ch:declarative-sql-from-annotations}
-  \\
-  \tablerule
-  \code{IMigrations\allowbreak{}Sql\allowbreak{}Generator} & Scoped & einzeln & \ref{ch:declarative-sql-from-annotations} \\
-  \tablerule
-  \code{IMigrations\allowbreak{}Model\allowbreak{}Differ} & Scoped & einzeln & \ref{ch:custom-migration-operations} \\
-  \tablerule
-  \code{IModel\allowbreak{}Validator} & Singleton & einzeln & \ref{ch:model-validation} \\
-  \tablerule
-  \code{IModel\allowbreak{}Customizer} & Singleton & einzeln & – \\
-  \tablerule
-  \code{IModel\allowbreak{}Cache\allowbreak{}Key\allowbreak{}Factory} & Singleton & einzeln
-  & \ref{ch:models-per-runtime-context} \\
-  \tablerule
-  \code{IValue\allowbreak{}Generator\allowbreak{}Selector} & Scoped & einzeln & \ref{ch:value-generation} \\
-  \tablerule
-  \code{ISql\allowbreak{}Generation\allowbreak{}Helper} & Singleton & einzeln & – \\
-  \tablerule
-  \code{IRelational\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source} & Singleton &
-  einzeln & \ref{ch:type-mappings-and-value-converters} \\
-  \tablerule
-  \code{ISql\allowbreak{}Expression\allowbreak{}Factory} & Scoped & einzeln & \ref{ch:translating-methods-and-members} \\
-  \tablerule
-  \code{IQuery\allowbreak{}Sql\allowbreak{}Generator\allowbreak{}Factory} & Singleton &
-  einzeln & \ref{ch:further-query-extension-points}, \ref{ch:custom-sql-expression-nodes} \\
-  \tablerule
-  \code{IQuery\allowbreak{}Translation\allowbreak{}Postprocessor\allowbreak{}Factory} &
-  Scoped & einzeln & \ref{ch:further-query-extension-points} \\
-  \tablerule
-  \code{IModification\allowbreak{}Command\allowbreak{}Factory} & Singleton & einzeln & \ref{ch:the-update-pipeline} \\
-  \tablerule
-  \code{ICommand\allowbreak{}Batch\allowbreak{}Preparer} & Scoped & einzeln & \ref{ch:the-update-pipeline} \\
-  \tablerule
-  \code{IModification\allowbreak{}Command\allowbreak{}Batch\allowbreak{}Factory} & Scoped &
-  einzeln & \ref{ch:the-update-pipeline} \\
-  \tablerule
-  \code{IUpdate\allowbreak{}Sql\allowbreak{}Generator} & Singleton & einzeln & \ref{ch:the-update-pipeline} \\
-  \tablerule
-  \code{IRelational\allowbreak{}Parameter\allowbreak{}Based\allowbreak{}Sql\allowbreak{}Processor\allowbreak{}Factory}
-  & Scoped & einzeln & \ref{ch:custom-sql-expression-nodes} \\
+  \textbf{exklusiv} & Ersetzen schließt jedes andere Plugin aus, das denselben Dienst ersetzt
+  (Kompatibilitätsmatrix in Kapitel~\ref{ch:registering-services}) \\
 \end{datatable}
 
-\section{Design-Time-Dienste (über IDesignTimeServices)}
-
-Alle sind Einzeldienste. Die Lebensdauern stammen aus
-\code{Entity\allowbreak{}Framework\allowbreak{}Relational\allowbreak{}Design\allowbreak{}Services\allowbreak{}Builder}
-und der Registrierung von \code{Add\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Design\allowbreak{}Time\allowbreak{}Services}.
-
-\begin{datatable}{H{1.25}H{0.50}H{1.25}}
-  \textbf{Dienst} & \textbf{Lebensdauer} & \textbf{Zweck} \\
+\begin{datatable}{H{1.70}H{0.80}H{0.85}H{0.95}H{1.20}H{0.50}}
+  \textbf{Dienst und Aufgabe} & \textbf{Lebensdauer, Anzahl} & \textbf{API} & \textbf{Registrierung}
+  & \textbf{Bewertung} & \textbf{Kap.} \\
   \tablehead
-  \code{IAnnotation\allowbreak{}Code\allowbreak{}Generator} & Singleton & Annotations als
-  Fluent API in Snapshot und Scaffolding \\
+  \tablegroup{6}{Konfiguration und Dienste}
+  \code{ISingleton\allowbreak{}Options}
+  \cellmeta{Konfiguration für Singleton-Dienste} & Singleton, mehrfach & öffentlich &
+  \code{Try\allowbreak{}Add}, doppelt & ● kombinierbar &
+  \ref{ch:registering-services}, \ref{ch:state-lifetimes-and-thread-safety} \\
+  \tablerule
+  \code{IResettable\allowbreak{}Service}
+  \cellmeta{Scoped-Zustand bei Pooling zurücksetzen} & Scoped, mehrfach & öffentlich &
+  zusätzlich registrieren & ● kombinierbar & \ref{ch:state-lifetimes-and-thread-safety} \\
+  \tablerule
+  \tablegroup{6}{Modell}
+  \code{IConvention\allowbreak{}Set\allowbreak{}Plugin}
+  \cellmeta{Conventions und Validierung ergänzen} & Scoped, mehrfach & öffentlich &
+  \code{Try\allowbreak{}Add} & ● kombinierbar, Reihenfolge & \ref{ch:conventions},
+  \ref{ch:model-validation} \\
+  \tablerule
+  \code{IModel\allowbreak{}Cache\allowbreak{}Key\allowbreak{}Factory}
+  \cellmeta{Modell pro Laufzeitkontext} & Singleton, einzeln & öffentlich &
+  \code{Replace\allowbreak{}Service} & ◐ \textbf{exklusiv} &
+  \ref{ch:models-per-runtime-context} \\
+  \tablerule
+  \code{IModel\allowbreak{}Customizer}
+  \cellmeta{Modellbau vor \code{On\allowbreak{}Model\allowbreak{}Creating}} & Singleton,
+  einzeln & öffentlich & \code{Replace} & ○ \textbf{exklusiv}; Conventions bevorzugen &
+  \ref{ch:choosing-the-right-extension-point} \\
+  \tablerule
+  \code{IModel\allowbreak{}Validator}
+  \cellmeta{Validierung des fertigen Modells} & Singleton, einzeln & Provider-Basis† &
+  \code{Replace} & ○ \textbf{exklusiv}; Finalized-Convention bevorzugen &
+  \ref{ch:model-validation} \\
+  \tablerule
+  \tablegroup{6}{Typen und Werte}
+  \code{IRelational\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source\allowbreak{}Plugin}
+  \cellmeta{Eigene CLR-Typen als Spalten; Kern:
+  \code{IType\allowbreak{}Mapping\allowbreak{}Source\allowbreak{}Plugin}} & Singleton,
+  mehrfach & öffentlich & \code{Try\allowbreak{}Add} & ● kombinierbar &
+  \ref{ch:type-mappings-and-value-converters} \\
+  \tablerule
+  \code{IRelational\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source}
+  \cellmeta{Alle Type Mappings des Providers} & Singleton, einzeln & Provider-Basis† &
+  \code{Replace} & ○ \textbf{exklusiv} & \ref{ch:type-mappings-and-value-converters} \\
+  \tablerule
+  \code{IValue\allowbreak{}Generator\allowbreak{}Selector}
+  \cellmeta{Wählt Value Generators} & Scoped, einzeln & Provider-Basis† & \code{Replace} &
+  ○ \textbf{exklusiv}; Factory per Convention bevorzugen & \ref{ch:value-generation} \\
+  \tablerule
+  \tablegroup{6}{Abfragen}
+  \code{IEvaluatable\allowbreak{}Expression\allowbreak{}Filter\allowbreak{}Plugin}
+  \cellmeta{Funktionen vor dem Funcletizer schützen} & Singleton, mehrfach & öffentlich &
+  \code{Try\allowbreak{}Add} & ● kombinierbar & \ref{ch:preventing-client-side-evaluation}
+  \\
+  \tablerule
+  \code{IMethod\allowbreak{}Call\allowbreak{}Translator\allowbreak{}Plugin},
+  \code{IMember\allowbreak{}Translator\allowbreak{}Plugin}
+  \cellmeta{Methoden und Member nach SQL} & Scoped, mehrfach & öffentlich &
+  \code{Try\allowbreak{}Add} & ● kombinierbar; gleiche Methode: Reihenfolge &
+  \ref{ch:translating-methods-and-members} \\
+  \tablerule
+  \code{IAggregate\allowbreak{}Method\allowbreak{}Call\allowbreak{}Translator\allowbreak{}Plugin}
+  \cellmeta{Aggregatfunktionen} & Scoped, mehrfach & öffentlich & \code{Try\allowbreak{}Add}
+  & ● kombinierbar & \ref{ch:aggregate-translators} \\
+  \tablerule
+  \code{ISql\allowbreak{}Expression\allowbreak{}Factory}
+  \cellmeta{Baut SQL-Ausdrücke; in Translators injizieren} & Scoped, einzeln & öffentlich &
+  injizieren & ● nur nutzen & \ref{ch:translating-methods-and-members} \\
+  \tablerule
+  \code{IMethod\allowbreak{}Call\allowbreak{}Translator\allowbreak{}Provider} u.\,ä.
+  \cellmeta{Translator-Infrastruktur, auch Member und Aggregate} & Scoped, einzeln &
+  Provider-Basis† & \code{Replace} & ○ \textbf{exklusiv}; Plugins bevorzugen &
+  \ref{ch:further-query-extension-points} \\
+  \tablerule
+  \code{IQuery\allowbreak{}Translation\allowbreak{}Preprocessor\allowbreak{}Factory}
+  \cellmeta{LINQ-Baum vor der Übersetzung umbauen} & Scoped, einzeln & öffentlich &
+  \code{Replace} & ◐ \textbf{exklusiv}; Query-Interceptor bevorzugen &
+  \ref{ch:the-query-pipeline} \\
+  \tablerule
+  \code{IQuery\allowbreak{}Translation\allowbreak{}Postprocessor\allowbreak{}Factory}
+  \cellmeta{Übersetzten Baum nachbearbeiten} & Scoped, einzeln & Provider-Basis† &
+  \code{Replace} & ○ \textbf{exklusiv} & \ref{ch:the-query-pipeline},
+  \ref{ch:further-query-extension-points} \\
+  \tablerule
+  \code{IQuery\allowbreak{}Sql\allowbreak{}Generator\allowbreak{}Factory}
+  \cellmeta{SQL-Text, eigene Knoten schreiben} & Singleton, einzeln & Provider-Basis† &
+  \code{Replace} & ○ \textbf{exklusiv} & \ref{ch:custom-sql-expression-nodes},
+  \ref{ch:registering-services} \\
+  \tablerule
+  \code{IRelational\allowbreak{}Parameter\allowbreak{}Based\allowbreak{}Sql\allowbreak{}Processor\allowbreak{}Factory}
+  \cellmeta{NULL-Semantik mit Parameterwerten} & Scoped, einzeln & Provider-Basis† &
+  \code{Replace} & ○ \textbf{exklusiv} & \ref{ch:custom-sql-expression-nodes},
+  \ref{ch:registering-services} \\
+  \tablerule
+  \tablegroup{6}{Laufzeit}
+  \code{IInterceptor}: SaveChanges, Connection, Command, Transaction, IdentityResolution
+  \cellmeta{Eingriffe bei Speichern und Ausführung} & Scoped, mehrfach & öffentlich &
+  \code{Add\allowbreak{}Interceptors} oder injiziert & ● kombinierbar, Reihenfolge &
+  \ref{ch:interceptors} \\
+  \tablerule
+  \code{ISingleton\allowbreak{}Interceptor}: Materialization, QueryExpression
+  \cellmeta{Materialisierung, LINQ-Baum vor der Kompilierung} & Singleton, mehrfach &
+  öffentlich & \code{Try\allowbreak{}Add} oder eine geteilte Instanz & ● kombinierbar &
+  \ref{ch:materialization-from-rows-to-objects}, \ref{ch:further-query-extension-points} \\
+  \tablerule
+  \code{IModification\allowbreak{}Command\allowbreak{}Factory}
+  \cellmeta{Update-Pipeline: ein Befehl pro Zeile} & Singleton, einzeln & Provider-Basis† &
+  \code{Replace} & ○ \textbf{exklusiv} & \ref{ch:the-update-pipeline} \\
+  \tablerule
+  \code{ICommand\allowbreak{}Batch\allowbreak{}Preparer},
+  \code{IModification\allowbreak{}Command\allowbreak{}Batch\allowbreak{}Factory}
+  \cellmeta{Update-Pipeline: Reihenfolge und Batches} & Scoped, einzeln & Provider-Basis† &
+  \code{Replace} & ○ \textbf{exklusiv} & \ref{ch:the-update-pipeline} \\
+  \tablerule
+  \code{IUpdate\allowbreak{}Sql\allowbreak{}Generator}
+  \cellmeta{INSERT, UPDATE, DELETE schreiben} & Singleton, einzeln & Provider-Basis† &
+  \code{Replace} & ○ \textbf{exklusiv} & \ref{ch:the-update-pipeline} \\
+  \tablerule
+  \tablegroup{6}{Migrations}
+  \code{IRelational\allowbreak{}Annotation\allowbreak{}Provider}
+  \cellmeta{Annotations auf Tabellen und Spalten übertragen} & Singleton, einzeln &
+  Provider-Basis† & \code{Replace} & ◐ \textbf{exklusiv}; deklarativer Weg &
+  \ref{ch:declarative-sql-from-annotations} \\
+  \tablerule
+  \code{IMigrations\allowbreak{}Sql\allowbreak{}Generator}
+  \cellmeta{SQL für Migrations-Operationen} & Scoped, einzeln & Provider-Basis† &
+  Decorator oder \code{Replace} & ◐ \textbf{exklusiv} beim Ersetzen, Decorator kombinierbar
+  & \ref{ch:declarative-sql-from-annotations}, \ref{ch:registering-services} \\
+  \tablerule
+  \code{IMigrations\allowbreak{}Model\allowbreak{}Differ}
+  \cellmeta{Vergleicht relationale Modelle} & Scoped, einzeln & pubternal† & \code{Replace}
+  & ○ \textbf{exklusiv}; Annotations bevorzugen & \ref{ch:custom-migration-operations} \\
+  \tablerule
+  \code{ISql\allowbreak{}Generation\allowbreak{}Helper}
+  \cellmeta{Bezeichner maskieren, Befehle beenden} & Singleton, einzeln & öffentlich &
+  injizieren & ● nur nutzen & \ref{ch:declarative-sql-from-annotations} \\
+  \tablerule
+  \tablegroup{6}{Design-Time (über \code{IDesign\allowbreak{}Time\allowbreak{}Services})}
+  \code{IAnnotation\allowbreak{}Code\allowbreak{}Generator}
+  \cellmeta{Annotations als Fluent API in Snapshot und Scaffolding} & Singleton DT, einzeln &
+  Provider-Basis† & \code{Remove\allowbreak{}All} + \code{Add} & ◐ \textbf{exklusiv} &
+  \ref{ch:design-time-services} \\
   \tablerule
   \code{ICSharp\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator}
-  & Singleton & Annotations im Compiled Model filtern oder komplexe Werte übersetzen
-  (Kapitel~\ref{ch:property-level-fluent-api-and}); pubternal \\
+  \cellmeta{Annotations im Compiled Model filtern} & Singleton DT, einzeln & pubternal† &
+  \code{Remove\allowbreak{}All} + \code{Add} & ◐ \textbf{exklusiv} &
+  \ref{ch:property-level-fluent-api-and}, \ref{ch:compiled-models-trimming-and-nativeaot} \\
   \tablerule
-  \code{ICSharp\allowbreak{}Migration\allowbreak{}Operation\allowbreak{}Generator} &
-  Singleton & Eigene Operationen als C\# in Migrationen \\
+  \code{ICSharp\allowbreak{}Migration\allowbreak{}Operation\allowbreak{}Generator}
+  \cellmeta{Eigene Operationen als C\# in Migrationen} & Singleton DT, einzeln & öffentlich &
+  \code{Remove\allowbreak{}All} + \code{Add} & ○ \textbf{exklusiv} &
+  \ref{ch:custom-migration-operations} \\
   \tablerule
-  \code{IDatabase\allowbreak{}Model\allowbreak{}Factory} & Scoped & Schema lesen für
-  Scaffolding (Kapitel~\ref{ch:scaffolding-in-practice}) \\
+  \code{IDatabase\allowbreak{}Model\allowbreak{}Factory}
+  \cellmeta{Schema für Scaffolding lesen} & Scoped DT, einzeln & Provider-Basis† &
+  \code{Remove\allowbreak{}All} + \code{Add\allowbreak{}Scoped} & ◐ \textbf{exklusiv} &
+  \ref{ch:scaffolding-in-practice} \\
   \tablerule
-  \code{IProvider\allowbreak{}Configuration\allowbreak{}Code\allowbreak{}Generator} &
-  Singleton & UseXyz-Aufruf im gescaffoldeten Context \\
+  \code{IProvider\allowbreak{}Configuration\allowbreak{}Code\allowbreak{}Generator}
+  \cellmeta{Use-Aufruf im gescaffoldeten Context} & Singleton DT, einzeln & Provider-Basis† &
+  \code{Remove\allowbreak{}All} + \code{Add} & ○ \textbf{exklusiv} &
+  \ref{ch:scaffolding-reverse-engineering} \\
+\end{datatable}
+
+\section{Erweiterungspunkte ohne eigenen Dienst}
+
+Viele Mechanismen wirken über Modell, Options oder Migrationen und haben keine Lebensdauer im
+internen Provider. Sie sind fast immer der erste Weg:
+
+\begin{datatable}{H{1.20}H{1.40}H{0.85}H{0.55}}
+  \textbf{Erweiterungspunkt} & \textbf{Aufgabe} & \textbf{Aktivierung} & \textbf{Kap.} \\
+  \tablehead
+  \code{IDb\allowbreak{}Context\allowbreak{}Options\allowbreak{}Extension} & Konfiguration,
+  Dienste, Provider-Schlüssel & Use-Methode & \ref{ch:the-options-extension},
+  \ref{ch:public-api-and-integration-into} \\
+  \tablerule
+  Annotations, Fluent API & Konfiguration am Modell & Erweiterungsmethoden &
+  \ref{ch:annotations-and-fluent-api}, \ref{ch:property-level-fluent-api-and} \\
+  \tablerule
+  Laufzeit-Annotation, Runtime-Annotation-API & Informationen für Laufzeitcode & Convention
+  bzw. \code{Get\allowbreak{}Or\allowbreak{}Add\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Value}
+  & \ref{ch:property-level-fluent-api-and} \\
+  \tablerule
+  \code{Value\allowbreak{}Converter},
+  \code{Json\allowbreak{}Value\allowbreak{}Reader\allowbreak{}Writer} & Werte umwandeln &
+  Type Mapping oder \code{Has\allowbreak{}Conversion} &
+  \ref{ch:type-mappings-and-value-converters} \\
+  \tablerule
+  \code{Value\allowbreak{}Generator} mit Factory & Werte für neue Entitäten & Convention per
+  \code{Has\allowbreak{}Value\allowbreak{}Generator\allowbreak{}Factory} &
+  \ref{ch:value-generation} \\
+  \tablerule
+  Eigene \code{Sql\allowbreak{}Expression} & Syntax, die kein Funktionsaufruf ist &
+  Translator plus Generator und Prozessor & \ref{ch:custom-sql-expression-nodes} \\
+  \tablerule
+  Eigene \code{Migration\allowbreak{}Operation} & Schritte außerhalb des Modells &
+  \code{Migration\allowbreak{}Builder}-Erweiterung & \ref{ch:custom-migration-operations} \\
+  \tablerule
+  \code{IDesign\allowbreak{}Time\allowbreak{}Services} & Dienste für \code{dotnet ef} &
+  \code{Design\allowbreak{}Time\allowbreak{}Services\allowbreak{}Reference} &
+  \ref{ch:design-time-services} \\
 \end{datatable}
 
 % ------------------------------------------------------------

@@ -151,6 +151,9 @@
 \newcommand{\tablehead}{\arrayrulecolor{accent}\noalign{\global\arrayrulewidth=0.8pt}\hline
   \noalign{\global\arrayrulewidth=0.4pt}\arrayrulecolor{rule}\endhead}
 \newcommand{\tablerule}{\hline}
+% \tablegroup{columns}{title}: a group heading across the whole row; without a rule below it,
+% so that it never stays alone at the bottom of a page
+\newcommand{\tablegroup}[2]{\multicolumn{#1}{l}{\textbf{\color{accent}#2}} \\*}
 
 % ---------------------------------------------------------------- Flow diagrams
 % \begin{flowdiagram} \flowstep{stage}{description} ... \end{flowdiagram}

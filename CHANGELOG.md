@@ -64,6 +64,14 @@ version of EF Core (10.x = EF Core 10).
 - `PublicAPI.Shipped.txt` / `PublicAPI.Unshipped.txt` contain the public API (10.0.0 shipped,
   `VerifyMaterializedTenants` unshipped); RS0016 and RS0017 are errors.
 
+- Handbook (both editions): appendix A rewritten as a quick reference from the mechanism to
+  its properties, the counterpart of the decision guide: task, lifetime, cardinality, public
+  / provider base / pubternal, typical registration, composability (exclusive replacements
+  marked), preferred mechanism or last resort, elevated upgrade risk and chapter, grouped by
+  area; a second table lists the extension points without a service of their own. Every
+  lifetime and cardinality was checked again against EF Core 10 and Npgsql 10. New
+  `\tablegroup` macro for group headings in tables.
+
 ### Changed
 
 - `Directory.Packages.props`: the EF Core range lives in the `EFCoreVersion` property;
