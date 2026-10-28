@@ -43,6 +43,10 @@ Assemblies that reference only the core package and use relational APIs (`ToTabl
 
 ### Fixed
 
+- `Database.ApplyTenantSession()` with `UseTransactionPooling()` failed with "activate the
+  plugin with UseAcmeTenancy", although the plugin was active; the message now explains that
+  the tenant is set per transaction and the commands belong in one (test in
+  `TransactionPoolingTests`, chapter 36).
 - Handbook (both editions): the title page gave 45 chapters and 4 appendices; the structure
   counts are now taken from the document itself (47 chapters, appendices A–F), and the
   versions name the SQL Server provider as well.

@@ -176,13 +176,14 @@ instead of the connection interceptor. Three rules come with it:
     \code{Tenant\allowbreak{}Connection\allowbreak{}Interceptor} is registered anyway, it refuses
     to set the value with a \code{Tenancy\allowbreak{}Exception} instead of leaving a value that
     outlives the transaction. That also rules out
-    \code{Apply\allowbreak{}Tenant\allowbreak{}Session}.
+    \code{Apply\allowbreak{}Tenant\allowbreak{}Session}: a call fails with a message that the
+    tenant is set per transaction and the commands belong in one.
 \end{itemize}
 
 \code{Transaction\allowbreak{}Pooling\allowbreak{}Tests} checks against PostgreSQL: inside the
 transaction the value is set and RLS applies, after commit and after rollback it is empty on the
-same connection, a single insert gets its transaction, and the connection interceptor refuses
-the session value. PgBouncer itself is not part of the test; what is checked is the property
+same connection, a single insert gets its transaction, the connection interceptor refuses
+the session value, and \code{Apply\allowbreak{}Tenant\allowbreak{}Session} explains why it is not available. PgBouncer itself is not part of the test; what is checked is the property
 that matters: that no value remains after the transaction.
 
 \section{Policy performance}

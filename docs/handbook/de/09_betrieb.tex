@@ -185,13 +185,15 @@ Interceptor statt des Connection-Interceptors. Drei Regeln gehören dazu:
     \code{Tenant\allowbreak{}Connection\allowbreak{}Interceptor} registriert, verweigert dieser
     das Setzen mit einer \code{Tenancy\allowbreak{}Exception}, statt einen Wert zu
     hinterlassen, der die Transaktion überdauert. Damit entfällt auch
-    \code{Apply\allowbreak{}Tenant\allowbreak{}Session}.
+    \code{Apply\allowbreak{}Tenant\allowbreak{}Session}: Ein Aufruf scheitert mit dem Hinweis,
+    dass der Mandant pro Transaktion gesetzt wird und die Befehle in eine gehören.
 \end{itemize}
 
 \code{Transaction\allowbreak{}Pooling\allowbreak{}Tests} prüft gegen PostgreSQL: Innerhalb
 der Transaktion ist der Wert gesetzt und RLS greift, nach Commit und nach Rollback ist er auf
-derselben Verbindung leer, ein einzelner Insert bekommt seine Transaktion, und der
-Connection-Interceptor lehnt den Session-Wert ab. PgBouncer selbst ist nicht Teil des Tests;
+derselben Verbindung leer, ein einzelner Insert bekommt seine Transaktion, der
+Connection-Interceptor lehnt den Session-Wert ab, und
+\code{Apply\allowbreak{}Tenant\allowbreak{}Session} erklärt, warum es nicht verfügbar ist. PgBouncer selbst ist nicht Teil des Tests;
 geprüft wird die Eigenschaft, auf die es ankommt: dass nach der Transaktion kein Wert bleibt.
 
 \section{Performance von Policies}

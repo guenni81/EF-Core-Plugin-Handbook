@@ -21,7 +21,10 @@ public static class TenancyDatabaseFacadeExtensions
     /// </summary>
     /// <param name="database">The context's <see cref="DbContext.Database"/>.</param>
     /// <returns><see langword="true"/> if the session was updated.</returns>
-    /// <exception cref="TenancyException">The context has no tenant session interceptor.</exception>
+    /// <exception cref="TenancyException">
+    /// The context has no tenant session interceptor: the plugin is not active, or it sets the
+    /// tenant per transaction (transaction pooling), so there is no session to update.
+    /// </exception>
     public static bool ApplyTenantSession(this DatabaseFacade database)
     {
         var (context, interceptor) = Resolve(database);
@@ -52,7 +55,11 @@ public static class TenancyDatabaseFacadeExtensions
                               .OfType<TenantSessionInterceptor>().FirstOrDefault()
                           ?? throw new TenancyException(
                               "No tenant session interceptor is registered for this context. "
-                              + "Activate the plugin with UseAcmeTenancy(applicationServices).");
+                              + "Either the plugin is not active (activate it with "
+                              + "UseAcmeTenancy(applicationServices)), or it sets the tenant per "
+                              + "transaction instead of per session (PostgreSQL: "
+                              + "UseTransactionPooling()); then there is no session to update: "
+                              + "run the commands in a transaction, which sets the tenant.");
 
         return (context, interceptor);
     }

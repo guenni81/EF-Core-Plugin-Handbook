@@ -124,4 +124,16 @@ public class TransactionPoolingTests : IClassFixture<PostgresFixture>
         var ex = await Assert.ThrowsAsync<TenancyException>(() => db.Orders.ToListAsync());
         Assert.Contains("UseTransactionPooling()", ex.Message);
     }
+
+    [Fact]
+    public async Task ApplyTenantSession_explains_that_the_tenant_is_set_per_transaction()
+    {
+        var tenants = new MutableTenantProvider { CurrentTenantId = TenantId.New() };
+        await using var db = CreatePooledContext(tenants);
+
+        // No session interceptor with transaction pooling: there is no session to update
+        var ex = await Assert.ThrowsAsync<TenancyException>(() => db.Database.ApplyTenantSessionAsync());
+        Assert.Contains("per transaction", ex.Message);
+        Assert.Contains("UseTransactionPooling()", ex.Message);
+    }
 }
