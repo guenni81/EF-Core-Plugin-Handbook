@@ -1,3 +1,4 @@
+using System.Transactions;
 using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Runtime;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -135,5 +136,36 @@ public class TransactionPoolingTests : IClassFixture<PostgresFixture>
         var ex = await Assert.ThrowsAsync<TenancyException>(() => db.Database.ApplyTenantSessionAsync());
         Assert.Contains("per transaction", ex.Message);
         Assert.Contains("UseTransactionPooling()", ex.Message);
+    }
+
+    // The interceptor only runs in TransactionStarted, i.e. for transactions that EF begins.
+    // Other transaction paths get no tenant: the policies match no rows (fail closed).
+
+    [Fact]
+    public async Task Transaction_passed_in_with_UseTransaction_gets_no_tenant()
+    {
+        var tenant = await CreateTenantWithOrderAsync();
+        await using var db = CreatePooledContext(new MutableTenantProvider { CurrentTenantId = tenant });
+
+        await db.Database.OpenConnectionAsync();
+        await using var transaction = await db.Database.GetDbConnection().BeginTransactionAsync();
+        await db.Database.UseTransactionAsync(transaction);       // TransactionUsed, not Started
+
+        Assert.True(string.IsNullOrEmpty(await CurrentSettingAsync(db)));
+        Assert.Empty(await db.Orders.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Ambient_TransactionScope_gets_no_tenant()
+    {
+        var tenant = await CreateTenantWithOrderAsync();
+        await using var db = CreatePooledContext(new MutableTenantProvider { CurrentTenantId = tenant });
+
+        using var scope = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled);
+        Assert.Empty(await db.Orders.ToListAsync());
+
+        // EF begins no transaction of its own inside the scope, so the insert has no tenant either
+        db.Orders.Add(new Order { Total = 1 });
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
     }
 }

@@ -71,7 +71,10 @@ schützt, worauf sie sich verlässt und wo sie aufhört:
   \code{BYPASSRLS}. Der Mandant stammt aus einem authentifizierten Claim, nicht aus einem
   Header oder Parameter, den der Client frei wählt. Verbindungen werden von EF geöffnet, und es
   gibt kein Transaction-Pooling, außer mit
-  \code{Use\allowbreak{}Transaction\allowbreak{}Pooling(\allowbreak{})}. \\
+  \code{Use\allowbreak{}Transaction\allowbreak{}Pooling(\allowbreak{})}; dann kommen die
+  Transaktionen von EF (Seite~\pageref{sec:transaction-pooling}). Das Modell nutzt nur
+  Konfigurationen, die der Vertrag auf Seite~\pageref{sec:provider-comparison} als unterstützt
+  ausweist. \\
   \tablerule
   Grenze & Die App-Rolle darf das Session-Setting selbst setzen; das muss sie, damit der
   Interceptor es setzen kann. Wer beliebiges SQL unter dieser Rolle ausführt, wechselt damit
@@ -189,11 +192,44 @@ Interceptor statt des Connection-Interceptors. Drei Regeln gehören dazu:
     dass der Mandant pro Transaktion gesetzt wird und die Befehle in eine gehören.
 \end{itemize}
 
+Der Interceptor wirkt nur auf Transaktionen, die EF selbst beginnt. Damit gehört zum Vertrag,
+auf welchem Weg eine Transaktion entsteht. Die mittlere Spalte gilt auch für SQL Server, das
+keinen Transaction-Pooling-Modus hat:
+
+\begin{datatable}{H{0.80}H{1.10}H{1.10}}
+  \textbf{Transaktionsweg} & \textbf{Session-Modus (Standard)} &
+  \textbf{\code{Use\allowbreak{}Transaction\allowbreak{}Pooling(\allowbreak{})}} \\
+  \tablehead
+  \code{Begin\allowbreak{}Transaction(\allowbreak{})} über EF & Unterstützt und getestet: EF
+  öffnet die Verbindung, der Interceptor setzt die Session & Unterstützt und getestet: Mandant
+  in \code{Transaction\allowbreak{}Started}, nach Commit und Rollback weg \\
+  \tablerule
+  \code{Save\allowbreak{}Changes} ohne eigene Transaktion & Unterstützt und getestet &
+  Unterstützt und getestet: Der Interceptor erzwingt eine Transaktion, auch für einen einzelnen
+  Befehl \\
+  \tablerule
+  Abfrage außerhalb einer Transaktion & Unterstützt und getestet & Kein Mandant, keine Zeilen
+  (fail closed, getestet) \\
+  \tablerule
+  \code{Use\allowbreak{}Transaction(\allowbreak{})} mit eigener Transaktion & Nur unter
+  Voraussetzungen: EF hat die Verbindung geöffnet, oder
+  \code{Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})} nach dem Öffnen außerhalb
+  von EF (\code{Connection\allowbreak{}Lifetime\allowbreak{}Tests}); der Aufruf selbst ist nicht
+  verifiziert & Nicht unterstützt: EF meldet \code{Transaction\allowbreak{}Used}, nicht
+  \code{Transaction\allowbreak{}Started}; kein Mandant, keine Zeilen (fail closed, getestet) \\
+  \tablerule
+  Umgebende \code{Transaction\allowbreak{}Scope} & Unterstützt und getestet: Die Verbindung
+  tritt beim Öffnen bei & Nicht unterstützt: EF beginnt keine eigene Transaktion; Lesen sieht
+  keine Zeilen, Schreiben scheitert an der Policy (fail closed, getestet) \\
+\end{datatable}
+
 \code{Transaction\allowbreak{}Pooling\allowbreak{}Tests} prüft gegen PostgreSQL: Innerhalb
 der Transaktion ist der Wert gesetzt und RLS greift, nach Commit und nach Rollback ist er auf
 derselben Verbindung leer, ein einzelner Insert bekommt seine Transaktion, der
-Connection-Interceptor lehnt den Session-Wert ab, und
-\code{Apply\allowbreak{}Tenant\allowbreak{}Session} erklärt, warum es nicht verfügbar ist. PgBouncer selbst ist nicht Teil des Tests;
+Connection-Interceptor lehnt den Session-Wert ab,
+\code{Apply\allowbreak{}Tenant\allowbreak{}Session} erklärt, warum es nicht verfügbar ist, und
+\code{Use\allowbreak{}Transaction} sowie \code{Transaction\allowbreak{}Scope} scheitern
+geschlossen. PgBouncer selbst ist nicht Teil des Tests;
 geprüft wird die Eigenschaft, auf die es ankommt: dass nach der Transaktion kein Wert bleibt.
 
 \section{Performance von Policies}

@@ -567,7 +567,14 @@ Assert.Contains(tenant.Value.ToString("D"), partition);
   ein Leck braucht dann eine falsche Berechtigung, nicht nur eine falsche Abfrage.
 \end{important}
 
-\section{Vergleich der drei Provider}
+\section{Vergleich der drei Provider}\label{sec:provider-comparison}
+
+Die Tabelle ist zugleich der Nutzungsvertrag der drei Pakete. Für Konfigurationen, die über die
+Isolation entscheiden, nennt sie einen von vier Zuständen und den Beleg: \emph{unterstützt und
+getestet} (ein Test im Repository prüft das Verhalten), \emph{beim Modellaufbau abgelehnt}
+(eine \code{Invalid\allowbreak{}Operation\allowbreak{}Exception} beim ersten Zugriff auf
+\code{Model}), \emph{nur unter Voraussetzungen} (funktioniert, wenn die genannte Bedingung
+gilt) und \emph{nicht verifiziert} (kein Test; nicht darauf verlassen).
 
 \begin{datatable}{H{0.80}H{1.05}H{1.05}H{1.10}}
   \textbf{Aspekt} & \textbf{PostgreSQL} & \textbf{SQL Server} & \textbf{Cosmos DB} \\
@@ -589,6 +596,37 @@ Assert.Contains(tenant.Value.ToString("D"), partition);
   (\code{Cosmos\allowbreak{}Type\allowbreak{}Mapping}) \\
   \tablerule
   Tests & Testcontainers PostgreSQL & Testcontainers SQL Server & Linux-Emulator (Preview) \\
+  \tablerule
+  Geschützte Abbildungen (TPH, Owned Types in der Tabelle oder als JSON, Table Splitting,
+  Join-Entität) & Unterstützt und getestet, auch in der Datenbank
+  (\code{Table\allowbreak{}Mapping\allowbreak{}Tests},
+  \code{Mapping\allowbreak{}Isolation\allowbreak{}Tests}) & Unterstützt; an Modell und DDL
+  getestet (\code{Sql\allowbreak{}Server\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Tests}),
+  in der Datenbank nur eine Tabelle pro Entitätstyp & Nicht verifiziert: Hierarchien und Owned
+  Types haben keinen Test \\
+  \tablerule
+  TPT, TPC, Entity Splitting, Owned Type in eigener Tabelle, implizite Join-Tabelle & Beim
+  Modellaufbau abgelehnt & Beim Modellaufbau abgelehnt & Entfällt (keine Tabellen) \\
+  \tablerule
+  Temporal-Tabelle & Entfällt & Beim Modellaufbau abgelehnt
+  (\code{Sql\allowbreak{}Server\allowbreak{}Temporal\allowbreak{}Table\allowbreak{}Tests}) &
+  Entfällt \\
+  \tablerule
+  \code{ITenant\allowbreak{}Owned} ohne gemappte Mandanten-Property & Beim Modellaufbau
+  abgelehnt (\code{Tenant\allowbreak{}Property\allowbreak{}Tests}) & Beim Modellaufbau abgelehnt
+  (\code{Sql\allowbreak{}Server\allowbreak{}Tenant\allowbreak{}Property\allowbreak{}Validation\allowbreak{}Tests})
+  & Nicht validiert: Der Typ erhält stillschweigend weder Partition Key noch Filter \\
+  \tablerule
+  Bewusste Ausnahme & Attribut oder
+  \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})},
+  als Warnung protokolliert; getestet & Attribut; getestet & Attribut; an einem
+  mandantenbezogenen Typ nicht verifiziert \\
+  \tablerule
+  Transaktionen & \code{Begin\allowbreak{}Transaction}, \code{Save\allowbreak{}Changes} und
+  \code{Transaction\allowbreak{}Scope} unterstützt und getestet;
+  \code{Use\allowbreak{}Transaction} nur unter Voraussetzungen; Transaction Pooling:
+  Seite~\pageref{sec:transaction-pooling} & Wie PostgreSQL, ohne Transaction Pooling & Entfällt
+  (keine Session) \\
 \end{datatable}
 
 \section{Bewusst nicht portiert}

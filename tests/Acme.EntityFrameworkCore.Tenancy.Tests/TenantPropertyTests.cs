@@ -11,6 +11,19 @@ namespace Acme.EntityFrameworkCore.Tenancy.Tests;
 /// </summary>
 public class TenantPropertyTests
 {
+    /// <summary>Implements the interface explicitly: not a mapped property.</summary>
+    private sealed class ExplicitContract : ITenantOwned
+    {
+        public int Id { get; set; }
+        public TenantId Mandant { get; set; }
+
+        TenantId ITenantOwned.TenantId
+        {
+            get => Mandant;
+            set => Mandant = value;
+        }
+    }
+
     private sealed class FixedTenant : ITenantProvider
     {
         public FixedTenant(TenantId? id) => CurrentTenantId = id;
@@ -65,5 +78,25 @@ public class TenantPropertyTests
         new TenantSaveChangesInterceptor(new FixedTenant(null)).ApplyTenant(ctx);
 
         Assert.True(audit.TenantId.IsEmpty);
+    }
+
+    [Fact]
+    public void Ignored_tenant_property_of_an_ITenantOwned_type_is_rejected()
+    {
+        using var ctx = Contexts.Create(model: m => m.Entity<Order>().Ignore(o => o.TenantId));
+
+        Assert.Contains("is not mapped", Assert.Throws<InvalidOperationException>(() => ctx.Model).Message);
+    }
+
+    [Fact]
+    public void Explicit_interface_implementation_needs_a_marked_property()
+    {
+        using (var unmarked = Contexts.Create(model: m => m.Entity<ExplicitContract>()))
+            Assert.Contains("IsTenantProperty()",
+                Assert.Throws<InvalidOperationException>(() => unmarked.Model).Message);
+
+        using var marked = Contexts.Create(
+            model: m => m.Entity<ExplicitContract>().Property(c => c.Mandant).IsTenantProperty());
+        Assert.Equal("Mandant", marked.Model.FindEntityType(typeof(ExplicitContract))!.GetTenantPropertyName());
     }
 }

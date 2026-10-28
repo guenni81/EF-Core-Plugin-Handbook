@@ -482,6 +482,15 @@ SQL Server:
   history table, which has no policy & rejected (SQL Server package) \\
 \end{datatable}
 
+The evidence: \code{Table\allowbreak{}Mapping\allowbreak{}Tests} checks the rows from TPH to the
+join entity on the model,
+\code{Sql\allowbreak{}Server\allowbreak{}Temporal\allowbreak{}Table\allowbreak{}Tests} the
+temporal table,
+\code{Mapping\allowbreak{}Isolation\allowbreak{}Tests} the protected rows against PostgreSQL, and
+\code{Sql\allowbreak{}Server\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Tests} the model and
+the DDL for SQL Server; the comparison on page~\pageref{sec:provider-comparison} shows what is
+verified per provider.
+
 Rejected means: the model throws an \code{Invalid\allowbreak{}Operation\allowbreak{}Exception}
 on the first access to \code{Model}, naming the table, the type and the way out. This happens
 before \code{Ensure\allowbreak{}Created}, before any migration and before the first query.

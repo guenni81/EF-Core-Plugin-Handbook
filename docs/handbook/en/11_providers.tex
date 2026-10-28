@@ -555,7 +555,14 @@ Assert.Contains(tenant.Value.ToString("D"), partition);
   shared container, but a leak then needs a wrong credential, not just a wrong query.
 \end{important}
 
-\section{Comparison of the three providers}
+\section{Comparison of the three providers}\label{sec:provider-comparison}
+
+The table is also the usage contract of the three packages. For configurations that decide the
+isolation it names one of four states and the evidence: \emph{supported and tested} (a test
+in the repository checks the behavior), \emph{rejected while the model is built} (an
+\code{Invalid\allowbreak{}Operation\allowbreak{}Exception} on the first access to
+\code{Model}), \emph{only under conditions} (works if the named condition holds), and
+\emph{not verified} (no test; do not rely on it).
 
 \begin{datatable}{H{0.80}H{1.05}H{1.05}H{1.10}}
   \textbf{Aspect} & \textbf{PostgreSQL} & \textbf{SQL Server} & \textbf{Cosmos DB} \\
@@ -577,6 +584,35 @@ Assert.Contains(tenant.Value.ToString("D"), partition);
   (\code{Cosmos\allowbreak{}Type\allowbreak{}Mapping}) \\
   \tablerule
   Tests & Testcontainers PostgreSQL & Testcontainers SQL Server & Linux emulator (preview) \\
+  \tablerule
+  Protected mappings (TPH, owned types in the table or as JSON, table splitting, join entity)
+  & Supported and tested, also in the database (\code{Table\allowbreak{}Mapping\allowbreak{}Tests},
+  \code{Mapping\allowbreak{}Isolation\allowbreak{}Tests}) & Supported; tested on model and DDL
+  (\code{Sql\allowbreak{}Server\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Tests}), in
+  the database only one table per entity type & Not verified: hierarchies and owned types have
+  no test \\
+  \tablerule
+  TPT, TPC, entity splitting, owned type in its own table, implicit join table & Rejected while
+  the model is built & Rejected while the model is built & Not applicable (no tables) \\
+  \tablerule
+  Temporal table & Not applicable & Rejected while the model is built
+  (\code{Sql\allowbreak{}Server\allowbreak{}Temporal\allowbreak{}Table\allowbreak{}Tests}) & Not
+  applicable \\
+  \tablerule
+  \code{ITenant\allowbreak{}Owned} without a mapped tenant property & Rejected while the model is
+  built (\code{Tenant\allowbreak{}Property\allowbreak{}Tests}) & Rejected while the model is built
+  (\code{Sql\allowbreak{}Server\allowbreak{}Tenant\allowbreak{}Property\allowbreak{}Validation\allowbreak{}Tests})
+  & Not validated: the type silently gets neither partition key nor filter \\
+  \tablerule
+  Deliberate exception & Attribute or
+  \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})},
+  logged as a warning; tested & Attribute; tested & Attribute; on a tenant-owned type not
+  verified \\
+  \tablerule
+  Transactions & \code{Begin\allowbreak{}Transaction}, \code{Save\allowbreak{}Changes} and
+  \code{Transaction\allowbreak{}Scope} supported and tested; \code{Use\allowbreak{}Transaction}
+  only under conditions; transaction pooling: page~\pageref{sec:transaction-pooling} & As
+  PostgreSQL, without transaction pooling & Not applicable (no session) \\
 \end{datatable}
 
 \section{Deliberately not ported}

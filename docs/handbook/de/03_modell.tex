@@ -483,6 +483,15 @@ Provider-Pakete rufen ihn auf, der Vertrag ist also für PostgreSQL und SQL Serv
   ihre Historientabelle, die keine Policy hat & abgelehnt (SQL-Server-Paket) \\
 \end{datatable}
 
+Die Belege: \code{Table\allowbreak{}Mapping\allowbreak{}Tests} prüft die Zeilen von TPH bis
+zur Join-Entität am Modell,
+\code{Sql\allowbreak{}Server\allowbreak{}Temporal\allowbreak{}Table\allowbreak{}Tests} die
+Temporal-Tabelle,
+\code{Mapping\allowbreak{}Isolation\allowbreak{}Tests} die geschützten Zeilen gegen PostgreSQL
+und \code{Sql\allowbreak{}Server\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Tests} Modell
+und DDL für SQL Server; der Vergleich auf Seite~\pageref{sec:provider-comparison} zeigt, was je
+Provider verifiziert ist.
+
 Abgelehnt heißt: Das Modell wirft beim ersten Zugriff auf \code{Model} eine
 \code{Invalid\allowbreak{}Operation\allowbreak{}Exception}, die Tabelle, Typ und Ausweg nennt.
 Das passiert vor \code{Ensure\allowbreak{}Created}, vor jeder Migration und vor der ersten

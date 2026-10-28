@@ -7,6 +7,21 @@ version is given by the dependency range and the compatibility table in the READ
 
 ## [Unreleased]
 
+### Added
+
+- Handbook (both editions): the provider comparison in chapter "Without SQL: what carries over to
+  Cosmos DB" is now the usage contract, with the states "supported and tested", "rejected while
+  the model is built", "only under conditions" and "not verified" and the tests as evidence:
+  protected and rejected mappings, temporal tables, `ITenantOwned` without a mapped tenant
+  property (not validated by the Cosmos package), opt-outs and transactions. Chapter "Row Level
+  Security in production" gets a table of the transaction paths (`BeginTransaction`,
+  `SaveChanges`, `UseTransaction`, `TransactionScope`) in session mode and with
+  `UseTransactionPooling()`; chapter "Conventions" names the evidence of the mapping matrix. The
+  README names the Cosmos gap and the transaction paths with transaction pooling.
+- Tests: `UseTransaction` and an ambient `TransactionScope` with `UseTransactionPooling()` fail
+  closed; the PostgreSQL package rejects an ignored `TenantId` and an explicit interface
+  implementation without `IsTenantProperty()`.
+
 ### Fixed
 
 - SQL Server: a tenant-owned entity mapped to a temporal table (`IsTemporal()`) is now rejected
