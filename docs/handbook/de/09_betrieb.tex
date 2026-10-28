@@ -255,6 +255,98 @@ die Policies im Plan, weil Superuser und Rollen mit \code{BYPASSRLS} sie umgehen
 Eigentümer ohne \code{FORCE} ebenso. Den Overhead zeigt der Vergleich derselben Abfrage mit
 und ohne Policy, nicht die Zahl der Funktionsaufrufe.
 
+\section{Die Policies einer laufenden Datenbank prüfen}\label{sec:policy-diagnosis}
+
+Ein korrektes EF-Modell belegt nicht, dass die laufende Datenbank die Schutzobjekte besitzt: Eine
+Migration kann übersprungen worden sein, jemand hat RLS von Hand abgeschaltet, oder eine Tabelle
+entstand außerhalb von EF. Das Repository enthält deshalb zwei ausschließlich lesende
+Diagnoseskripte,
+\code{docs/\allowbreak{}deployment/\allowbreak{}check-\allowbreak{}tenant-\allowbreak{}policies.\allowbreak{}postgresql.\allowbreak{}sql}
+und \code{.\allowbreak{}.\allowbreak{}.\allowbreak{}sqlserver.\allowbreak{}sql}. Sie vergleichen
+einen \emph{erwarteten} Zustand mit dem tatsächlichen; eine bloße Liste vorhandener Policies
+könnte eine fehlende nicht zeigen. Die erwarteten Tabellen kommen aus dem Design-Time-Modell,
+als Konfigurationszeile: jede Tabelle mit RLS und ihre Mandantenspalte. Bewusste Ausnahmen haben
+im Modell kein RLS und werden deshalb nicht erwartet:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests/PolicyDiagnosisTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Policy\allowbreak{}Diagnosis\allowbreak{}Tests.\allowbreak{}cs › Expected\allowbreak{}Tables]{csharp}
+public static string ExpectedTables(DbContext context)
+{
+    var tables =
+        from entityType in context.GetService<IDesignTimeModel>().Model.GetEntityTypes()
+        where entityType.IsRlsEnabled()
+        let table = StoreObjectIdentifier.Create(entityType, StoreObjectType.Table)
+        where table is not null
+        let property = entityType.FindProperty(entityType.GetTenantPropertyName()!)!
+        select $"{table.Value.Schema ?? "public"}.{table.Value.Name}:"
+               + property.GetColumnName(table.Value);
+    return string.Join(",", tables);
+}
+\end{sourcecode}
+
+Die Zeile kommt in ein Session-Setting (PostgreSQL, \code{SET diag.\allowbreak{}expected}) oder
+in den Session-Kontext (SQL Server, \code{sp\_\allowbreak{}set\_\allowbreak{}session\_\allowbreak{}context
+N'diag.\allowbreak{}expected'}), zusammen mit der App-Rolle und, wenn sie vom Standard abweichen,
+Setting-Name, Policy-Name, Session-Schlüssel und Policy-Schema. Dann läuft das Skript in
+derselben Session und liefert eine Zeile pro erwarteter Tabelle:
+
+\begin{sourcecode}[Shell]{text}
+psql "$AUDIT_CONNECTION" \
+    -c "SET diag.expected = 'public.Orders:TenantId,public.Shipments:TenantId'" \
+    -c "SET diag.app_role = 'shop_app'" \
+    -f docs/deployment/check-tenant-policies.postgresql.sql
+
+ schema_name | table_name |    status     |              reason
+-------------+------------+---------------+-----------------------------------
+ public      | Orders     | NOT PROTECTED | row level security is disabled
+ public      | Shipments  | OK            |
+\end{sourcecode}
+
+\begin{datatable}{H{0.80}H{1.10}H{1.10}}
+  \textbf{Prüfung} & \textbf{PostgreSQL} & \textbf{SQL Server} \\
+  \tablehead
+  Tabelle existiert & \code{pg\_\allowbreak{}class} & \code{sys.\allowbreak{}tables} \\
+  \tablerule
+  Schutz aktiv & RLS eingeschaltet; \code{FORCE}, wenn erwartet (Plugin-Standard) & Policy mit
+  \code{STATE = ON} \\
+  \tablerule
+  Prädikat des Plugins & Policy \code{tenant\_\allowbreak{}isolation}, \code{FOR ALL},
+  \code{USING} und \code{WITH CHECK} vergleichen die Mandantenspalte mit dem Setting &
+  \code{FILTER}, \code{BLOCK AFTER INSERT} und \code{AFTER UPDATE} mit der Predicate-Funktion auf
+  der Mandantenspalte; die Funktion liest den erwarteten Session-Schlüssel \\
+  \tablerule
+  App-Rolle & Kein Superuser, kein \code{BYPASSRLS}, nicht Eigentümer oder dessen Mitglied; keine
+  weitere permissive Policy, die für sie gilt & Nicht in \code{db\_\allowbreak{}owner}, kein
+  \code{ALTER ANY SECURITY POLICY} oder \code{CONTROL} \\
+  \tablerule
+  Temporal-Tabelle & Entfällt & Historientabelle ohne Policy: nicht geschützt \\
+  \tablerule
+  Leserechte & \code{SELECT} auf \code{pg\_\allowbreak{}policy} (standardmäßig für alle) &
+  \code{VIEW DEFINITION} auf der Datenbank oder \code{db\_\allowbreak{}owner} \\
+\end{datatable}
+
+Das Ergebnis kennt drei Zustände. \textbf{OK} heißt, dass jede Prüfung oben bestanden ist.
+\textbf{NOT PROTECTED} nennt die erste gescheiterte Prüfung, etwa ein abgeschaltetes RLS, eine
+fehlende Policy oder eine App-Rolle, der die Tabelle gehört. \textbf{NOT VERIFIABLE} heißt, dass
+die Diagnose nicht entscheiden kann: Die App-Rolle ist unbekannt, keine Tabelle wird erwartet,
+oder dem Aufrufer fehlen die Leserechte. Bei SQL Server ist das für den App-Login der Normalfall,
+denn Katalogsichten blenden stillschweigend aus, worauf ein Aufrufer keine Rechte hat; dort sähen
+eine fehlende und eine unsichtbare Policy gleich aus. Führen Sie die Skripte mit einer
+Prüfrolle aus, die \code{VIEW DEFINITION} hat, nicht mit der App-Rolle, und erweitern Sie dafür
+nicht die Rechte der App-Rolle. Die Skripte reparieren nie etwas.
+
+\code{Policy\allowbreak{}Diagnosis\allowbreak{}Tests} und
+\code{Sql\allowbreak{}Server\allowbreak{}Policy\allowbreak{}Diagnosis\allowbreak{}Tests} führen
+beide Skripte gegen temporäre Datenbanken aus: im korrekten Zustand und nach jeder der
+Beschädigungen aus der Tabelle, etwa \code{DISABLE ROW LEVEL SECURITY}, einer gelöschten Policy,
+\code{STATE = OFF}, einem fehlenden Block-Prädikat, einer nachträglich temporalen Tabelle oder
+einem falschen Session-Schlüssel. Die Grenze: Die Diagnose prüft die Objekte, die das Plugin
+anlegt, und die Eigenschaften der App-Rolle, nicht jeden Weg, sie zu umgehen. Funktionen mit
+\code{SECURITY DEFINER}, Views ohne \code{security\_\allowbreak{}invoker}, über andere Rollen
+vergebene Rechte und die Grenze des Bedrohungsmodells (Seite~\pageref{sec:threat-model}) liegen
+außerhalb dessen, was sie sieht. Eine bestandene Diagnose ist eine Plausibilitätsprüfung der
+Konfiguration, kein Sicherheitsnachweis.
+
 \section{Legitimer mandantenübergreifender Zugriff}
 
 Früher oder später braucht jemand Daten über Mandanten hinweg: Berichte für den Betreiber,

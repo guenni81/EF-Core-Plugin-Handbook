@@ -42,6 +42,17 @@ version is given by the dependency range and the compatibility table in the READ
   generator per context, not for `ExecuteUpdate`, provider-specific). `UpdatePipelineTests`
   checks the SQL, the value read back and optimistic concurrency against PostgreSQL. The chapter
   is now rated volatile (internal Npgsql base class).
+- Read-only diagnosis scripts `docs/deployment/check-tenant-policies.postgresql.sql` and
+  `check-tenant-policies.sqlserver.sql`: they compare the expected tenant-owned tables (from the
+  design-time model, without deliberate exceptions) with the running database and report per
+  table OK, NOT PROTECTED (RLS or FORCE off, policy missing or not comparing the tenant column,
+  further permissive policies, app role as superuser, with BYPASSRLS or as owner; on SQL Server
+  disabled policy, missing FILTER or BLOCK predicates, wrong session key, temporal table, app
+  user able to switch policies off) or NOT VERIFIABLE (missing read rights, unknown app role,
+  no expected table). `PolicyDiagnosisTests` and `SqlServerPolicyDiagnosisTests` run them
+  against correct and deliberately broken databases. Handbook (both editions), chapter "Row
+  Level Security in production": new section on running and interpreting them, read rights and
+  limits.
 
 ### Changed
 

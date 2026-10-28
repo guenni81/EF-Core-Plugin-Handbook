@@ -257,6 +257,12 @@ the very top of `Up()`.
   (`BeginTransaction`, `SaveChanges`). `UseTransaction()` with a transaction of your own and an
   ambient `TransactionScope` get no tenant and fail closed (chapter "Row Level Security in
   production", section "Transaction pooling").
+* A correct model does not prove that the running database has the policies.
+  `docs/deployment/check-tenant-policies.postgresql.sql` and `...sqlserver.sql` compare the
+  tenant-owned tables you expect (from the design-time model) with the database, read-only, and
+  report OK, NOT PROTECTED or NOT VERIFIABLE per table (chapter "Row Level Security in
+  production", section "Checking the policies of a running database"). A passed check is a
+  plausibility check, not proof of security.
 * Access across tenants (reports, maintenance) belongs in a separate database role, never
   in a switch the application role could flip (chapter "Row Level Security in production").
 

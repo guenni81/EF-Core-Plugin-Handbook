@@ -241,6 +241,95 @@ are missing from the plan, because superusers and roles with \code{BYPASSRLS} by
 so does the owner without \code{FORCE}. The overhead shows in comparing the same query with
 and without the policy, not in the number of function calls.
 
+\section{Checking the policies of a running database}\label{sec:policy-diagnosis}
+
+A correct EF model does not prove that the running database has the protection objects: a
+migration may have been skipped, someone may have switched RLS off by hand, or a table was
+created outside EF. The repository therefore contains two read-only diagnosis scripts,
+\code{docs/\allowbreak{}deployment/\allowbreak{}check-\allowbreak{}tenant-\allowbreak{}policies.\allowbreak{}postgresql.\allowbreak{}sql}
+and \code{.\allowbreak{}.\allowbreak{}.\allowbreak{}sqlserver.\allowbreak{}sql}. They compare an
+\emph{expected} state with the actual one; a mere list of existing policies could not show a
+missing one. The expected tables come from the design-time model, as a configuration line: every
+table with RLS and its tenant column. Deliberate exceptions have no RLS in the model and are
+therefore not expected:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests/PolicyDiagnosisTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Policy\allowbreak{}Diagnosis\allowbreak{}Tests.\allowbreak{}cs › Expected\allowbreak{}Tables]{csharp}
+public static string ExpectedTables(DbContext context)
+{
+    var tables =
+        from entityType in context.GetService<IDesignTimeModel>().Model.GetEntityTypes()
+        where entityType.IsRlsEnabled()
+        let table = StoreObjectIdentifier.Create(entityType, StoreObjectType.Table)
+        where table is not null
+        let property = entityType.FindProperty(entityType.GetTenantPropertyName()!)!
+        select $"{table.Value.Schema ?? "public"}.{table.Value.Name}:"
+               + property.GetColumnName(table.Value);
+    return string.Join(",", tables);
+}
+\end{sourcecode}
+
+The line goes into a session setting (PostgreSQL, \code{SET diag.\allowbreak{}expected}) or into
+the session context (SQL Server, \code{sp\_\allowbreak{}set\_\allowbreak{}session\_\allowbreak{}context
+N'diag.\allowbreak{}expected'}), together with the app role and, if they differ from the
+defaults, setting name, policy name, session key and policy schema. Then the script runs in the
+same session and returns one row per expected table:
+
+\begin{sourcecode}[Shell]{text}
+psql "$AUDIT_CONNECTION" \
+    -c "SET diag.expected = 'public.Orders:TenantId,public.Shipments:TenantId'" \
+    -c "SET diag.app_role = 'shop_app'" \
+    -f docs/deployment/check-tenant-policies.postgresql.sql
+
+ schema_name | table_name |    status     |              reason
+-------------+------------+---------------+-----------------------------------
+ public      | Orders     | NOT PROTECTED | row level security is disabled
+ public      | Shipments  | OK            |
+\end{sourcecode}
+
+\begin{datatable}{H{0.80}H{1.10}H{1.10}}
+  \textbf{Check} & \textbf{PostgreSQL} & \textbf{SQL Server} \\
+  \tablehead
+  Table exists & \code{pg\_\allowbreak{}class} & \code{sys.\allowbreak{}tables} \\
+  \tablerule
+  Protection active & RLS enabled; \code{FORCE} if expected (plugin default) & Policy with
+  \code{STATE = ON} \\
+  \tablerule
+  Plugin's predicate & Policy \code{tenant\_\allowbreak{}isolation}, \code{FOR ALL},
+  \code{USING} and \code{WITH CHECK} compare the tenant column with the setting & \code{FILTER},
+  \code{BLOCK AFTER INSERT} and \code{AFTER UPDATE} with the predicate function on the tenant
+  column; the function reads the expected session key \\
+  \tablerule
+  App role & No superuser, no \code{BYPASSRLS}, not the owner or a member of it; no further
+  permissive policy that applies to it & Not in \code{db\_\allowbreak{}owner}, no \code{ALTER ANY
+  SECURITY POLICY} or \code{CONTROL} \\
+  \tablerule
+  Temporal table & Not applicable & History table without a policy: not protected \\
+  \tablerule
+  Read rights & \code{SELECT} on \code{pg\_\allowbreak{}policy} (granted to everyone by default)
+  & \code{VIEW DEFINITION} on the database or \code{db\_\allowbreak{}owner} \\
+\end{datatable}
+
+The result has three states. \textbf{OK} means every check above passed. \textbf{NOT PROTECTED}
+names the first failed check, for example a disabled RLS, a missing policy or an app role that
+owns the table. \textbf{NOT VERIFIABLE} means that the diagnosis cannot decide: the app role is
+unknown, no table is expected, or the caller lacks the read rights. On SQL Server this is the
+normal case for the app login, because catalog views silently hide what a caller has no rights
+on; there, a missing policy and an invisible one would look the same. Run the scripts with an
+audit role that has \code{VIEW DEFINITION}, not with the app role, and do not extend the app
+role's rights for it. The scripts never repair anything.
+
+\code{Policy\allowbreak{}Diagnosis\allowbreak{}Tests} and
+\code{Sql\allowbreak{}Server\allowbreak{}Policy\allowbreak{}Diagnosis\allowbreak{}Tests} run both
+scripts against temporary databases: in the correct state, and after each of the breakages from
+the table, such as \code{DISABLE ROW LEVEL SECURITY}, a dropped policy, \code{STATE = OFF}, a
+missing block predicate, a table made temporal afterwards or a wrong session key. The limit:
+the diagnosis checks the objects the plugin creates and the app role's attributes, not every way
+to bypass them. Functions with \code{SECURITY DEFINER}, views without
+\code{security\_\allowbreak{}invoker}, rights granted through other roles, and the threat model's
+limit (page~\pageref{sec:threat-model}) are outside of what it sees. A passed diagnosis is a
+plausibility check of the configuration, not proof of security.
+
 \section{Legitimate cross-tenant access}
 
 Sooner or later someone needs data across tenants: reports for the operator, maintenance
