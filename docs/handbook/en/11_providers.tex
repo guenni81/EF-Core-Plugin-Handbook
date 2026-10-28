@@ -592,10 +592,16 @@ in the repository checks the behavior), \emph{rejected while the model is built}
   \tablerule
   Protected mappings (TPH, owned types in the table or as JSON, table splitting, join entity)
   & Supported and tested, also in the database (\code{Table\allowbreak{}Mapping\allowbreak{}Tests},
-  \code{Mapping\allowbreak{}Isolation\allowbreak{}Tests}) & Supported; tested on model and DDL
-  (\code{Sql\allowbreak{}Server\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Tests}), in
-  the database only one table per entity type & Not verified: hierarchies and owned types have
-  no test \\
+  \code{Mapping\allowbreak{}Isolation\allowbreak{}Tests}) & Supported and tested, also in the
+  database as the app login for two tenants
+  (\code{Sql\allowbreak{}Server\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Tests},
+  \code{Sql\allowbreak{}Server\allowbreak{}Mapping\allowbreak{}Isolation\allowbreak{}Tests}) & TPH
+  in one container and embedded owned types (reference, collection): supported; partition key,
+  filter and core metadata in the required model tests
+  (\code{Mapping\allowbreak{}Model\allowbreak{}Tests}), storing and isolation only in the emulator
+  job (\code{Mapping\allowbreak{}Emulator\allowbreak{}Tests}). Owned types are isolated through
+  their document; the plugin does not set a \code{Tenant\allowbreak{}Id} inside them. Table
+  splitting and join entity do not apply (no tables) \\
   \tablerule
   TPT, TPC, entity splitting, owned type in its own table, implicit join table & Rejected while
   the model is built & Rejected while the model is built & Not applicable (no tables) \\

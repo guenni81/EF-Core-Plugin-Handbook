@@ -9,6 +9,17 @@ version is given by the dependency range and the compatibility table in the READ
 
 ### Added
 
+- Tests: SQL Server isolation of the supported mappings in the database
+  (`SqlServerMappingIsolationTests`): TPH with two types, owned reference, table splitting, JSON
+  collection and an explicit join entity get a security policy each; two tenants write through
+  the app login and each sees only its rows, also through the split type and the join entity;
+  another tenant cannot update a split row. Cosmos DB: hierarchies and embedded owned types in
+  the required model tests (`MappingModelTests`: partition key and tenant annotation from the
+  root, filter on the root only, owned types without partition key, filter or tenant
+  annotation) and in the emulator (`MappingEmulatorTests`). The emulator fixture no longer
+  caches one internal service provider per test context. Handbook (both editions): the provider
+  comparison rates these mappings by the new evidence.
+
 - Handbook (both editions), chapter "Retrofitting and operating multi-tenancy": new section
   "Seeding under row level security": `HasData` for shared master data, `UseSeeding` and
   `UseAsyncSeeding` for tenant-specific initial data with the tenant set per tenant

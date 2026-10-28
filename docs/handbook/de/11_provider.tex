@@ -605,10 +605,16 @@ gilt) und \emph{nicht verifiziert} (kein Test; nicht darauf verlassen).
   Geschützte Abbildungen (TPH, Owned Types in der Tabelle oder als JSON, Table Splitting,
   Join-Entität) & Unterstützt und getestet, auch in der Datenbank
   (\code{Table\allowbreak{}Mapping\allowbreak{}Tests},
-  \code{Mapping\allowbreak{}Isolation\allowbreak{}Tests}) & Unterstützt; an Modell und DDL
-  getestet (\code{Sql\allowbreak{}Server\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Tests}),
-  in der Datenbank nur eine Tabelle pro Entitätstyp & Nicht verifiziert: Hierarchien und Owned
-  Types haben keinen Test \\
+  \code{Mapping\allowbreak{}Isolation\allowbreak{}Tests}) & Unterstützt und getestet, auch in der
+  Datenbank als App-Login für zwei Mandanten
+  (\code{Sql\allowbreak{}Server\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Tests},
+  \code{Sql\allowbreak{}Server\allowbreak{}Mapping\allowbreak{}Isolation\allowbreak{}Tests}) & TPH
+  in einem Container und eingebettete Owned Types (Referenz, Collection): unterstützt; Partition
+  Key, Filter und Core-Metadaten in den Pflicht-Modelltests
+  (\code{Mapping\allowbreak{}Model\allowbreak{}Tests}), Speichern und Isolation nur im
+  Emulator-Job (\code{Mapping\allowbreak{}Emulator\allowbreak{}Tests}). Owned Types sind über
+  ihr Dokument isoliert; eine \code{Tenant\allowbreak{}Id} in ihnen setzt das Plugin nicht.
+  Table Splitting und Join-Entität entfallen (keine Tabellen) \\
   \tablerule
   TPT, TPC, Entity Splitting, Owned Type in eigener Tabelle, implizite Join-Tabelle & Beim
   Modellbau abgelehnt & Beim Modellbau abgelehnt & Entfällt (keine Tabellen) \\

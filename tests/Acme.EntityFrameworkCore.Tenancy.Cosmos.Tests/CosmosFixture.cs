@@ -26,6 +26,12 @@ public sealed class CosmosFixture : IAsyncLifetime
 
     public Task DisposeAsync() => _container.DisposeAsync().AsTask();
 
+    /// <summary>Connection string of the emulator, for contexts of other types.</summary>
+    public string ConnectionString => _container.GetConnectionString();
+
+    /// <summary>The container's HTTP client; gateway mode only works through it.</summary>
+    public HttpClient HttpClient => _container.HttpClient;
+
     public ShopContext CreateContext(
         MutableTenantProvider tenants,
         bool verifyMaterializedTenants = false,
@@ -37,7 +43,10 @@ public sealed class CosmosFixture : IAsyncLifetime
                 .ConnectionMode(ConnectionMode.Gateway)
                 .HttpClientFactory(() => _container.HttpClient)
                 .LimitToEndpoint()
-                .UseAcmeTenancy(services, verifyMaterializedTenants));
+                .UseAcmeTenancy(services, verifyMaterializedTenants))
+            // Every test context has an application container of its own; cached, they would
+            // count towards EF's limit of twenty internal service providers per process
+            .EnableServiceProviderCaching(false);
         configure?.Invoke(builder);
         return new ShopContext(builder.Options);
     }
