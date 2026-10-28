@@ -793,6 +793,120 @@ schema still supports the old version. After that it needs the Down of the follo
 and dropped columns do not come back with it. A Down therefore does not belong in the pipeline;
 an error after phase~3 is fixed forward with a new migration.
 
+\section{Seeding under row level security}\label{sec:seeding-under-rls}
+
+EF Core has two ways to provide initial data, and under RLS they behave differently. The
+statements follow the EF documentation ("Data Seeding") for EF Core~10, the version this
+repository uses; the tests below check them against PostgreSQL:
+
+\begin{datatable}{H{0.72}H{1.18}H{1.10}}
+  \textbf{Way} & \textbf{When and how it runs} & \textbf{Under RLS} \\
+  \tablehead
+  \code{Has\allowbreak{}Data} (model managed data) & Becomes \code{Insert\allowbreak{}Data},
+  \code{Update\allowbreak{}Data}, \code{Delete\allowbreak{}Data} when a migration is created;
+  runs as migration SQL, also in \code{Ensure\allowbreak{}Created} and in the script. & No
+  SaveChanges and no connection interceptor, no tenant set. Only for shared, static data. \\
+  \tablerule
+  \code{Use\allowbreak{}Seeding}, \code{Use\allowbreak{}Async\allowbreak{}Seeding} (EF~9+) &
+  After \code{Ensure\allowbreak{}Created} and \code{Migrate}, with \code{dotnet ef database
+  update} and in the migration bundle, even without changes; under the migration lock. &
+  Ordinary context code: interceptors run, but the tenant has to be set. \\
+\end{datatable}
+
+Shared master data such as countries therefore belongs in \code{Has\allowbreak{}Data}: it has
+no tenant and no policy. Tenant-specific initial data, for example settings every tenant gets,
+belongs in \code{Use\allowbreak{}Seeding}. It depends on the database state (which tenants
+exist?), and that is exactly what the documentation recommends this way for.
+\code{Has\allowbreak{}Data} on a tenant table fails: the migration's \code{INSERT} runs without a
+session value, and \code{FORCE ROW LEVEL SECURITY}, the plugin's default, binds the owner to
+\code{WITH CHECK} as well.
+
+The seed runs as the migration role (\code{shop\_\allowbreak{}owner}), not as the app role,
+which may not run DDL. Because \code{FORCE} binds the owner too, the delegate sets the tenant
+itself, for every tenant in the directory:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests/SeedingTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Seeding\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+public static DbContextOptionsBuilder UseTenantSeeding(
+    this DbContextOptionsBuilder builder, MutableTenantProvider tenants)
+    => builder
+        // Tools and migration bundles call the synchronous delegate
+        .UseSeeding((context, _) =>
+        {
+            foreach (var tenant in context.Set<Tenant>().Select(t => t.Id).ToList())
+            {
+                tenants.CurrentTenantId = tenant;
+                context.Database.ApplyTenantSession();   // the connection is open
+                if (!context.Set<Setting>().Any(s => s.Key == "currency"))   // RLS
+                {
+                    context.Add(new Setting { Key = "currency", Value = "EUR" });
+                    context.SaveChanges();      // the interceptor sets the TenantId
+                }
+            }
+
+            tenants.CurrentTenantId = null;
+            context.Database.ApplyTenantSession();
+        })
+        // ... UseAsyncSeeding likewise, with ApplyTenantSessionAsync
+\end{sourcecode}
+
+\code{Apply\allowbreak{}Tenant\allowbreak{}Session} is needed because EF keeps the connection open
+during seeding (lock and transaction); the connection interceptor only runs on opening and would
+not see the change. Because of RLS the check before inserting only sees the current tenant's rows;
+a unique index on (\code{Tenant\allowbreak{}Id}, \code{Key}) additionally catches a duplicate run.
+Both delegates are needed: \code{Ensure\allowbreak{}Created\allowbreak{}Async} and
+\code{Migrate\allowbreak{}Async} call the asynchronous one, tools and bundles the synchronous one.
+
+Two roles deserve attention. A superuser or a role with \code{BYPASSRLS} bypasses RLS even with
+\code{FORCE}: as such a role, the same \code{Has\allowbreak{}Data} goes through and creates a row
+with a tenant nobody chose. Migrations therefore run as an owner without these rights
+(page~\pageref{sec:deployment}). And switching RLS off for the seed (\code{DISABLE} or
+\code{NO FORCE} in a migration) is no default solution: it opens the table for the duration of the
+migration, and forgetting to switch it on again goes unnoticed.
+
+The ways of execution differ in whether the delegate runs at all:
+
+\begin{datatable}{H{1.30}H{0.85}H{0.85}}
+  \textbf{Execution} & \textbf{\code{Has\allowbreak{}Data}} & \textbf{\code{Use\allowbreak{}Seeding}} \\
+  \tablehead
+  \code{Migrate}, \code{Ensure\allowbreak{}Created}, \code{dotnet ef database update} & yes & yes \\
+  \tablerule
+  Migration bundle (\code{efbundle}) & yes & yes, synchronous, with the options of the
+  design-time factory \\
+  \tablerule
+  SQL script (\code{dotnet ef migrations script}), run externally & yes & no \\
+\end{datatable}
+
+Whoever deploys by script therefore needs a step of its own for tenant-specific initial data,
+for example a small initialization program with the same delegate that runs as the owner. The
+tests cover the cases:
+
+\begin{datatable}{H{0.90}H{1.10}}
+  \textbf{Test} & \textbf{Checks} \\
+  \tablehead
+  \code{Seeding\allowbreak{}\_gives\allowbreak{}\_every\allowbreak{}\_tenant\allowbreak{}\_its\allowbreak{}\_rows\allowbreak{}\_…} &
+  Synchronous and asynchronous, twice in a row: every tenant exactly one row, read as the app
+  role; the owner sees none without a tenant \\
+  \tablerule
+  \code{Tenant\allowbreak{}\_rows\allowbreak{}\_in\allowbreak{}\_Has\allowbreak{}Data\allowbreak{}\_are\allowbreak{}\_rejected\allowbreak{}\_…} &
+  \code{Has\allowbreak{}Data} on the tenant table fails at the policy (42501) \\
+  \tablerule
+  \code{Seeding\allowbreak{}\_without\allowbreak{}\_a\allowbreak{}\_tenant\allowbreak{}\_…} &
+  A delegate without a tenant fails at the SaveChanges interceptor \\
+  \tablerule
+  \code{A\allowbreak{}\_superuser\allowbreak{}\_bypasses\allowbreak{}\_…} & A superuser bypasses
+  \code{FORCE} \\
+  \tablerule
+  \code{A\allowbreak{}\_generated\allowbreak{}\_script\allowbreak{}\_…} & The script contains the
+  master data, but no seed \\
+\end{datatable}
+
+% run: dotnet-test
+\begin{sourcecode}[Shell]{text}
+dotnet test tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests \
+    --filter "FullyQualifiedName~SeedingTests"
+\end{sourcecode}
+
 % ------------------------------------------------------------
 \chapter{Plugin performance}\label{ch:plugin-performance}
 \versionrisk{stable}

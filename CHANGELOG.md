@@ -9,6 +9,16 @@ version is given by the dependency range and the compatibility table in the READ
 
 ### Added
 
+- Handbook (both editions), chapter "Retrofitting and operating multi-tenancy": new section
+  "Seeding under row level security": `HasData` for shared master data, `UseSeeding` and
+  `UseAsyncSeeding` for tenant-specific initial data with the tenant set per tenant
+  (`ApplyTenantSession`, the connection stays open during seeding), the migration role under
+  `FORCE ROW LEVEL SECURITY`, superusers bypassing even `FORCE`, and migration bundles versus
+  externally run SQL scripts. Executable example `SeedingTests` against PostgreSQL with its own
+  non-superuser migration role: correct seed (sync and async), a repeated run without
+  duplicates, `HasData` on a tenant table rejected by the policy, a seed without a tenant
+  rejected by the interceptor, and a generated script without the seed.
+
 - Handbook (both editions): the provider comparison in chapter "Without SQL: what carries over to
   Cosmos DB" is now the usage contract, with the states "supported and tested", "rejected while
   the model is built", "only under conditions" and "not verified" and the tests as evidence:
