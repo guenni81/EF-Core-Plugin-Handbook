@@ -21,11 +21,10 @@ public static class RlsEntityTypeBuilderExtensions
 
         builder.Metadata.SetAnnotation(RlsAnnotationNames.Enabled, true);
 
-        // Never store default values, otherwise the differ produces empty migrations
-        if (force)
-            builder.Metadata.SetAnnotation(RlsAnnotationNames.Forced, true);
-        else
-            builder.Metadata.RemoveAnnotation(RlsAnnotationNames.Forced);
+        // Store false too: an explicit decision must beat the convention, which sets FORCE when
+        // ForceRowLevelSecurity is on. The annotation provider drops false for migrations, so
+        // "missing" and "false" produce the same table and no empty migrations.
+        builder.Metadata.SetAnnotation(RlsAnnotationNames.Forced, force);
 
         return builder;
     }

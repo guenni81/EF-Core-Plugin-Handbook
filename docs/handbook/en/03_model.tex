@@ -33,8 +33,11 @@ compiled models) can work with them.
   \code{Equals}. A record with a \code{string[]} would be compared by reference and
   constantly appear “changed”. \\
   \tablerule
-  Do not store default values & “Annotation missing” and “annotation has default” differ for
-  the differ and produce empty migrations. \\
+  Keep explicit configuration, normalize it for migrations & An explicit
+  \code{force:\allowbreak{} false} must stay in the model, otherwise a convention
+  overrides the user's decision. For the differ, “annotation missing” and “annotation has
+  default” differ and produce empty migrations; the annotation provider therefore leaves default
+  values out of the relational model. \\
   \tablerule
   One annotation per piece of configuration & Every policy has its own annotation, so the
   diff shows exactly which one changed. \\
@@ -82,10 +85,8 @@ public static class RlsEntityTypeBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         builder.Metadata.SetAnnotation(RlsAnnotationNames.Enabled, true);
 
-        if (force)
-            builder.Metadata.SetAnnotation(RlsAnnotationNames.Forced, true);
-        else
-            builder.Metadata.RemoveAnnotation(RlsAnnotationNames.Forced);   // no default!
+        // false too: an explicit decision beats the convention's FORCE default
+        builder.Metadata.SetAnnotation(RlsAnnotationNames.Forced, force);
 
         return builder;
     }
@@ -108,6 +109,15 @@ public static class RlsEntityTypeBuilderExtensions
     // ... HasNoRowLevelSecurity, HasPolicy<TEntity> analogous
 }
 \end{sourcecode}
+
+\code{Has\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{}force:\allowbreak{} false)}
+stores \code{false} and does not remove the annotation. Removed, it would be indistinguishable
+from “not configured”, and the isolation convention, which sets FORCE by default, would override
+the explicit decision. Two layers have different duties here: the model keeps every explicit
+configuration together with its configuration source, while the annotation provider normalizes
+for the migrations and passes \code{false} on to the relational model just like a missing
+annotation (chapter~\ref{ch:declarative-sql-from-annotations}). That way the user's decision wins, and a
+model without a change still produces no migration.
 
 Nested configuration such as \code{Has\allowbreak{}Policy} accepts an
 \code{Action<\allowbreak{}Policy\allowbreak{}Builder>}. The builder checks the database's

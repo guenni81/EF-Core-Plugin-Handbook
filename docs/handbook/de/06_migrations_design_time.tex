@@ -86,8 +86,10 @@ public class TenancyAnnotationProvider : NpgsqlAnnotationProvider
             if (!annotation.Name.StartsWith(RlsAnnotationNames.Prefix,
                                             StringComparison.Ordinal))
                 continue;
-            // Opt-out-Marker nicht weitergeben, sonst entstehen leere Migrationen
-            if (annotation.Name == RlsAnnotationNames.Enabled && annotation.Value is false)
+            // Opt-out-Marker und explizites force: false bleiben im Modell (sie schlagen
+            // die Conventions), aber "false" und "fehlt" müssen dieselbe Tabelle sein
+            if (annotation.Name is RlsAnnotationNames.Enabled or RlsAnnotationNames.Forced
+                && annotation.Value is false)
                 continue;
             yield return annotation;
         }

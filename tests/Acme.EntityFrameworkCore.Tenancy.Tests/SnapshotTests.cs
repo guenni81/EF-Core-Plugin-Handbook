@@ -93,6 +93,24 @@ public class SnapshotTests
         Assert.Empty(differences);
     }
 
+    [Fact]
+    public void Explicit_force_false_survives_the_snapshot_roundtrip()
+    {
+        using var ctx = Contexts.Create(model: m => m.Entity<Order>().HasRowLevelSecurity(force: false));
+        var code = GenerateSnapshot(ctx);
+        Assert.Contains("RlsEntityTypeBuilderExtensions.HasRowLevelSecurity(b, false)", code);
+
+        var model = Compile(code).Model;
+        if (model is IMutableModel mutable)
+            model = mutable.FinalizeModel();
+        model = ctx.GetService<IModelRuntimeInitializer>()
+            .Initialize(model, designTime: true, validationLogger: null);
+
+        Assert.False(model.FindEntityType(typeof(Order).FullName!)!.IsRlsForced());
+        Assert.Empty(ctx.GetService<IMigrationsModelDiffer>().GetDifferences(
+            model.GetRelationalModel(), ctx.DesignModel().GetRelationalModel()));
+    }
+
     private static ModelSnapshot Compile(string code)
     {
         // Load the required assemblies: AppDomain.GetAssemblies() below only returns

@@ -714,8 +714,9 @@ Run-time values therefore have no place in this configuration.
   \cellmeta{public · no service} &
   Does existing configuration of EF or the provider cover the need (comment, check
   constraint, index method)? &
-  Storing objects instead of simple values; storing default values, which creates empty
-  migrations. &
+  Storing objects instead of simple values; passing default values on to the relational model,
+  which creates empty migrations; dropping an explicit default, which a convention then
+  overrides. &
   \ref{ch:annotations-and-fluent-api} \\
   \tablerule
   \textbf{Users should configure the plugin per entity or property.} Fluent API extension,

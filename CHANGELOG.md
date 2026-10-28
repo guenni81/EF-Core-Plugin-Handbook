@@ -25,6 +25,12 @@ version is given by the dependency range and the compatibility table in the READ
   predicate function. The generator now removes the policies of dropped tables before the
   function as well and restores only those of the target model; the Down path is covered by
   tests too.
+- PostgreSQL: `HasRowLevelSecurity(force: false)` lost against the convention default
+  `ForceRowLevelSecurity = true`: the method removed the annotation, and the convention set FORCE
+  again. It now stores `false` explicitly; the annotation provider normalizes `false` away for the
+  relational model, so unchanged models still produce no migration and snapshots stay as before.
+  The handbook (both editions) replaces the rule "do not store default values" with the
+  distinction between explicit model configuration and its normalization for migrations.
 
 ## [1.2.0] - 2026-10-28
 

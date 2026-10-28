@@ -93,4 +93,61 @@ public class ConventionTests
 
         Assert.DoesNotContain(order.GetIndexes(), i => i.Properties[0].Name == nameof(Order.TenantId));
     }
+    // ------------------------------------------------ FORCE: Fluent API beats the convention
+
+    [Fact]
+    public void Explicit_force_false_beats_the_convention_default_true()
+    {
+        using var ctx = Contexts.Create(model: m => m.Entity<Order>().HasRowLevelSecurity(force: false));
+        var order = ctx.DesignModel().FindEntityType(typeof(Order))!;
+
+        Assert.False(order.IsRlsForced());
+        Assert.True(order.IsRlsEnabled());
+        Assert.DoesNotContain("ALTER TABLE \"Orders\" FORCE ROW LEVEL SECURITY;",
+            Contexts.MigrationSql(null, ctx));
+        Assert.Contains("ALTER TABLE \"Customers\" FORCE ROW LEVEL SECURITY;",
+            Contexts.MigrationSql(null, ctx));
+    }
+
+    [Fact]
+    public void Explicit_force_true_beats_the_convention_default_false()
+    {
+        using var ctx = Contexts.Create(t => t.ForceRowLevelSecurity(false),
+            m => m.Entity<Order>().HasRowLevelSecurity(force: true));
+
+        Assert.True(ctx.DesignModel().FindEntityType(typeof(Order))!.IsRlsForced());
+        Assert.Contains("ALTER TABLE \"Orders\" FORCE ROW LEVEL SECURITY;", Contexts.MigrationSql(null, ctx));
+        Assert.DoesNotContain("ALTER TABLE \"Customers\" FORCE ROW LEVEL SECURITY;",
+            Contexts.MigrationSql(null, ctx));
+    }
+
+    [Fact]
+    public void Unchanged_explicit_force_false_produces_no_differences()
+    {
+        using var source = Contexts.Create(model: m => m.Entity<Order>().HasRowLevelSecurity(force: false));
+        using var target = Contexts.Create(model: m => m.Entity<Order>().HasRowLevelSecurity(force: false));
+
+        Assert.Empty(Contexts.Diff(source, target));
+    }
+
+    [Fact]
+    public void Explicit_false_and_missing_force_are_the_same_table_for_migrations()
+    {
+        // Normalized by the annotation provider: switching from the option to the Fluent API
+        // must not produce an empty AlterTable migration
+        using var source = Contexts.Create(t => t.ForceRowLevelSecurity(false));
+        using var target = Contexts.Create(t => t.ForceRowLevelSecurity(false),
+            m => m.Entity<Order>().HasRowLevelSecurity(force: false));
+
+        Assert.Empty(Contexts.Diff(source, target));
+    }
+
+    [Fact]
+    public void Switching_force_off_explicitly_migrates_to_no_force()
+    {
+        using var source = Contexts.Create();
+        using var target = Contexts.Create(model: m => m.Entity<Order>().HasRowLevelSecurity(force: false));
+
+        Assert.Equal(["ALTER TABLE \"Orders\" NO FORCE ROW LEVEL SECURITY;"], Contexts.MigrationSql(source, target));
+    }
 }

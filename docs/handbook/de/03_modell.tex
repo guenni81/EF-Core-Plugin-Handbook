@@ -34,8 +34,11 @@ Migrations, Snapshots, Compiled Models) kann damit arbeiten.
   \code{Equals}. Ein Record mit \code{string[]} würde per Referenz verglichen und ständig
   „geändert“ wirken. \\
   \tablerule
-  Default-Werte nicht speichern & „Annotation fehlt“ und „Annotation hat Default“ sind für
-  den Differ verschieden und erzeugen leere Migrationen. \\
+  Explizite Konfiguration behalten, für Migrationen normalisieren & Ein explizites
+  \code{force:\allowbreak{} false} muss im Modell bleiben, sonst überschreibt eine Convention
+  die Entscheidung des Anwenders. Für den Differ sind „Annotation fehlt“ und „Annotation hat
+  Default“ verschieden und erzeugen leere Migrationen; der Annotation-Provider lässt
+  Default-Werte deshalb im relationalen Modell weg. \\
   \tablerule
   Je Teilkonfiguration eine Annotation & Jede Policy hat eine eigene Annotation. Dann zeigt
   der Diff genau, welche sich geändert hat. \\
@@ -83,10 +86,8 @@ public static class RlsEntityTypeBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         builder.Metadata.SetAnnotation(RlsAnnotationNames.Enabled, true);
 
-        if (force)
-            builder.Metadata.SetAnnotation(RlsAnnotationNames.Forced, true);
-        else
-            builder.Metadata.RemoveAnnotation(RlsAnnotationNames.Forced);   // kein Default!
+        // auch false: eine explizite Entscheidung schlägt den FORCE-Default der Convention
+        builder.Metadata.SetAnnotation(RlsAnnotationNames.Forced, force);
 
         return builder;
     }
@@ -109,6 +110,15 @@ public static class RlsEntityTypeBuilderExtensions
     // ... HasNoRowLevelSecurity, HasPolicy<TEntity> analog
 }
 \end{sourcecode}
+
+\code{Has\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{}force:\allowbreak{} false)}
+speichert \code{false} und entfernt die Annotation nicht. Entfernt wäre sie nicht von „nicht
+konfiguriert“ zu unterscheiden, und die Isolations-Convention, die FORCE standardmäßig setzt,
+überschriebe die explizite Entscheidung. Zwei Schichten haben hier verschiedene Aufgaben: Das
+Modell behält jede explizite Konfiguration samt Konfigurationsquelle, der Annotation-Provider
+normalisiert für die Migrationen und gibt \code{false} wie eine fehlende Annotation an das
+relationale Modell weiter (Kapitel~\ref{ch:declarative-sql-from-annotations}). So gewinnt die Entscheidung
+des Anwenders, und ein unverändertes Modell erzeugt trotzdem keine Migration.
 
 Verschachtelte Konfiguration wie bei \code{Has\allowbreak{}Policy} nimmt ein
 \code{Action<\allowbreak{}Policy\allowbreak{}Builder>} entgegen. Der Builder prüft die
