@@ -1,6 +1,6 @@
 % ============================================================
 \setpartpreamble{\partintro
-  {Testen, versionieren, paketieren, und die Checkliste für den Weg von A bis Z.}
+  {Testen, versionieren, paketieren und die Checkliste für den Weg von A bis Z.}
   {
     \item Kapitel~\ref{ch:test-strategy}: Teststrategie
     \item Kapitel~\ref{ch:versioning-and-compatibility}: Versionierung und Kompatibilität
@@ -35,7 +35,7 @@ Verbindung. Die Teststrategie des Beispiels hat vier Ebenen:
 
 Tests bauen viele Contexts mit unterschiedlichem
 \code{On\allowbreak{}Model\allowbreak{}Creating}. Weil EF das Modell pro internem Provider
-cached, muss jeder Test einen eigenen Provider bekommen; dafür gibt es
+cacht, muss jeder Test einen eigenen internen Provider bekommen; dafür gibt es
 \code{Enable\allowbreak{}Service\allowbreak{}Provider\allowbreak{}Caching(\allowbreak{}false)}:
 
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Test\allowbreak{}Model.\allowbreak{}cs (\allowbreak{}gekürzt, vereinfacht)]{csharp}
@@ -211,7 +211,8 @@ public void Snapshot_roundtrip_produces_no_differences()
 
 \section{Integrationstests mit Testcontainers}
 
-Das echte Sicherheitsverhalten lässt sich nur gegen PostgreSQL prüfen. Die Fixture startet
+Das echte Sicherheitsverhalten lässt sich nur gegen die echte Datenbank prüfen, hier am Beispiel
+PostgreSQL. Die Fixture startet
 einen Container, legt das Schema mit \code{Ensure\allowbreak{}Created} an (inklusive RLS,
 Kapitel~\ref{ch:how-migrations-work}), führt die eigenen Migrations-Operationen real aus und
 verbindet die Tests mit einer eingeschränkten Rolle:
@@ -257,7 +258,7 @@ public async Task Database_rejects_rows_of_other_tenant()
 Einzelne Funktionen sind gut abgedeckt; die Fehler, die ein Review fand, lagen in Kombinationen:
 ein geänderter Session-Schlüssel zusammen mit einer gelöschten Tabelle, eine Temporal-Tabelle,
 eine ignorierte Mandanten-Property. Ein vollständiges kartesisches Produkt aller
-Migrationsoperationen und Einstellungen wäre groß und meist redundant. Die Tests decken deshalb
+Migrations-Operationen und Einstellungen wäre groß und meist redundant. Die Tests decken deshalb
 eine kleine Matrix ab, ausgewählt nach einer Frage: Wo berühren zwei Funktionen dasselbe
 Datenbankobjekt? Bei SQL Server sind das die gemeinsame Predicate-Funktion und die
 schemagebundene Policy. Jeder Migrationsfall wird von EFs echtem Differ erzeugt, läuft Up und Down in
@@ -281,8 +282,8 @@ Mandanten:
   Migration scheitert, nachdem Policy und Funktion gelöscht wurden & wie oben & Rollback:
   Tabelle, Policy und Funktion mit dem alten Schlüssel sind unverändert \\
   \tablerule
-  Temporal-Tabelle, ignorierte oder nicht gemappte Mandanten-Property & Modelltests beider
-  relationaler Pakete & Beim Modellaufbau abgelehnt \\
+  Temporal-Tabelle (nur SQL Server), ignorierte oder nicht gemappte Mandanten-Property & Modelltests beider
+  relationaler Pakete & Beim Modellbau abgelehnt \\
 \end{datatable}
 
 Weiterhin ohne Test sind: Kombinationen bei PostgreSQL, wo Policies einer Umbenennung folgen und
@@ -566,7 +567,7 @@ sich oft erst zur Laufzeit. Danach folgen die mittleren, die stabilen zuletzt.
   \textbf{Einstufung} & \textbf{Bedeutung} & \textbf{Kapitel} \\
   \tablehead
   \textcolor{risk@volatile}{\textbf{volatil}} & Stark von \code{.Internal}-Namespaces
-  abhängig (EF1001); bei jedem Major-Upgrade zuerst prüfen & \ref{ch:declarative-sql-from-annotations}, \ref{ch:design-time-services}, \ref{ch:custom-sql-expression-nodes}, \ref{ch:the-update-pipeline}, \ref{ch:property-level-fluent-api-and}, \ref{ch:scaffolding-in-practice} \\
+  abhängig (EF1001); bei jedem Major-Upgrade zuerst prüfen & \ref{ch:declarative-sql-from-annotations}, \ref{ch:design-time-services}, \ref{ch:the-update-pipeline}, \ref{ch:custom-sql-expression-nodes}, \ref{ch:property-level-fluent-api-and}, \ref{ch:scaffolding-in-practice} \\
   \tablerule
   \textcolor{risk@medium}{\textbf{mittel}} & Provider-Basisklassen oder öffentliche, aber oft
   geänderte API & \ref{ch:ef-core-s-architecture-from}, \ref{ch:the-options-extension}, \ref{ch:registering-services}, \ref{ch:type-mappings-and-value-converters}, \ref{ch:the-query-pipeline}, \ref{ch:translating-methods-and-members}, \ref{ch:further-query-extension-points}, \ref{ch:custom-migration-operations}, \ref{ch:compiled-models-trimming-and-nativeaot}, \ref{ch:scaffolding-reverse-engineering}, \ref{ch:test-strategy}, \ref{ch:versioning-and-compatibility}, \ref{ch:bulk-operations-and-the-limits}, \ref{ch:complex-types-and-json}, \ref{ch:aggregate-translators}, \ref{ch:a-second-provider-sql-server},
@@ -657,7 +658,7 @@ NuGet-Audit meldet bekannte Schwachstellen als Warnungen NU1901 bis NU1904
 (\href{https://learn.microsoft.com/en-us/nuget/concepts/auditing-packages}{NuGet: Auditing package dependencies}).
 Entscheidend ist, \emph{wen} ein Befund trifft. Ermittelt wird das mit \code{dotnet nuget why},
 das den Pfad von der direkten Abhängigkeit bis zum betroffenen Paket zeigt. Im Beispiel gab es
-drei Fälle:
+vier Fälle:
 
 \begin{datatable}{H{0.75}H{1.05}H{0.70}H{1.50}}
   \textbf{Paket} & \textbf{Herkunft} & \textbf{Betrifft} & \textbf{Entscheidung} \\
@@ -675,6 +676,10 @@ drei Fälle:
   \tablerule
   \code{SSH.\allowbreak{}NET} 2024.2.0 & Testcontainers 4.6 & Nur Tests & Testcontainers 4.16
   innerhalb derselben Major-Version; bringt 2026.0.0. \\
+  \tablerule
+  \code{SQLite\allowbreak{}PCL\allowbreak{}Raw.\allowbreak{}lib.\allowbreak{}e\_sqlite3} 2.1.11 &
+  EF Core Sqlite 10.0.0 → \code{SQLite\allowbreak{}PCL\allowbreak{}Raw.\allowbreak{}bundle\_e\_sqlite3}
+  & Nur Tests & Direkte Abhängigkeit auf 2.1.14 nur im Testprojekt. \\
 \end{datatable}
 
 Jede direkte Abhängigkeit auf ein eigentlich transitives Paket steht in
@@ -760,9 +765,9 @@ Package Management):
   \code{Internals\allowbreak{}Visible\allowbreak{}To} & Tests erreichen interne Logik ohne
   öffentliche API. \\
   \tablerule
-  Paketnamen & Kern ohne Provider, Provider-Paket mit Suffix
-  (\code{.\allowbreak{}Postgre\allowbreak{}SQL},
-  \code{.\allowbreak{}Sql\allowbreak{}Server}). \\
+  Paketnamen & Kern ohne Provider, relationale Schicht als \code{.\allowbreak{}Relational},
+  Provider-Pakete mit Suffix (\code{.\allowbreak{}Postgre\allowbreak{}SQL},
+  \code{.\allowbreak{}Sql\allowbreak{}Server}, \code{.\allowbreak{}Cosmos}). \\
 \end{datatable}
 
 Zur Dokumentation gehören neben der API-Doku vor allem die Dinge, die Nutzer nicht im Code
@@ -821,7 +826,8 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
 \noindent Details: Kapitel~\ref{ch:annotations-and-fluent-api}, \ref{ch:conventions}, \ref{ch:model-validation}.
 
 \begin{checklist}
-  \item Annotations mit Präfix, nur einfache Werte, keine Defaults speichern.
+  \item Annotations mit Präfix, nur einfache Werte; explizite Werte behalten (auch Defaults, die
+    eine Convention überstimmen), für Migrationen im Annotation-Provider normalisieren.
   \item Fluent API nicht-generisch implementieren, generisch delegieren.
   \item Convention-Builder-Überladungen für ConfigurationSource.
   \item Conventions bei ModelFinalizing, wenn sie vom fertigen Modell abhängen.
@@ -872,7 +878,7 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
 
 \section{Migrations \& Design-Time}
 
-\noindent Details: Kapitel~\ref{ch:how-migrations-work}, \ref{ch:declarative-sql-from-annotations}, \ref{ch:custom-migration-operations}, \ref{ch:design-time-services}, \ref{ch:compiled-models-trimming-and-nativeaot}.
+\noindent Details: Kapitel~\ref{ch:how-migrations-work}, \ref{ch:declarative-sql-from-annotations}, \ref{ch:custom-migration-operations}, \ref{ch:design-time-services}, \ref{ch:compiled-models-trimming-and-nativeaot}, \ref{ch:scaffolding-reverse-engineering}.
 
 \begin{checklist}
   \item Deklarativ über Annotation-Provider (nur Design-Time) und SQL-Generator.
@@ -904,11 +910,13 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
 
 \section{Fortgeschrittene Erweiterungspunkte (Teil~\ref{part:advanced})}
 
-\noindent Details: Kapitel~\ref{ch:bulk-operations-and-the-limits}, \ref{ch:value-generation}, \ref{ch:complex-types-and-json}, \ref{ch:advanced-migrations}.
+\noindent Details: Kapitel~\ref{ch:bulk-operations-and-the-limits}, \ref{ch:value-generation}, \ref{ch:the-update-pipeline}, \ref{ch:complex-types-and-json}, \ref{ch:models-per-runtime-context}, \ref{ch:advanced-migrations}.
 
 \begin{checklist}
   \item Wege dokumentieren, die Interceptors umgehen (ExecuteUpdate, rohes SQL).
   \item Value Generators mit HasValueGeneratorFactory(Type) konfigurieren (Compiled Models).
+  \item IUpdateSqlGenerator nur ersetzen, wenn das SQL eine andere Form braucht; zustandslos
+    (Singleton) und genau einer pro Context.
   \item Conventions für Complex Types und JSON-Spalten prüfen.
   \item Reihenfolge eigener Migrations-Operationen dokumentieren und testen.
   \item Idempotente Skripte und suppressTransaction berücksichtigen.

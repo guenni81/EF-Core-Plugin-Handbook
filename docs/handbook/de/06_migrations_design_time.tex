@@ -345,7 +345,7 @@ protected override void Down(MigrationBuilder migrationBuilder)
 \versionrisk{volatile}
 
 Die Werkzeuge von \code{dotnet ef} (Migrationen anlegen, Snapshots schreiben, Scaffolding,
-Compiled Models) verwenden einen eigenen Service Provider mit Design-Time-Diensten. Ein
+Compiled Models) verwenden einen eigenen Service Provider mit Design-Time-Services. Ein
 Plugin erweitert ihn über \code{IDesign\allowbreak{}Time\allowbreak{}Services}.
 
 \section{Geladen über das Startprojekt}
@@ -393,6 +393,7 @@ Fluent API:
 \begin{sourcecode}[Shop\allowbreak{}Context\allowbreak{}Model\allowbreak{}Snapshot.\allowbreak{}cs]{csharp}
 // Vorher
 b.HasAnnotation("Acme:Rls:Enabled", true);
+b.HasAnnotation("Acme:Rls:Forced", true);
 b.HasAnnotation("Acme:Rls:Policy:tenant_isolation", "{\"Name\":\"tenant_isolation\",...}");
 
 // Nachher
@@ -544,8 +545,8 @@ verschweigen sie (Upgrade-Playbook in Kapitel~\ref{ch:versioning-and-compatibili
 \begin{note}
   Conventions, Snapshots und Migrations laufen nur zur Design-Zeit oder beim Modellbau; mit
   Compiled Model und vorkompilierten Abfragen fallen sie zur Laufzeit weg. Für AOT kritisch
-  sind deshalb vor allem Type Mappings, Konverter, Translators (laufen beim Build) und
-  Interceptors.
+  sind deshalb vor allem Type Mappings, Konverter und Interceptors; Translators laufen mit
+  vorkompilierten Abfragen schon beim Build.
 \end{note}
 
 \section{Was als Verbraucher tatsächlich geprüft ist}\label{sec:consumer-test}
@@ -566,7 +567,7 @@ gelöscht wird:
   \code{Acme.*} nur aus der lokalen Quelle und ein SHA-512-Vergleich belegen, dass genau die
   eben gebauten Pakete aufgelöst werden. \\
   \tablerule
-  Tooling & \code{dotnet-ef} als lokales Tool. Die Design-Time-Dienste lädt das Attribut im
+  Tooling & \code{dotnet-ef} als lokales Tool. Die Design-Time-Services lädt das Attribut im
   Startprojekt. Migration und SQL-Skript enthalten RLS, \code{FORCE}, Policy und Index
   (PostgreSQL) sowie Security Policy und Session-Schlüssel (SQL Server).
   \code{has-\allowbreak{}pending-\allowbreak{}model-\allowbreak{}changes} meldet danach keine
@@ -612,8 +613,8 @@ nicht zeigen konnten:
     Trim- und AOT-Warnungen (IL2104, IL3053).
 \end{itemize}
 
-Nicht geprüft ist SQL Server unter NativeAOT; das Paket ist dafür markiert, ein Lauf mit
-einer echten Datenbank fehlt.
+Nicht geprüft sind SQL Server unter NativeAOT (das Paket ist dafür markiert, ein Lauf mit
+einer echten Datenbank fehlt) und das Cosmos-Paket, das der Verbrauchertest nicht packt.
 
 
 % ------------------------------------------------------------
@@ -622,7 +623,7 @@ einer echten Datenbank fehlt.
 
 \code{dotnet ef dbcontext scaffold} liest ein bestehendes Datenbankschema und erzeugt
 Entitäten und einen Context. Ein Plugin, das eigene Schema-Elemente verwaltet, kann sie
-dabei ebenfalls erkennen. Der Weg führt über zwei Design-Time-Dienste:
+dabei ebenfalls erkennen. Der Weg führt über zwei Design-Time-Services:
 
 \begin{datatable}{H{0.60}H{1.40}}
   \textbf{Dienst} & \textbf{Aufgabe} \\

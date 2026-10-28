@@ -272,7 +272,9 @@ public static string ExpectedTables(DbContext context)
 The line goes into a session setting (PostgreSQL, \code{SET diag.\allowbreak{}expected}) or into
 the session context (SQL Server, \code{sp\_\allowbreak{}set\_\allowbreak{}session\_\allowbreak{}context
 N'diag.\allowbreak{}expected'}), together with the app role and, if they differ from the
-defaults, setting name, policy name, session key and policy schema. Then the script runs in the
+defaults, setting name, policy name, \code{diag.\allowbreak{}force} (PostgreSQL; \code{off} for
+tables with \code{force:\allowbreak{} false}, valid for the whole run), session key and policy
+schema. Then the script runs in the
 same session and returns one row per expected table:
 
 \begin{sourcecode}[Shell]{text}
@@ -304,7 +306,8 @@ psql "$AUDIT_CONNECTION" \
   permissive policy that applies to it & Not in \code{db\_\allowbreak{}owner}, no \code{ALTER ANY
   SECURITY POLICY} or \code{CONTROL} \\
   \tablerule
-  Temporal table & Not applicable & History table without a policy: not protected \\
+  Temporal table & Not applicable & History table without a policy: not protected (the model
+  rejects temporal tables; this finds a table converted afterwards) \\
   \tablerule
   Read rights & \code{SELECT} on \code{pg\_\allowbreak{}policy} (granted to everyone by default)
   & \code{VIEW DEFINITION} on the database or \code{db\_\allowbreak{}owner} \\
@@ -316,13 +319,14 @@ owns the table. \textbf{NOT VERIFIABLE} means that the diagnosis cannot decide: 
 unknown, no table is expected, or the caller lacks the read rights. On SQL Server this is the
 normal case for the app login, because catalog views silently hide what a caller has no rights
 on; there, a missing policy and an invisible one would look the same. Run the scripts with an
-audit role that has \code{VIEW DEFINITION}, not with the app role, and do not extend the app
+audit role that has these read rights (on SQL Server \code{VIEW DEFINITION}), not with the app
+role, and do not extend the app
 role's rights for it. The scripts never repair anything.
 
 \code{Policy\allowbreak{}Diagnosis\allowbreak{}Tests} and
 \code{Sql\allowbreak{}Server\allowbreak{}Policy\allowbreak{}Diagnosis\allowbreak{}Tests} run both
-scripts against temporary databases: in the correct state, and after each of the breakages from
-the table, such as \code{DISABLE ROW LEVEL SECURITY}, a dropped policy, \code{STATE = OFF}, a
+scripts against temporary databases: in the correct state, and after typical
+breakages, such as \code{DISABLE ROW LEVEL SECURITY}, a dropped policy, \code{STATE = OFF}, a
 missing block predicate, a table made temporal afterwards or a wrong session key. The limit:
 the diagnosis checks the objects the plugin creates and the app role's attributes, not every way
 to bypass them. Functions with \code{SECURITY DEFINER}, views without
@@ -778,7 +782,9 @@ combined with \code{OR}. An additional policy thus widens what is visible and se
 transition in phase~1; removing it in phase~3 is the contraction. Each of these policies must
 separate tenants on its own, otherwise the transition opens the table. Because DDL is
 transactional in PostgreSQL, replacing a policy within one migration leaves no moment without a
-policy.
+policy. The diagnosis (page~\pageref{sec:policy-diagnosis}) reports such a transition policy as
+NOT PROTECTED as long as it applies to the app role; between phase~1 and phase~3 that is
+expected.
 
 Rolling back the application is possible without a database change until phase~3, because the
 schema still supports the old version. After that it needs the Down of the follow-up migration,
@@ -1256,8 +1262,9 @@ consumer's scope before the context is resolved.
 \begin{important}[Never fall back to “all tenants”]
   Without a tenant, a job must fail or see nothing, never everything. The plugin behaves
   this way: the session value stays empty, the policies match no rows and saving throws.
-  Jobs that really need all tenants use the reporting role from
-  chapter~\ref{ch:row-level-security-in-production}.
+  Jobs that really need to read all tenants use the read-only reporting
+  role from chapter~\ref{ch:row-level-security-in-production}; maintenance that writes goes
+  through the tenants one by one.
 \end{important}
 
 % ------------------------------------------------------------
@@ -1268,7 +1275,7 @@ consumer's scope before the context is resolved.
 
 The GitHub Actions workflow in the repository implements the recommendations from
 chapters~\ref{ch:test-strategy} and \ref{ch:versioning-and-compatibility}. The job
-\code{build} builds and tests without and with a database, \code{handbook} builds the
+\code{build} builds and tests without and with a database (the Cosmos model tests blocking), \code{handbook} builds the
 handbook, \code{consumer} checks the packages as a consumer. The job \code{cosmos} (emulator,
 not blocking yet) is left out of the excerpt:
 
@@ -1286,6 +1293,8 @@ jobs:
           -c Release --no-build
       - run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests
           -c Release --no-build
+      - run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Cosmos.Tests
+          -c Release --no-build --filter "Category!=Emulator"
 
   handbook:                            # both PDFs with LuaLaTeX, in docs/handbook
     runs-on: ubuntu-latest

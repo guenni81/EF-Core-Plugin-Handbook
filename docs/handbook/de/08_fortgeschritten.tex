@@ -253,7 +253,7 @@ SQL selbst eine andere Form braucht, etwa \code{INSERT
 Eine Spalte \code{Updated\allowbreak{}At} soll den Zeitpunkt der letzten Änderung tragen, und
 darüber soll die Uhr der Datenbank entscheiden, nicht die des Anwendungsservers, der die Zeile
 gerade schreibt. Für \code{INSERT} hat EF das Mittel:
-\code{Has\allowbreak{}Default\allowbreak{}Value\allowbreak{}Sql(\allowbreak{}"now()")}. Für
+\code{Has\allowbreak{}Default\allowbreak{}Value\allowbreak{}Sql(\allowbreak{}\textquotedbl{}now()\textquotedbl{})}. Für
 \code{UPDATE} gibt es keines.
 \code{Value\allowbreak{}Generated\allowbreak{}On\allowbreak{}Add\allowbreak{}Or\allowbreak{}Update(\allowbreak{})}
 sagt EF nur, dass die Datenbank den Wert erzeugt; EF lässt die Spalte im \code{SET} weg, liest
@@ -282,7 +282,7 @@ public static PropertyBuilder<T> HasDatabaseClockOnUpdate<T>(this PropertyBuilde
     return builder.HasDefaultValueSql("now()").ValueGeneratedOnAddOrUpdate();
 }
 
-public class DatabaseClockUpdateSqlGenerator : NpgsqlUpdateSqlGenerator   // internal (EF1001)
+public class DatabaseClockUpdateSqlGenerator : NpgsqlUpdateSqlGenerator   // intern (EF1001)
 {
     protected override void AppendUpdateCommand(
         StringBuilder commandStringBuilder,
@@ -313,7 +313,7 @@ public class DatabaseClockUpdateSqlGenerator : NpgsqlUpdateSqlGenerator   // int
 
 Die Überschreibung ändert so wenig wie möglich. Eine beim Ändern generierte Spalte ist für EF
 eine Leseoperation: Sie steht im \code{RETURNING}, nicht im \code{SET}. Die Methode schreibt den
-Kopf von EF, hängt für jede markierte Lesespalte \code{"Spalte" = now()} an und überlässt die
+Kopf von EF, hängt für jede markierte Lesespalte \code{\textquotedbl{}Spalte\textquotedbl{} = now()} an und überlässt die
 \code{WHERE}-Klausel mit Schlüssel und Concurrency-Token sowie die \code{RETURNING}-Klausel EF.
 Deshalb funktionieren der zurückgelesene Wert und die optimistische Konkurrenzprüfung weiter.
 Mit \code{xmin} als Row Version sendet SaveChanges:
@@ -438,7 +438,7 @@ System.Text.Json unabhängig voneinander serialisieren
 \chapter{Modelle pro Laufzeitkontext}\label{ch:models-per-runtime-context}
 \versionrisk{stable}
 
-EF baut das Modell einmal pro internem Service Provider und Context-Typ und cached es
+EF baut das Modell einmal pro internem Service Provider und Context-Typ und cacht es
 (Kapitel~\ref{ch:ef-core-s-architecture-from}). Soll das Modell von Laufzeitdaten abhängen,
 etwa einem Schema pro Mandant, muss der Cache-Schlüssel diese Daten enthalten. Dafür gibt es
 \code{IModel\allowbreak{}Cache\allowbreak{}Key\allowbreak{}Factory}:
@@ -517,7 +517,7 @@ protected override void Up(MigrationBuilder migrationBuilder)
 
     // 3. Was Tabellen voraussetzt: NACH den generierten Operationen
     migrationBuilder.CreateApplicationRole("shop_app", canLogin: true);
-    migrationBuilder.GrantTablePrivileges("shop_app");   // bestehende und künftige Tabellen
+    migrationBuilder.GrantTablePrivileges("shop_app");   // auch künftige Tabellen, Sequenzen
 }
 \end{sourcecode}
 

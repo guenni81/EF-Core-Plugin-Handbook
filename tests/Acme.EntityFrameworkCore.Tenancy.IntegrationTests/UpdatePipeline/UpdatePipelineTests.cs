@@ -44,13 +44,17 @@ public sealed class DocumentContext : DbContext
         return new DocumentContext(builder.Options);
     }
 
-    private sealed class CommandRecorder(List<string> sql) : DbCommandInterceptor
+    private sealed class CommandRecorder : DbCommandInterceptor
     {
+        private readonly List<string> _sql;
+
+        public CommandRecorder(List<string> sql) => _sql = sql;
+
         public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
             DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result,
             CancellationToken cancellationToken = default)
         {
-            sql.Add(command.CommandText);
+            _sql.Add(command.CommandText);
             return ValueTask.FromResult(result);
         }
     }

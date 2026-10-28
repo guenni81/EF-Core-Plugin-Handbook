@@ -14,7 +14,8 @@ public static class RlsAnnotationNames
     public const string Enabled = Prefix + "Enabled";
 
     /// <summary>
-    /// <see langword="true"/> = FORCE ROW LEVEL SECURITY. Never stored as <see langword="false"/>.
+    /// <see langword="true"/> = FORCE ROW LEVEL SECURITY; an explicit <see langword="false"/> is
+    /// stored too, so that it wins over the convention, and normalized away for migrations.
     /// </summary>
     public const string Forced = Prefix + "Forced";
 

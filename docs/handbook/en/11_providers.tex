@@ -203,6 +203,7 @@ protected virtual void CreatePolicy(string table, string? schema, string column,
         + "AS uniqueidentifier)";
     Statement(builder, $"IF OBJECT_ID({Literal(function)}, N'IF') IS NULL "
         + $"EXEC({Literal(functionSql)})");
+    // ... check an existing function: if it reads another key, THROW 50000
 
     Statement(builder,
         $"CREATE SECURITY POLICY {PolicyName(table, schema ?? "dbo")} "
@@ -391,9 +392,10 @@ public class SqlServerTenantSessionInterceptor : TenantSessionInterceptor
 \section{Deliberately not ported}
 
 The SQL Server package is a self-contained but leaner provider. Fluent API policies, the optional
-query filter, the snapshot code generator and scaffolding are missing there, and the custom
+query filter of the convention (\code{Apply\allowbreak{}Query\allowbreak{}Filter}; the core's
+filter works here too), the snapshot code generator and scaffolding are missing there, and the custom
 SQL node and the aggregate of the functions sample package exist for PostgreSQL only.
-That is a product decision, not a technical obstacle: each of these chapters
+That is a product decision, not a technical obstacle: each of these building blocks
 can be transferred to SQL Server with the same patterns. The list belongs in the package's
 documentation so users know what to expect.
 
@@ -445,7 +447,7 @@ chapter~\ref{ch:what-belongs-in-the-core}, without the relational layer.
   \tablerule
   Query filter & From the core & Tenant as a query parameter instead of a session value \\
   \tablerule
-  Session interceptor, migrations, SQL nodes & Not ported & There is no session and no
+  Session interceptor, migrations & Not ported & There is no session and no
   schema \\
 \end{datatable}
 
@@ -619,7 +621,7 @@ in the repository checks the behavior), \emph{rejected while the model is built}
 
 \section{Deliberately not ported}
 
-Migrations and scaffolding (Cosmos has no schema), custom SQL nodes and aggregates, the
+Migrations and scaffolding (Cosmos has no schema), the
 session interceptor and \code{Database.\allowbreak{}Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})}
 (there is no session), and the protection of bulk updates (EF Core~10 has no
 \code{Execute\allowbreak{}Update} for Cosmos). Cosmos also only supports asynchronous I/O:

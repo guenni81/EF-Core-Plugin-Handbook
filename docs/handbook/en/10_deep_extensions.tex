@@ -707,7 +707,8 @@ public class TenancyDatabaseModelFactory : NpgsqlDatabaseModelFactory
 The factory is registered like the code generator in the design-time services with
 \code{Remove\allowbreak{}All}, but with \code{Add\allowbreak{}Scoped}: EF and Npgsql
 register the database model factory as scoped, and it depends on the scaffolding logger,
-which is scoped as well. The data format is the same as with the Fluent API; snapshot, migrations and code generator therefore work without
+which is scoped as well. The data format matches that of the Fluent API (a missing \code{Forced} counts as
+\code{false}; the annotation provider treats both alike); snapshot, migrations and code generator therefore work without
 further changes.
 
 \begin{note}[Normalized expressions]

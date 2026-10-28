@@ -38,7 +38,11 @@ public class TenancyOptionsExtension : IDbContextOptionsExtension
     /// <summary>Copy constructor used by <see cref="Clone"/>.</summary>
     /// <param name="copyFrom">The extension to copy.</param>
     protected TenancyOptionsExtension(TenancyOptionsExtension copyFrom)
-        => Settings = copyFrom.Settings;
+    {
+        ArgumentNullException.ThrowIfNull(copyFrom);
+
+        Settings = copyFrom.Settings;
+    }
 
     /// <summary>The model-relevant plugin settings.</summary>
     public virtual TenancySettings Settings { get; private set; } = TenancySettings.Default;

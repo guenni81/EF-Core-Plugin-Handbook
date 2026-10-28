@@ -287,8 +287,9 @@ public static string ExpectedTables(DbContext context)
 Die Zeile kommt in ein Session-Setting (PostgreSQL, \code{SET diag.\allowbreak{}expected}) oder
 in den Session-Kontext (SQL Server, \code{sp\_\allowbreak{}set\_\allowbreak{}session\_\allowbreak{}context
 N'diag.\allowbreak{}expected'}), zusammen mit der App-Rolle und, wenn sie vom Standard abweichen,
-Setting-Name, Policy-Name, Session-Schlüssel und Policy-Schema. Dann läuft das Skript in
-derselben Session und liefert eine Zeile pro erwarteter Tabelle:
+Setting-Name, Policy-Name, \code{diag.\allowbreak{}force} (PostgreSQL; \code{off} für Tabellen mit
+\code{force:\allowbreak{} false}, das für den ganzen Lauf gilt), Session-Schlüssel und
+Policy-Schema. Dann läuft das Skript in derselben Session und liefert eine Zeile pro erwarteter Tabelle:
 
 \begin{sourcecode}[Shell]{text}
 psql "$AUDIT_CONNECTION" \
@@ -319,7 +320,8 @@ psql "$AUDIT_CONNECTION" \
   weitere permissive Policy, die für sie gilt & Nicht in \code{db\_\allowbreak{}owner}, kein
   \code{ALTER ANY SECURITY POLICY} oder \code{CONTROL} \\
   \tablerule
-  Temporal-Tabelle & Entfällt & Historientabelle ohne Policy: nicht geschützt \\
+  Temporal-Tabelle & Entfällt & Historientabelle ohne Policy: nicht geschützt (das Modell lehnt
+  Temporal-Tabellen ab; erkannt wird eine nachträglich umgestellte Tabelle) \\
   \tablerule
   Leserechte & \code{SELECT} auf \code{pg\_\allowbreak{}policy} (standardmäßig für alle) &
   \code{VIEW DEFINITION} auf der Datenbank oder \code{db\_\allowbreak{}owner} \\
@@ -332,13 +334,14 @@ die Diagnose nicht entscheiden kann: Die App-Rolle ist unbekannt, keine Tabelle 
 oder dem Aufrufer fehlen die Leserechte. Bei SQL Server ist das für den App-Login der Normalfall,
 denn Katalogsichten blenden stillschweigend aus, worauf ein Aufrufer keine Rechte hat; dort sähen
 eine fehlende und eine unsichtbare Policy gleich aus. Führen Sie die Skripte mit einer
-Prüfrolle aus, die \code{VIEW DEFINITION} hat, nicht mit der App-Rolle, und erweitern Sie dafür
+Prüfrolle aus, die diese Leserechte hat (bei SQL Server \code{VIEW DEFINITION}), nicht mit der
+App-Rolle, und erweitern Sie dafür
 nicht die Rechte der App-Rolle. Die Skripte reparieren nie etwas.
 
 \code{Policy\allowbreak{}Diagnosis\allowbreak{}Tests} und
 \code{Sql\allowbreak{}Server\allowbreak{}Policy\allowbreak{}Diagnosis\allowbreak{}Tests} führen
-beide Skripte gegen temporäre Datenbanken aus: im korrekten Zustand und nach jeder der
-Beschädigungen aus der Tabelle, etwa \code{DISABLE ROW LEVEL SECURITY}, einer gelöschten Policy,
+beide Skripte gegen temporäre Datenbanken aus: im korrekten Zustand und nach typischen
+Beschädigungen, etwa \code{DISABLE ROW LEVEL SECURITY}, einer gelöschten Policy,
 \code{STATE = OFF}, einem fehlenden Block-Prädikat, einer nachträglich temporalen Tabelle oder
 einem falschen Session-Schlüssel. Die Grenze: Die Diagnose prüft die Objekte, die das Plugin
 anlegt, und die Eigenschaften der App-Rolle, nicht jeden Weg, sie zu umgehen. Funktionen mit
@@ -403,7 +406,7 @@ sich nicht selbst helfen.
 Welche Tabellenabbildungen das Plugin schützt und welche es beim Modellbau ablehnt, legt die
 Matrix auf Seite~\pageref{sec:supported-table-mappings} fest; dieses Kapitel wiederholt sie
 nicht. Es geht um die zweite Achse: Beziehungen zwischen geschützten Tabellen. RLS regelt, welche
-\emph{Zeilen} eine Sitzung sieht. Ob eine Zeile nur auf Zeilen desselben Mandanten verweist,
+\emph{Zeilen} eine Session sieht. Ob eine Zeile nur auf Zeilen desselben Mandanten verweist,
 regelt RLS nicht. Das ist \emph{referenzielle Mandantenkonsistenz}, und sie entsteht im Modell.
 
 Das Beispiel verwendet Kunde, Bestellung und Position: \code{Customer} → \code{Order} →
@@ -630,7 +633,7 @@ unter den Resilienzmechanismen von EF:
 \begin{itemize}
   \item \textbf{Retries.} Eine Execution Strategy wie \code{Enable\allowbreak{}Retry\allowbreak{}On\allowbreak{}Failure}
     wiederholt eine Operation nach einem transienten Fehler auf einer neu geöffneten Verbindung.
-    Der Interceptor läuft dabei wieder, der Mandant ist gesetzt. Der Test beendet die Sitzung
+    Der Interceptor läuft dabei wieder, der Mandant ist gesetzt. Der Test beendet die Session
     serverseitig mit \code{pg\_\allowbreak{}terminate\_\allowbreak{}backend}; die nächste Abfrage
     scheitert, wird wiederholt und liefert nur Zeilen des Mandanten.
   \item \textbf{Explizite Transaktionen.} Mit einer wiederholenden Strategie lehnt EF Befehle in
@@ -812,7 +815,9 @@ Tabelle werden mit \code{OR} verknüpft. Eine zusätzliche Policy erweitert also
 ist, und eignet sich als Übergang in Phase~1; ihr Entfernen in Phase~3 ist das
 Zusammenziehen. Jede dieser Policies muss für sich mandantentrennend sein, sonst öffnet der
 Übergang die Tabelle. Weil DDL in PostgreSQL transaktional ist, gibt es beim Ersetzen einer
-Policy innerhalb einer Migration keinen Moment ohne Policy.
+Policy innerhalb einer Migration keinen Moment ohne Policy. Die Diagnose
+(Seite~\pageref{sec:policy-diagnosis}) meldet eine solche Übergangs-Policy als NOT PROTECTED,
+solange sie für die App-Rolle gilt; zwischen Phase~1 und Phase~3 ist das erwartet.
 
 Ein Rollback der Anwendung ist bis Phase~3 ohne Datenbankänderung möglich, weil das Schema die
 alte Version noch trägt. Danach braucht er das Down der Folgemigration, und gelöschte Spalten
@@ -1022,7 +1027,7 @@ dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benc
 
 \code{Verify\allowbreak{}Materialized\allowbreak{}Tenants(\allowbreak{})} ist Defense in Depth:
 Es schützt nicht vor einem Angriff, den RLS nicht abwehrt, sondern bemerkt, wenn RLS gar nicht
-greift, etwa weil die Anwendung mit dem Eigentümer, einem Superuser oder einer Rolle mit
+greift, etwa weil die Anwendung sich als Eigentümer, Superuser oder Rolle mit
 \code{BYPASSRLS} verbindet oder eine selbst geöffnete Verbindung ohne
 \code{Apply\allowbreak{}Tenant\allowbreak{}Session} arbeitet. Daraus ergibt sich die
 Empfehlung:
@@ -1295,8 +1300,9 @@ Scope des Consumers setzt, bevor der Context aufgelöst wird.
 \begin{important}[Nie auf „alle Mandanten“ zurückfallen]
   Ohne Mandant muss ein Job scheitern oder nichts sehen, niemals alles. Das Plugin verhält
   sich so: Der Session-Wert bleibt leer, die Policies treffen keine Zeile, und Speichern
-  wirft. Jobs, die wirklich alle Mandanten brauchen, nutzen die Reporting-Rolle aus
-  Kapitel~\ref{ch:row-level-security-in-production}.
+  wirft. Jobs, die wirklich alle Mandanten lesen müssen, nutzen die Nur-Lese-Reporting-Rolle
+  aus Kapitel~\ref{ch:row-level-security-in-production}; schreibende Wartung durchläuft die
+  Mandanten einzeln.
 \end{important}
 
 % ------------------------------------------------------------
@@ -1307,7 +1313,7 @@ Scope des Consumers setzt, bevor der Context aufgelöst wird.
 
 Der GitHub-Actions-Workflow im Repository setzt die Empfehlungen aus
 Kapitel~\ref{ch:test-strategy} und \ref{ch:versioning-and-compatibility} um. Der Job
-\code{build} baut und testet ohne und mit Datenbank, \code{handbook} baut das Handbuch,
+\code{build} baut und testet ohne und mit Datenbank (die Cosmos-Modelltests blockierend), \code{handbook} baut das Handbuch,
 \code{consumer} prüft die Pakete als Verbraucher. Der Job \code{cosmos} (Emulator, noch nicht
 blockierend) fehlt im Auszug:
 
@@ -1325,6 +1331,8 @@ jobs:
           -c Release --no-build
       - run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests
           -c Release --no-build
+      - run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Cosmos.Tests
+          -c Release --no-build --filter "Category!=Emulator"
 
   handbook:                            # beide PDFs mit LuaLaTeX, im Ordner docs/handbook
     runs-on: ubuntu-latest

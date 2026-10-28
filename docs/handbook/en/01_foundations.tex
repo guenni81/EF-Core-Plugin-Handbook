@@ -175,7 +175,8 @@ Every \code{Db\allowbreak{}Context} resolves its infrastructure from an \textbf{
 \code{IService\allowbreak{}Provider}. It is separate from the application's DI container and
 contains several hundred services: type mapping, model building, the query pipeline, change
 tracking, the update pipeline, migrations. A plugin hooks in by registering additional
-services in this container or replacing existing ones.
+services in this container or replacing existing ones. The book also calls it the
+\emph{internal provider} for short; that never means the database provider such as Npgsql.
 
 \begin{flowdiagram}
   \flowstep{DbContextOptions}{Provider extension (UseNpgsql) and plugin extensions
@@ -193,8 +194,6 @@ contexts with the same configuration share one provider. The \textbf{model} is c
 provider (and context type). Both make EF Core fast, but they have direct consequences for
 plugins, which chapter~\ref{ch:the-options-extension} covers in detail.
 
-\section{The path through the book}
-
 The model exists in two forms. The \textbf{design-time model} contains all annotations and
 is the basis for migrations and snapshots. At run time, \code{context.\allowbreak{}Model}
 returns a lean, read-only \textbf{runtime model} that keeps only the annotations needed at
@@ -202,6 +201,8 @@ run time. Which ones these are and how a plugin controls them is shown in
 chapters~\ref{ch:declarative-sql-from-annotations} and \ref{ch:property-level-fluent-api-and};
 but already in part~\ref{part:model}, plugin code that reads at run time sees only the
 runtime model.
+
+\section{The path through the book}
 
 The parts of the book follow the path of a request through this architecture: options and
 internal service provider (part~\ref{part:infrastructure}), model (part~\ref{part:model}),
@@ -398,7 +399,8 @@ db.Orders.Add(new Order { Total = 42 });         // the plugin sets TenantId
 var mine = await db.Orders.ToListAsync();        // RLS filters in the database
 \end{sourcecode}
 
-To make this work, the plugin uses every extension point covered in this book:
+To make this work, the plugin uses almost every extension point covered in this book; the
+others have examples of their own, marked as sample package or teaching example in the table:
 
 \begin{datatable}{H{1.20}H{1.50}H{0.30}}
   \textbf{Requirement} & \textbf{Implementation} & \textbf{Ch.} \\
@@ -439,6 +441,8 @@ To make this work, the plugin uses every extension point covered in this book:
   \code{EF.\allowbreak{}Functions.\allowbreak{}Is\allowbreak{}Not\allowbreak{}Distinct\allowbreak{}From},
   \code{EF.\allowbreak{}Functions.\allowbreak{}Every} & Custom SQL node, aggregate
   translator; a separate sample package without tenancy & \ref{ch:custom-sql-expression-nodes}--\ref{ch:aggregate-translators} \\
+  \tablerule
+  \code{now()} in \code{UPDATE} & Update SQL generator; teaching example in the test project & \ref{ch:the-update-pipeline} \\
   \tablerule
   Tenant property with any name &
   \code{Is\allowbreak{}Tenant\allowbreak{}Property(\allowbreak{})}, runtime annotation & \ref{ch:property-level-fluent-api-and}
@@ -482,7 +486,7 @@ Acme.EntityFrameworkCore.Tenancy               Core (EF Core only, any provider)
 
 Acme.EntityFrameworkCore.Tenancy.Relational    relational layer (EF Core relational)
 ├─ Interceptors/     abstract session interceptor (DbConnection), tracing
-├─ Metadata/         TenantTableMappingValidator (TPT, TPC, entity splitting)
+├─ Metadata/         TenantTableMappingValidator (TPT, TPC, entity splitting, ...)
 └─ Database.ApplyTenantSession()
 
 Acme.EntityFrameworkCore.Tenancy.PostgreSQL    complete implementation
@@ -895,7 +899,8 @@ and therefore comes first:
   \cellmeta{public · multiple · Singleton} &
   Does a named query filter or a translator suffice? &
   Using per-request state although the result is cached per query shape; passing a new
-  instance per context, which creates a new internal provider every time. &
+  instance per context, which creates a new internal provider every time; registering it as
+  \code{ISingleton\allowbreak{}Interceptor}, then EF never calls it. &
   \ref{ch:further-query-extension-points}, \ref{ch:bulk-operations-and-the-limits} \\
   \tablerule
   \textbf{The translated expression tree should be adjusted.}
@@ -959,12 +964,13 @@ belongs in the database, not in an interceptor.
   \cellmeta{public · multiple · Scoped} &
   Does the connection interceptor suffice? It does as long as no transaction pooling is
   involved. &
-  Using transaction-local settings but allowing queries outside of transactions: those run
-  without the state. In the sample:
-  \code{Use\allowbreak{}Transaction\allowbreak{}Pooling(\allowbreak{})}. &
+  Using transaction-local settings but expecting queries outside of transactions or
+  transactions that EF does not begin itself (\code{Use\allowbreak{}Transaction},
+  \code{Transaction\allowbreak{}Scope}) to work: they run without the state. The sample then
+  fails closed (page~\pageref{sec:transaction-pooling}). &
   \ref{ch:row-level-security-in-production} \\
   \tablerule
-  \textbf{INSERT, UPDATE or DELETE should take a different shape (upsert).}
+  \textbf{INSERT, UPDATE or DELETE should take a different shape (upsert, \code{now()} in UPDATE).}
   Update pipeline, for example \code{IUpdate\allowbreak{}Sql\allowbreak{}Generator}
   \cellmeta{provider base · single · Singleton or Scoped} &
   SaveChanges interceptor (rewriting states), command interceptor or
@@ -1023,7 +1029,7 @@ service provider of their own. A plugin registers services for that provider thr
   Do nothing: \code{Has\allowbreak{}Annotation} in the snapshot works, it is just hard to
   read. &
   Registering design-time services in \code{Apply\allowbreak{}Services}, that is in the
-  run-time container; not removing translated annotations from the dictionary. &
+  internal provider; not removing translated annotations from the dictionary. &
   \ref{ch:design-time-services} \\
   \tablerule
   \textbf{The compiled model should omit design-time annotations or contain complex

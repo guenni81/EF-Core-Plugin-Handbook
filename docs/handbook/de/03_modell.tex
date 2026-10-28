@@ -34,11 +34,10 @@ Migrations, Snapshots, Compiled Models) kann damit arbeiten.
   \code{Equals}. Ein Record mit \code{string[]} würde per Referenz verglichen und ständig
   „geändert“ wirken. \\
   \tablerule
-  Explizite Konfiguration behalten, für Migrationen normalisieren & Ein explizites
-  \code{force:\allowbreak{} false} muss im Modell bleiben, sonst überschreibt eine Convention
-  die Entscheidung des Anwenders. Für den Differ sind „Annotation fehlt“ und „Annotation hat
-  Default“ verschieden und erzeugen leere Migrationen; der Annotation-Provider lässt
-  Default-Werte deshalb im relationalen Modell weg. \\
+  Explizite Konfiguration behalten, für Migrationen normalisieren & Für den Differ sind
+  „Annotation fehlt“ und „Annotation hat Default“ verschieden und erzeugen leere Migrationen.
+  Ein explizites \code{force:\allowbreak{} false} bleibt trotzdem im Modell; der
+  Annotation-Provider lässt den Default für Migrationen weg (siehe unten). \\
   \tablerule
   Je Teilkonfiguration eine Annotation & Jede Policy hat eine eigene Annotation. Dann zeigt
   der Diff genau, welche sich geändert hat. \\
@@ -116,8 +115,8 @@ speichert \code{false} und entfernt die Annotation nicht. Entfernt wäre sie nic
 konfiguriert“ zu unterscheiden, und die Isolations-Convention, die FORCE standardmäßig setzt,
 überschriebe die explizite Entscheidung. Zwei Schichten haben hier verschiedene Aufgaben: Das
 Modell behält jede explizite Konfiguration samt Konfigurationsquelle, der Annotation-Provider
-normalisiert für die Migrationen und gibt \code{false} wie eine fehlende Annotation an das
-relationale Modell weiter (Kapitel~\ref{ch:declarative-sql-from-annotations}). So gewinnt die Entscheidung
+normalisiert für die Migrationen und behandelt \code{false} wie eine fehlende Annotation: Er
+gibt sie nicht an das relationale Modell weiter (Kapitel~\ref{ch:declarative-sql-from-annotations}). So gewinnt die Entscheidung
 des Anwenders, und ein unverändertes Modell erzeugt trotzdem keine Migration.
 
 Verschachtelte Konfiguration wie bei \code{Has\allowbreak{}Policy} nimmt ein
@@ -382,7 +381,7 @@ public virtual void ProcessModelFinalizing(
 }
 \end{sourcecode}
 
-Bevor die Convention etwas annotiert, prüft sie die Mandanten-Property. Beide Provider-Pakete
+Bevor die Convention etwas annotiert, prüft sie die Mandanten-Property. Beide relationalen Provider-Pakete
 folgen demselben Vertrag: Eine mit \code{Is\allowbreak{}Tenant\allowbreak{}Property(\allowbreak{})}
 markierte Property hat Vorrang, sonst braucht ein \code{ITenant\allowbreak{}Owned}-Typ eine
 gemappte Property \code{Tenant\allowbreak{}Id} vom Typ \code{Tenant\allowbreak{}Id}. Fehlt sie,
@@ -514,8 +513,8 @@ eigene Prädikate, die das Plugin nicht erzeugt.
 
 Bewusste Ausnahmen bleiben möglich: Eine mit \code{[No\allowbreak{}Tenant\allowbreak{}Isolation]}
 oder \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})}
-ausgenommene Entität wird nicht geprüft, und die Convention protokolliert die Ausnahme als
-Warnung. So unterscheidet das Modell eine Entscheidung von einem Versehen. Für die implizite
+ausgenommene Entität prüft der Tabellen-Validator nicht, und die Convention protokolliert die
+Ausnahme als Warnung. So unterscheidet das Modell eine Entscheidung von einem Versehen. Für die implizite
 Join-Tabelle gibt es im PostgreSQL-Paket
 \code{Using\allowbreak{}Entity(\allowbreak{}j => j.\allowbreak{}Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{}))};
 das SQL-Server-Paket kennt nur das Attribut und braucht dafür eine Join-Klasse. Besser ist
@@ -533,9 +532,6 @@ Die Shadow-Property füllt der SaveChanges-Interceptor wie jede andere Mandanten
 PostgreSQL mit eingeschränkter Rolle: Ein TPC-Modell scheitert, bevor eine einzige Tabelle
 existiert. In einem Modell mit TPH, Owned Type, JSON-Spalte und dieser Join-Entität hat jede
 Tabelle RLS, und ohne Mandant ist in keiner Tabelle eine Zeile sichtbar.
-\code{Table\allowbreak{}Mapping\allowbreak{}Tests} und
-\code{Sql\allowbreak{}Server\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Tests} decken
-jede Zeile der Matrix ohne Datenbank ab.
 
 \section{Strukturelle Änderungen: Index und Query-Filter}
 
@@ -887,8 +883,8 @@ public sealed class TenantIdJsonReaderWriter : JsonValueReaderWriter<TenantId>
   Form
   \code{Tenant\allowbreak{}Id\allowbreak{}Type\allowbreak{}Mapping.\allowbreak{}Default.\allowbreak{}Clone(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}.
   Er verlangt eine \textbf{öffentliche, statische Property} namens \code{Default} auf einem
-  \textbf{öffentlichen} Typ und bricht sonst ab. Konverter und Reader/Writer übernimmt er
-  nur dann ohne zusätzlichen Code, wenn sie \emph{dieselbe Instanz} wie im Default-Mapping
+  \textbf{öffentlichen} Typ und bricht sonst ab. Konverter, Comparer und Reader/Writer
+  übernimmt er nur dann ohne zusätzlichen Code, wenn sie \emph{dieselbe Instanz} wie im Default-Mapping
   sind. Deshalb nutzt das Mapping die statischen Instanzen statt \code{new
   .\allowbreak{}.\allowbreak{}.\allowbreak{}(\allowbreak{})}. Ohne NativeAOT löst EF 10 Type
   Mappings stattdessen beim Start auf; ein Plugin sollte die Anforderungen trotzdem

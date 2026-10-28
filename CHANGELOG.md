@@ -56,6 +56,21 @@ version is given by the dependency range and the compatibility table in the READ
 
 ### Changed
 
+- Handbook (both editions): consistency review of the book as one work after the additions.
+  Statements brought in line with the code (interceptor registration in the internal provider,
+  the core's and the sample plugin's evaluatable-expression filters, opt-outs and the table
+  validator, `UseTransactionPooling()` in the simplified `UseAcmeTenancy(sp)` excerpt, the
+  predicate-function check in the SQL Server excerpt, sequences in `GrantTablePrivileges`, the
+  fourth pinned advisory, packages and NativeAOT coverage); the new contract, diagnosis and
+  update-pipeline content linked into the decision aid, the checklists, the file appendix and
+  the risk table; overclaims about test coverage corrected; the short form "internal provider"
+  introduced once; terminology unified (Translators, Tenant-Provider, App-Container, Session,
+  Modellbau, Nullability, Design-Time-Services, cacht); straight quotes inside `\code` in the
+  German edition, which babel swallowed, replaced.
+- Code style: the PostgreSQL options extension's copy constructor checks its argument, the
+  update pipeline test uses no primary constructor, and two code comments about `Forced` no
+  longer claim that `false` is never stored.
+
 - CI: the Cosmos DB model tests are required. They run in the build job (and in the
   compatibility workflow) with the filter `Category!=Emulator` and need no Docker; only the
   tests with the trait `Category=Emulator` run against the preview emulator, still

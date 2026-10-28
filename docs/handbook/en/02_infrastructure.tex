@@ -233,7 +233,8 @@ public virtual void ApplyServices(IServiceCollection services)
             .TryAddSingleton<TenancyLoggingDefinitions, TenancyLoggingDefinitions>());
 
     // ... optional interceptors depending on the settings, also via the services builder
-    //     (chapters "Materialization", "Bulk operations", "Diagnostics and logging")
+    //     (chapters "Materialization: from rows to objects", "Bulk operations and the
+    //     limits of interceptors", "Diagnostics and logging")
 
     // 3) Replace single services of the provider
     services.Replace(ServiceDescriptor
@@ -421,7 +422,8 @@ services.AddDbContext<ShopContext>((sp, options) => options
 
   Decorating requires that the public interface is enough. The tenancy plugin needs
   protected hooks inside \code{CREATE TABLE} and therefore derives from Npgsql's generator.
-  For such cases the fallback described above remains: public logic such as
+  For such cases the fallback from “Integration as a way out” remains
+  (page~\pageref{sec:integration-way-out}): public logic such as
   \code{Create\allowbreak{}Policy\allowbreak{}Sql}, virtual methods, and
   \code{Replace\allowbreak{}Service} in the application.
 \end{important}
@@ -449,7 +451,8 @@ through an integration in the application.
 \section{The rules in EF Core 10}
 
 The methods from the table at the beginning of this chapter behave like this with two
-plugins. Every row is reproduced in \code{Composition\allowbreak{}Matrix\allowbreak{}Tests}:
+plugins. The rows are reproduced in \code{Composition\allowbreak{}Matrix\allowbreak{}Tests} and
+\code{Composition\allowbreak{}Tests}:
 
 \begin{datatable}{H{0.75}H{1.25}H{1.00}}
   \textbf{Mechanism} & \textbf{Behavior} & \textbf{Consequence} \\
@@ -721,6 +724,7 @@ public static DbContextOptionsBuilder UseAcmeTenancy(
     return optionsBuilder
         .UseAcmeTenancy(configure)
         .AddInterceptors(
+            // with UseTransactionPooling(): PostgreSqlTransactionSessionInterceptor
             new TenantConnectionInterceptor(tenants),
             new TenantSaveChangesInterceptor(tenants));
 }

@@ -212,7 +212,7 @@ public void Snapshot_roundtrip_produces_no_differences()
 
 \section{Integration tests with Testcontainers}
 
-The real security behavior can only be verified against PostgreSQL. The fixture starts a
+The real security behavior can only be verified against the real database, here PostgreSQL. The fixture starts a
 container, creates the schema with \code{Ensure\allowbreak{}Created} (including RLS,
 chapter~\ref{ch:how-migrations-work}), executes the custom migration operations for real and
 connects the tests with a restricted role:
@@ -281,7 +281,7 @@ tenants:
   Migration fails after policy and function were dropped & as above & Rollback: table, policy
   and function with the old key are unchanged \\
   \tablerule
-  Temporal table, ignored or unmapped tenant property & model tests of both relational
+  Temporal table (SQL Server only), ignored or unmapped tenant property & model tests of both relational
   packages & Rejected while the model is built \\
 \end{datatable}
 
@@ -565,7 +565,7 @@ medium ones follow, the stable ones come last.
   \textbf{Rating} & \textbf{Meaning} & \textbf{Chapters} \\
   \tablehead
   \textcolor{risk@volatile}{\textbf{volatile}} & Depends heavily on \code{.Internal}
-  namespaces (EF1001); check first in every major upgrade & \ref{ch:declarative-sql-from-annotations}, \ref{ch:design-time-services}, \ref{ch:custom-sql-expression-nodes}, \ref{ch:the-update-pipeline}, \ref{ch:property-level-fluent-api-and}, \ref{ch:scaffolding-in-practice} \\
+  namespaces (EF1001); check first in every major upgrade & \ref{ch:declarative-sql-from-annotations}, \ref{ch:design-time-services}, \ref{ch:the-update-pipeline}, \ref{ch:custom-sql-expression-nodes}, \ref{ch:property-level-fluent-api-and}, \ref{ch:scaffolding-in-practice} \\
   \tablerule
   \textcolor{risk@medium}{\textbf{medium}} & Provider base classes or public API that changes
   often & \ref{ch:ef-core-s-architecture-from}, \ref{ch:the-options-extension}, \ref{ch:registering-services}, \ref{ch:type-mappings-and-value-converters}, \ref{ch:the-query-pipeline}, \ref{ch:translating-methods-and-members}, \ref{ch:further-query-extension-points}, \ref{ch:custom-migration-operations}, \ref{ch:compiled-models-trimming-and-nativeaot}, \ref{ch:scaffolding-reverse-engineering}, \ref{ch:test-strategy}, \ref{ch:versioning-and-compatibility}, \ref{ch:bulk-operations-and-the-limits}, \ref{ch:complex-types-and-json}, \ref{ch:aggregate-translators}, \ref{ch:a-second-provider-sql-server},
@@ -653,7 +653,7 @@ A plugin ships not only its own code but also its dependency graph. NuGet audit 
 vulnerabilities as warnings NU1901 to NU1904
 (\href{https://learn.microsoft.com/en-us/nuget/concepts/auditing-packages}{NuGet: Auditing package dependencies}).
 What matters is \emph{whom} a finding affects. \code{dotnet nuget why} finds out, showing the path
-from the direct dependency to the affected package. The sample had three cases:
+from the direct dependency to the affected package. The sample had four cases:
 
 \begin{datatable}{H{0.75}H{1.05}H{0.70}H{1.50}}
   \textbf{Package} & \textbf{Origin} & \textbf{Affects} & \textbf{Decision} \\
@@ -671,6 +671,10 @@ from the direct dependency to the affected package. The sample had three cases:
   \tablerule
   \code{SSH.\allowbreak{}NET} 2024.2.0 & Testcontainers 4.6 & Tests only & Testcontainers 4.16
   within the same major version; brings 2026.0.0. \\
+  \tablerule
+  \code{SQLite\allowbreak{}PCL\allowbreak{}Raw.\allowbreak{}lib.\allowbreak{}e\_sqlite3} 2.1.11 &
+  EF Core Sqlite 10.0.0 → \code{SQLite\allowbreak{}PCL\allowbreak{}Raw.\allowbreak{}bundle\_e\_sqlite3}
+  & Tests only & Direct dependency on 2.1.14 in the test project only. \\
 \end{datatable}
 
 Every direct dependency on what is really a transitive package is listed in
@@ -755,9 +759,9 @@ Package Management):
   \code{Internals\allowbreak{}Visible\allowbreak{}To} & Tests reach internal logic without
   public API. \\
   \tablerule
-  Package names & Core without provider, provider packages with a suffix
-  (\code{.\allowbreak{}Postgre\allowbreak{}SQL},
-  \code{.\allowbreak{}Sql\allowbreak{}Server}). \\
+  Package names & Core without provider, relational layer as \code{.\allowbreak{}Relational},
+  provider packages with a suffix (\code{.\allowbreak{}Postgre\allowbreak{}SQL},
+  \code{.\allowbreak{}Sql\allowbreak{}Server}, \code{.\allowbreak{}Cosmos}). \\
 \end{datatable}
 
 Besides the API docs, the documentation above all needs the things users do not see in the
@@ -813,7 +817,8 @@ For every new plugin, in the order of development. Each item sums up a rule; the
 \noindent Details: chapters~\ref{ch:annotations-and-fluent-api}, \ref{ch:conventions}, \ref{ch:model-validation}.
 
 \begin{checklist}
-  \item Annotations with a prefix, simple values only, no stored defaults.
+  \item Annotations with a prefix, simple values only; keep explicit values (also defaults that
+    overrule a convention), normalize them for migrations in the annotation provider.
   \item Implement the Fluent API non-generically, delegate generically.
   \item Convention builder overloads for ConfigurationSource.
   \item Conventions at ModelFinalizing when they depend on the finished model.
@@ -865,7 +870,7 @@ For every new plugin, in the order of development. Each item sums up a rule; the
 
 \section{Migrations \& design time}
 
-\noindent Details: chapters~\ref{ch:how-migrations-work}, \ref{ch:declarative-sql-from-annotations}, \ref{ch:custom-migration-operations}, \ref{ch:design-time-services}, \ref{ch:compiled-models-trimming-and-nativeaot}.
+\noindent Details: chapters~\ref{ch:how-migrations-work}, \ref{ch:declarative-sql-from-annotations}, \ref{ch:custom-migration-operations}, \ref{ch:design-time-services}, \ref{ch:compiled-models-trimming-and-nativeaot}, \ref{ch:scaffolding-reverse-engineering}.
 
 \begin{checklist}
   \item Declarative via annotation provider (design time only) and SQL generator.
@@ -896,11 +901,13 @@ For every new plugin, in the order of development. Each item sums up a rule; the
 
 \section{Advanced extension points (part~\ref{part:advanced})}
 
-\noindent Details: chapters~\ref{ch:bulk-operations-and-the-limits}, \ref{ch:value-generation}, \ref{ch:complex-types-and-json}, \ref{ch:advanced-migrations}.
+\noindent Details: chapters~\ref{ch:bulk-operations-and-the-limits}, \ref{ch:value-generation}, \ref{ch:the-update-pipeline}, \ref{ch:complex-types-and-json}, \ref{ch:models-per-runtime-context}, \ref{ch:advanced-migrations}.
 
 \begin{checklist}
   \item Document paths that bypass interceptors (ExecuteUpdate, raw SQL).
   \item Configure value generators with HasValueGeneratorFactory(Type) (compiled models).
+  \item Replace IUpdateSqlGenerator only when the SQL needs a different shape; stateless
+    (singleton) and exactly one per context.
   \item Check conventions for complex types and JSON columns.
   \item Document and test the order of custom migration operations.
   \item Consider idempotent scripts and suppressTransaction.

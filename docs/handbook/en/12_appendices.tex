@@ -443,6 +443,10 @@ internal provider. They are almost always the first choice:
   \tablerule
   \textbf{Further} &  &  \\
   \tablerule
+  \code{docs/\allowbreak{}deployment/\allowbreak{}*} & Role setup, migrations pipeline,
+  diagnosis scripts for the policies (PostgreSQL, SQL Server) &
+  \ref{ch:row-level-security-in-production}, \ref{ch:retrofitting-and-operating} \\
+  \tablerule
   \code{samples/\allowbreak{}Shop\allowbreak{}Sample} & Console sample with design-time
   factory & \ref{ch:the-sample-scenario}, \ref{ch:advanced-migrations} \\
   \tablerule
@@ -500,10 +504,10 @@ internal provider. They are almost always the first choice:
   BenchmarkDotNet project for the SaveChanges logic & \ref{ch:plugin-performance} \\
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests}
-  & Testcontainers tests against PostgreSQL & \ref{ch:interceptors}, \ref{ch:test-strategy}, \ref{ch:bulk-operations-and-the-limits}, \ref{ch:row-level-security-in-production}, \ref{ch:scaffolding-in-practice} \\
+  & Testcontainers tests against PostgreSQL & \ref{ch:interceptors}, \ref{ch:test-strategy}, \ref{ch:bulk-operations-and-the-limits}, \ref{ch:the-update-pipeline}, \ref{ch:row-level-security-in-production}, \ref{ch:scaffolding-in-practice} \\
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Sql\allowbreak{}Server.\allowbreak{}Tests}
-  & Unit and Testcontainers tests for SQL Server & \ref{ch:a-second-provider-sql-server} \\
+  & Unit and Testcontainers tests for SQL Server & \ref{ch:test-strategy}, \ref{ch:row-level-security-in-production}, \ref{ch:a-second-provider-sql-server} \\
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Cosmos.\allowbreak{}Tests}
   & Unit tests and tests against the Cosmos DB emulator & \ref{ch:without-sql-what-carries-over} \\
@@ -611,7 +615,7 @@ technique below is checked in \code{Debugging\allowbreak{}Tests}.
   restricted to the plugin's event IDs \\
 \end{datatable}
 
-\begin{sourcecode}[Debugging snippets (\allowbreak{}checked in tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Debugging\allowbreak{}Tests.\allowbreak{}cs)]{csharp}
+\begin{sourcecode}[Debugging snippets (\allowbreak{}simplified, checked in tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Debugging\allowbreak{}Tests.\allowbreak{}cs)]{csharp}
 using var ctx = CreateContext();
 
 // 1. Model: annotations, results of conventions, type mappings

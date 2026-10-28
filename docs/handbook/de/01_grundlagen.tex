@@ -183,7 +183,8 @@ Jeder \code{Db\allowbreak{}Context} löst seine Infrastruktur aus einem \textbf{
 \code{IService\allowbreak{}Provider} auf. Er ist vom DI-Container der Anwendung getrennt und
 enthält mehrere hundert Dienste: Type Mapping, Model Building, Query-Pipeline, Change
 Tracking, Update-Pipeline, Migrations. Ein Plugin klinkt sich ein, indem es in diesen
-Container zusätzliche Dienste registriert oder vorhandene ersetzt.
+Container zusätzliche Dienste registriert oder vorhandene ersetzt. Das Buch nennt ihn auch kurz
+\emph{internen Provider}; gemeint ist damit nie der Datenbank-Provider wie Npgsql.
 
 \begin{flowdiagram}
   \flowstep{DbContextOptions}{Provider-Extension (UseNpgsql) und Plugin-Extensions
@@ -202,8 +203,6 @@ gecacht: Contexts mit gleicher Konfiguration teilen sich einen Provider. Das \te
 wird pro Provider (und Context-Typ) gecacht. Beides macht EF Core schnell, hat aber direkte
 Folgen für Plugins, die Kapitel~\ref{ch:the-options-extension} ausführlich behandelt.
 
-\section{Der Weg durch das Buch}
-
 Das Modell gibt es in zwei Formen. Das \textbf{Design-Time-Modell} enthält alle
 Annotations und ist die Grundlage für Migrations und Snapshots. Zur Laufzeit liefert
 \code{context.\allowbreak{}Model} ein schlankes, schreibgeschütztes \textbf{Laufzeitmodell},
@@ -211,6 +210,8 @@ in dem nur Annotations bleiben, die zur Laufzeit gebraucht werden. Welche das si
 ein Plugin sie steuert, zeigen Kapitel~\ref{ch:declarative-sql-from-annotations} und
 \ref{ch:property-level-fluent-api-and}; schon in Teil~\ref{part:model} gilt aber: Plugin-Code,
 der zur Laufzeit liest, sieht nur das Laufzeitmodell.
+
+\section{Der Weg durch das Buch}
 
 Die Teile des Buchs folgen dem Weg einer Anfrage durch diese Architektur: Options und
 interner Service Provider (Teil~\ref{part:infrastructure}), Modell (Teil~\ref{part:model}),
@@ -411,7 +412,8 @@ db.Orders.Add(new Order { Total = 42 });         // TenantId setzt das Plugin
 var mine = await db.Orders.ToListAsync();        // RLS filtert in der Datenbank
 \end{sourcecode}
 
-Damit das funktioniert, nutzt das Plugin jeden Erweiterungspunkt dieses Buchs:
+Damit das funktioniert, nutzt das Plugin fast jeden Erweiterungspunkt dieses Buchs; die übrigen
+zeigen eigene Beispiele, in der Tabelle als Beispielpaket oder Lehrbeispiel gekennzeichnet:
 
 \begin{datatable}{H{1.20}H{1.50}H{0.30}}
   \textbf{Anforderung} & \textbf{Umsetzung} & \textbf{Kap.} \\
@@ -452,6 +454,8 @@ Damit das funktioniert, nutzt das Plugin jeden Erweiterungspunkt dieses Buchs:
   \code{EF.\allowbreak{}Functions.\allowbreak{}Is\allowbreak{}Not\allowbreak{}Distinct\allowbreak{}From},
   \code{EF.\allowbreak{}Functions.\allowbreak{}Every} & Eigener SQL-Knoten,
   Aggregat-Translator; eigenes Beispielpaket ohne Mandantenbezug & \ref{ch:custom-sql-expression-nodes}--\ref{ch:aggregate-translators} \\
+  \tablerule
+  \code{now()} im \code{UPDATE} & Update-SQL-Generator; Lehrbeispiel im Testprojekt & \ref{ch:the-update-pipeline} \\
   \tablerule
   Mandanten-Property mit beliebigem Namen &
   \code{Is\allowbreak{}Tenant\allowbreak{}Property(\allowbreak{})}, Laufzeit-Annotation & \ref{ch:property-level-fluent-api-and}
@@ -495,7 +499,7 @@ Acme.EntityFrameworkCore.Tenancy               Kern (nur EF Core, jeder Provider
 
 Acme.EntityFrameworkCore.Tenancy.Relational    relationale Schicht (EF Core relational)
 ├─ Interceptors/     abstrakter Session-Interceptor (DbConnection), Tracing
-├─ Metadata/         TenantTableMappingValidator (TPT, TPC, Entity Splitting)
+├─ Metadata/         TenantTableMappingValidator (TPT, TPC, Entity Splitting, ...)
 └─ Database.ApplyTenantSession()
 
 Acme.EntityFrameworkCore.Tenancy.PostgreSQL    vollständige Implementierung
@@ -915,7 +919,8 @@ steht deshalb vor ihm:
   \cellmeta{öffentlich · mehrfach · Singleton} &
   Genügt ein benannter Query-Filter oder ein Translator? &
   Zustand pro Anfrage verwenden, obwohl das Ergebnis pro Abfrageform gecacht wird; pro
-  Context eine neue Instanz übergeben, was jedes Mal einen neuen internen Provider erzeugt.
+  Context eine neue Instanz übergeben, was jedes Mal einen neuen internen Provider erzeugt;
+  ihn als \code{ISingleton\allowbreak{}Interceptor} registrieren, dann ruft EF ihn nie auf.
   & \ref{ch:further-query-extension-points}, \ref{ch:bulk-operations-and-the-limits} \\
   \tablerule
   \textbf{Der übersetzte Ausdrucksbaum soll angepasst werden.}
@@ -979,12 +984,13 @@ Werkzeuge gelten soll, gehört in die Datenbank, nicht in einen Interceptor.
   \cellmeta{öffentlich · mehrfach · Scoped} &
   Genügt der Connection-Interceptor? Er genügt, solange kein Transaction-Pooling im Spiel
   ist. &
-  Transaktionslokale Settings verwenden, aber Abfragen außerhalb von Transaktionen zulassen:
-  Diese laufen ohne Zustand. Im Beispiel:
-  \code{Use\allowbreak{}Transaction\allowbreak{}Pooling(\allowbreak{})}. &
+  Transaktionslokale Settings verwenden, aber Abfragen außerhalb von Transaktionen oder
+  Transaktionen, die EF nicht selbst beginnt (\code{Use\allowbreak{}Transaction},
+  \code{Transaction\allowbreak{}Scope}), erwarten: Sie laufen ohne Zustand. Das Beispiel
+  scheitert dann geschlossen (Seite~\pageref{sec:transaction-pooling}). &
   \ref{ch:row-level-security-in-production} \\
   \tablerule
-  \textbf{INSERT, UPDATE oder DELETE sollen eine andere Form bekommen (Upsert).}
+  \textbf{INSERT, UPDATE oder DELETE sollen eine andere Form bekommen (Upsert, \code{now()} im UPDATE).}
   Update-Pipeline, etwa \code{IUpdate\allowbreak{}Sql\allowbreak{}Generator}
   \cellmeta{Provider-Basis · einzeln · Singleton bzw. Scoped} &
   SaveChanges-Interceptor (Zustände umschreiben), Command-Interceptor oder
@@ -1042,7 +1048,7 @@ in einem eigenen Service Provider. Dienste für diesen Provider registriert ein 
   Nichts tun: \code{Has\allowbreak{}Annotation} im Snapshot funktioniert, ist nur schwer
   lesbar. &
   Design-Time-Dienste in \code{Apply\allowbreak{}Services} registrieren, also im
-  Laufzeit-Container; übersetzte Annotations nicht aus dem Dictionary entfernen. &
+  internen Provider; übersetzte Annotations nicht aus dem Dictionary entfernen. &
   \ref{ch:design-time-services} \\
   \tablerule
   \textbf{Das Compiled Model soll Design-Time-Annotations weglassen oder komplexe Werte

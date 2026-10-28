@@ -56,14 +56,17 @@ interceptor only when it is registered as \code{IInterceptor}
   & Instances from the application; can use app services; differ per context & Interceptors
   with app dependencies (tenant, user, clock) \\
   \tablerule
-  \code{services.\allowbreak{}Add\allowbreak{}Scoped<\allowbreak{}IInterceptor,\allowbreak{}
+  \code{Entity\allowbreak{}Framework\allowbreak{}Services\allowbreak{}Builder.\allowbreak{}Try\allowbreak{}Add<\allowbreak{}IInterceptor,\allowbreak{}
   X>(\allowbreak{})} in \code{Apply\allowbreak{}Services} & Resolved from the internal
   provider (“injected interceptors”); have access to EF services, not to app services &
   Purely technical interceptors without app dependencies \\
 \end{datatable}
 
-EF combines both ways into one list. The sample uses the first, because both interceptors
-need the application's tenant (chapter~\ref{ch:public-api-and-integration-into}).
+EF combines both ways into one list. The SaveChanges and the connection interceptor need the
+application's tenant and therefore come the first way
+(chapter~\ref{ch:public-api-and-integration-into}). The optional interceptors for
+materialization, bulk operations and tracing are registered by the plugin in the internal
+provider.
 
 \section{The SaveChanges interceptor}
 

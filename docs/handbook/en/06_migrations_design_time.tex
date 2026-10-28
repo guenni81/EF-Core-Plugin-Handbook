@@ -388,6 +388,7 @@ Fluent API:
 \begin{sourcecode}[Shop\allowbreak{}Context\allowbreak{}Model\allowbreak{}Snapshot.\allowbreak{}cs]{csharp}
 // Before
 b.HasAnnotation("Acme:Rls:Enabled", true);
+b.HasAnnotation("Acme:Rls:Forced", true);
 b.HasAnnotation("Acme:Rls:Policy:tenant_isolation", "{\"Name\":\"tenant_isolation\",...}");
 
 // After
@@ -535,8 +536,8 @@ them (upgrade playbook in chapter~\ref{ch:versioning-and-compatibility}).
 \begin{note}
   Conventions, snapshots and migrations only run at design time or during model building;
   with a compiled model and precompiled queries they disappear at run time. For AOT, the
-  critical parts are therefore type mappings, converters, translators (run at build time)
-  and interceptors.
+  critical parts are therefore type mappings, converters and interceptors; with precompiled
+  queries, translators already run at build time.
 \end{note}
 
 \section{What is actually checked as a consumer}\label{sec:consumer-test}
@@ -602,8 +603,8 @@ prints the versions. The test found things the unit tests could not show:
     (IL2104, IL3053).
 \end{itemize}
 
-Not checked is SQL Server under NativeAOT; the package is marked for it, a run with a real
-database is missing.
+Not checked are SQL Server under NativeAOT (the package is marked for it, a run with a real
+database is missing) and the Cosmos package, which the consumer test does not pack.
 
 
 % ------------------------------------------------------------

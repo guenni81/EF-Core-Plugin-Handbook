@@ -79,7 +79,7 @@ public class TenancyDatabaseModelFactory : NpgsqlDatabaseModelFactory
             if (FindTable(model, reader.GetString(0), reader.GetString(1)) is not { } table)
                 continue;
 
-            // Defaults are not stored, as in the Fluent API (no empty migrations)
+            // A missing Forced counts as false, as for the annotation provider (no empty migrations)
             table[RlsAnnotationNames.Enabled] = true;
             if (reader.GetBoolean(2))
                 table[RlsAnnotationNames.Forced] = true;

@@ -713,7 +713,8 @@ public class TenancyDatabaseModelFactory : NpgsqlDatabaseModelFactory
 Registriert wird die Factory wie der Code-Generator in den Design-Time-Services mit
 \code{Remove\allowbreak{}All}, aber mit \code{Add\allowbreak{}Scoped}: EF und Npgsql
 registrieren die Database-Model-Factory als Scoped, und sie hängt vom ebenfalls als Scoped registrierten
-Scaffolding-Logger ab. Das Datenformat ist dasselbe wie bei der Fluent API; deshalb
+Scaffolding-Logger ab. Das Datenformat entspricht dem der Fluent API (ein fehlendes \code{Forced} gilt wie \code{false};
+der Annotation-Provider gleicht beides an); deshalb
 funktionieren Snapshot, Migrations und Code-Generator ohne weitere Anpassung.
 
 \begin{note}[Normalisierte Ausdrücke]

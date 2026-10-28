@@ -33,11 +33,10 @@ compiled models) can work with them.
   \code{Equals}. A record with a \code{string[]} would be compared by reference and
   constantly appear “changed”. \\
   \tablerule
-  Keep explicit configuration, normalize it for migrations & An explicit
-  \code{force:\allowbreak{} false} must stay in the model, otherwise a convention
-  overrides the user's decision. For the differ, “annotation missing” and “annotation has
-  default” differ and produce empty migrations; the annotation provider therefore leaves default
-  values out of the relational model. \\
+  Keep explicit configuration, normalize it for migrations & For the differ, “annotation
+  missing” and “annotation has default” differ and produce empty migrations. An explicit
+  \code{force:\allowbreak{} false} still stays in the model; the annotation provider leaves
+  the default out for migrations (see below). \\
   \tablerule
   One annotation per piece of configuration & Every policy has its own annotation, so the
   diff shows exactly which one changed. \\
@@ -115,8 +114,8 @@ stores \code{false} and does not remove the annotation. Removed, it would be ind
 from “not configured”, and the isolation convention, which sets FORCE by default, would override
 the explicit decision. Two layers have different duties here: the model keeps every explicit
 configuration together with its configuration source, while the annotation provider normalizes
-for the migrations and passes \code{false} on to the relational model just like a missing
-annotation (chapter~\ref{ch:declarative-sql-from-annotations}). That way the user's decision wins, and a
+for the migrations and treats \code{false} like a missing annotation: it does not pass it on to
+the relational model (chapter~\ref{ch:declarative-sql-from-annotations}). That way the user's decision wins, and a
 model without a change still produces no migration.
 
 Nested configuration such as \code{Has\allowbreak{}Policy} accepts an
@@ -381,7 +380,7 @@ public virtual void ProcessModelFinalizing(
 }
 \end{sourcecode}
 
-Before the convention annotates anything, it checks the tenant property. Both provider packages
+Before the convention annotates anything, it checks the tenant property. Both relational provider packages
 follow the same contract: a property marked with
 \code{Is\allowbreak{}Tenant\allowbreak{}Property(\allowbreak{})} wins, otherwise an
 \code{ITenant\allowbreak{}Owned} type needs a mapped property \code{Tenant\allowbreak{}Id} of
@@ -512,7 +511,7 @@ table as well would require predicates of its own on it, which the plugin does n
 Deliberate exceptions remain possible: an entity excluded with
 \code{[No\allowbreak{}Tenant\allowbreak{}Isolation]} or
 \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})}
-is not checked, and the convention logs the exception as a warning. That way the model tells a
+is not checked by the table validator, and the convention logs the exception as a warning. That way the model tells a
 decision from an oversight. For the implicit join table the PostgreSQL package offers
 \code{Using\allowbreak{}Entity(\allowbreak{}j => j.\allowbreak{}Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{}))};
 the SQL Server package only knows the attribute and needs a join class for it. A tenant property
@@ -529,9 +528,7 @@ The SaveChanges interceptor fills the shadow property like any other tenant prop
 \code{Mapping\allowbreak{}Isolation\allowbreak{}Tests} checks both against a real PostgreSQL
 with a restricted role: a TPC model fails before a single table exists. In a model with TPH, an
 owned type, a JSON column and this join entity, every table has RLS, and without a tenant no row
-is visible in any table. \code{Table\allowbreak{}Mapping\allowbreak{}Tests} and
-\code{Sql\allowbreak{}Server\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Tests} cover
-every row of the matrix without a database.
+is visible in any table.
 
 \section{Structural changes: index and query filter}
 
@@ -874,8 +871,8 @@ public sealed class TenantIdJsonReaderWriter : JsonValueReaderWriter<TenantId>
   code of the form
   \code{Tenant\allowbreak{}Id\allowbreak{}Type\allowbreak{}Mapping.\allowbreak{}Default.\allowbreak{}Clone(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}
   for every type mapping. It requires a \textbf{public static property} named \code{Default}
-  on a \textbf{public} type and aborts otherwise. It only takes over converters and
-  readers/writers without extra code when they are \emph{the same instance} as in the
+  on a \textbf{public} type and aborts otherwise. It only takes over converters,
+  comparers and readers/writers without extra code when they are \emph{the same instance} as in the
   default mapping. That is why the mapping uses the static instances rather than \code{new
   .\allowbreak{}.\allowbreak{}.\allowbreak{}(\allowbreak{})}. Without NativeAOT, EF 10
   resolves type mappings at startup instead; a plugin should still meet the requirements,

@@ -56,15 +56,16 @@ Query-Expression-Interceptor ruft es nur auf, wenn er als \code{IInterceptor} re
   & Instanzen aus der Anwendung; können App-Dienste nutzen; pro Context verschieden &
   Interceptors mit App-Abhängigkeiten (Mandant, Benutzer, Uhr) \\
   \tablerule
-  \code{services.\allowbreak{}Add\allowbreak{}Scoped<\allowbreak{}IInterceptor,\allowbreak{}
+  \code{Entity\allowbreak{}Framework\allowbreak{}Services\allowbreak{}Builder.\allowbreak{}Try\allowbreak{}Add<\allowbreak{}IInterceptor,\allowbreak{}
   X>(\allowbreak{})} in \code{Apply\allowbreak{}Services} & Im internen Provider aufgelöst
   („injected interceptors“); haben Zugriff auf EF-Dienste, nicht auf App-Dienste & Rein
   technische Interceptors ohne App-Abhängigkeit \\
 \end{datatable}
 
-Beide Wege kombiniert EF zu einer Liste. Das Beispiel nutzt den ersten, weil beide
-Interceptors den Mandanten der Anwendung brauchen
-(Kapitel~\ref{ch:public-api-and-integration-into}).
+Beide Wege kombiniert EF zu einer Liste. Der SaveChanges- und der Connection-Interceptor
+brauchen den Mandanten der Anwendung und kommen deshalb über den ersten Weg
+(Kapitel~\ref{ch:public-api-and-integration-into}). Die optionalen Interceptors für
+Materialisierung, Massenoperationen und Tracing registriert das Plugin im internen Provider.
 
 \section{Der SaveChanges-Interceptor}
 
@@ -499,7 +500,7 @@ nach Präfix funktionieren.
 \section{Event-Definitionen}
 
 Eine \code{Event\allowbreak{}Definition<\allowbreak{}T>} bündelt Event-ID, Log-Level,
-Meldungsvorlage und das Warnverhalten aus den Options. EF cached seine Definitionen pro
+Meldungsvorlage und das Warnverhalten aus den Options. EF cacht seine Definitionen pro
 internem Provider; das Plugin macht es genauso mit einer eigenen Klasse, die als Singleton
 registriert ist (Kapitel~\ref{ch:registering-services}):
 

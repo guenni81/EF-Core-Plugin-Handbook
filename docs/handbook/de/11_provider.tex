@@ -207,6 +207,7 @@ protected virtual void CreatePolicy(string table, string? schema, string column,
         + "AS uniqueidentifier)";
     Statement(builder, $"IF OBJECT_ID({Literal(function)}, N'IF') IS NULL "
         + $"EXEC({Literal(functionSql)})");
+    // ... vorhandene Funktion prüfen: liest sie einen anderen Schlüssel, THROW 50000
 
     Statement(builder,
         $"CREATE SECURITY POLICY {PolicyName(table, schema ?? "dbo")} "
@@ -398,10 +399,11 @@ public class SqlServerTenantSessionInterceptor : TenantSessionInterceptor
 \section{Bewusst nicht portiert}
 
 Das SQL-Server-Paket ist ein eigenständiger, aber schlankerer Provider. Fluent-API-Policies,
-der optionale Query-Filter, Snapshot-Code-Generator und Scaffolding fehlen dort; den
+der optionale Query-Filter der Convention (\code{Apply\allowbreak{}Query\allowbreak{}Filter}; der
+Filter des Kerns funktioniert auch hier), Snapshot-Code-Generator und Scaffolding fehlen dort; den
 eigenen SQL-Knoten und das Aggregat des Funktionen-Beispielpakets gibt es nur für
-PostgreSQL. Das ist eine Produktentscheidung, kein technisches Hindernis: Jedes
-dieser Kapitel lässt sich mit denselben Mustern auf SQL Server übertragen. Die Liste gehört
+PostgreSQL. Das ist eine Produktentscheidung, kein technisches Hindernis: Jeder
+dieser Bausteine lässt sich mit denselben Mustern auf SQL Server übertragen. Die Liste gehört
 in die Dokumentation des Pakets, damit Nutzer wissen, was sie erwarten können.
 
 % source: tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests/SqlServerTests.cs
@@ -454,7 +456,7 @@ Kapitel~\ref{ch:what-belongs-in-the-core}, ohne die relationale Schicht.
   \tablerule
   Query-Filter & Aus dem Kern & Mandant als Abfrageparameter statt als Session-Wert \\
   \tablerule
-  Session-Interceptor, Migrations, SQL-Knoten & Nicht portiert & Es gibt keine Session und kein
+  Session-Interceptor, Migrations & Nicht portiert & Es gibt keine Session und kein
   Schema \\
 \end{datatable}
 
@@ -574,7 +576,7 @@ Assert.Contains(tenant.Value.ToString("D"), partition);
 
 Die Tabelle ist zugleich der Nutzungsvertrag der drei Pakete. Für Konfigurationen, die über die
 Isolation entscheiden, nennt sie einen von vier Zuständen und den Beleg: \emph{unterstützt und
-getestet} (ein Test im Repository prüft das Verhalten), \emph{beim Modellaufbau abgelehnt}
+getestet} (ein Test im Repository prüft das Verhalten), \emph{beim Modellbau abgelehnt}
 (eine \code{Invalid\allowbreak{}Operation\allowbreak{}Exception} beim ersten Zugriff auf
 \code{Model}), \emph{nur unter Voraussetzungen} (funktioniert, wenn die genannte Bedingung
 gilt) und \emph{nicht verifiziert} (kein Test; nicht darauf verlassen).
@@ -609,16 +611,16 @@ gilt) und \emph{nicht verifiziert} (kein Test; nicht darauf verlassen).
   Types haben keinen Test \\
   \tablerule
   TPT, TPC, Entity Splitting, Owned Type in eigener Tabelle, implizite Join-Tabelle & Beim
-  Modellaufbau abgelehnt & Beim Modellaufbau abgelehnt & Entfällt (keine Tabellen) \\
+  Modellbau abgelehnt & Beim Modellbau abgelehnt & Entfällt (keine Tabellen) \\
   \tablerule
-  Temporal-Tabelle & Entfällt & Beim Modellaufbau abgelehnt
+  Temporal-Tabelle & Entfällt & Beim Modellbau abgelehnt
   (\code{Sql\allowbreak{}Server\allowbreak{}Temporal\allowbreak{}Table\allowbreak{}Tests}) &
   Entfällt \\
   \tablerule
-  \code{ITenant\allowbreak{}Owned} ohne gemappte Mandanten-Property & Beim Modellaufbau
-  abgelehnt (\code{Tenant\allowbreak{}Property\allowbreak{}Tests}) & Beim Modellaufbau abgelehnt
+  \code{ITenant\allowbreak{}Owned} ohne gemappte Mandanten-Property & Beim Modellbau
+  abgelehnt (\code{Tenant\allowbreak{}Property\allowbreak{}Tests}) & Beim Modellbau abgelehnt
   (\code{Sql\allowbreak{}Server\allowbreak{}Tenant\allowbreak{}Property\allowbreak{}Validation\allowbreak{}Tests})
-  & Beim Modellaufbau abgelehnt (\code{Model\allowbreak{}Tests}) \\
+  & Beim Modellbau abgelehnt (\code{Model\allowbreak{}Tests}) \\
   \tablerule
   Bewusste Ausnahme & Attribut oder
   \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})},
@@ -626,14 +628,14 @@ gilt) und \emph{nicht verifiziert} (kein Test; nicht darauf verlassen).
   \tablerule
   Transaktionen & \code{Begin\allowbreak{}Transaction}, \code{Save\allowbreak{}Changes} und
   \code{Transaction\allowbreak{}Scope} unterstützt und getestet;
-  \code{Use\allowbreak{}Transaction} nur unter Voraussetzungen; Transaction Pooling:
-  Seite~\pageref{sec:transaction-pooling} & Wie PostgreSQL, ohne Transaction Pooling & Entfällt
+  \code{Use\allowbreak{}Transaction} nur unter Voraussetzungen; Transaction-Pooling:
+  Seite~\pageref{sec:transaction-pooling} & Wie PostgreSQL, ohne Transaction-Pooling & Entfällt
   (keine Session) \\
 \end{datatable}
 
 \section{Bewusst nicht portiert}
 
-Migrations und Scaffolding (Cosmos hat kein Schema), eigene SQL-Knoten und Aggregate, der
+Migrations und Scaffolding (Cosmos hat kein Schema), der
 Session-Interceptor und
 \code{Database.\allowbreak{}Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})} (es
 gibt keine Session) sowie der Schutz von Massen-Updates (EF Core~10 hat für Cosmos kein

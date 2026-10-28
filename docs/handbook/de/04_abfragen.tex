@@ -437,7 +437,7 @@ WHERE o."TenantId" = nullif(current_setting('app.tenant_id', TRUE), '')::uuid
   \tablerule
   \code{arguments\allowbreak{}Propagate\allowbreak{}Nullability} & „Das Ergebnis ist genau
   dann NULL, wenn dieses Argument NULL ist.“ Gibt es solche Argumente, leitet EF die
-  Nullbarkeit allein aus ihnen ab. Für Funktionen, die selbst NULL erzeugen
+  Nullability allein aus ihnen ab. Für Funktionen, die selbst NULL erzeugen
   (\code{nullif}, \code{current\_\allowbreak{}setting(\allowbreak{}…,\allowbreak{} true)}),
   deshalb überall \code{false}; für \code{reverse(\allowbreak{}x)} oder
   \code{upper(\allowbreak{}x)} \code{true}. \\
@@ -471,7 +471,7 @@ _sql.Function("nullif", [arguments[1], _sql.Constant("", arguments[1].TypeMappin
   Fehler zeigt sich nur bei Pflichtspalten.
 
   \textbf{Ursache.} Hat eine Funktion propagierende Argumente, bestimmt EFs
-  Nullability-Prozessor ihre Nullbarkeit allein aus diesen. Ist das Argument nicht nullbar
+  Nullability-Prozessor ihre Nullability allein aus diesen. Ist das Argument nicht nullbar
   (eine Pflichtspalte, eine Konstante), gilt die Funktion als nie NULL, egal was
   \code{nullable} sagt.
 
@@ -600,9 +600,10 @@ public static class TenancyDbFunctionsExtensions { /* CurrentTenant() */ }
 \end{sourcecode}
 
 Das Plugin liegt im \textbf{Kernpaket} und erkennt Funktionsklassen an einem Attribut. So
-deckt ein einziges Plugin auch die PostgreSQL-spezifischen Funktionen aus
-Kapitel~\ref{ch:custom-sql-expression-nodes} und \ref{ch:aggregate-translators} und jedes
-künftige Provider-Paket ab, ohne dass der Kern diese Klassen kennen muss.
+deckt es jedes Provider-Paket der Mandantenfähigkeit ab, ohne dass der Kern dessen Klassen
+kennen muss. Das eigenständige Beispiel-Plugin aus Kapitel~\ref{ch:custom-sql-expression-nodes}
+und \ref{ch:aggregate-translators} hängt nicht vom Kernpaket ab und bringt deshalb einen eigenen
+Filter mit, der seine Funktionsklasse am Typ erkennt.
 
 Ob eine eigene EF.Functions-Methode dieses Plugin braucht, hängt davon ab, ob sie
 Argumente mit Datenbezug hat.
@@ -656,7 +657,9 @@ Punkte zurück; hier ein Überblick mit Einordnung:
   umgesetzt in Kapitel~\ref{ch:aggregate-translators} \\
   \tablerule
   \code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor} & LINQ-Ausdrucksbaum vor der
-  Übersetzung umschreiben & Singleton-Interceptor; ideal für Query-Rewrites, Tags, Hints \\
+  Übersetzung umschreiben & Singleton-Interceptor; im internen Provider als
+  \code{IInterceptor} registrieren (Kapitel~\ref{ch:bulk-operations-and-the-limits}); ideal für
+  Query-Rewrites, Tags, Hints \\
   \tablerule
   \code{IMaterialization\allowbreak{}Interceptor} & Objekte bei der Materialisierung
   erzeugen, initialisieren oder prüfen & Singleton-Interceptor; muss zustandslos und
@@ -976,8 +979,8 @@ if (Settings.VerifyMaterializedTenants)
   nicht, und die Prüfung schlägt an. \\
   \tablerule
   Im Kernpaket & Die Prüfung kennt weder SQL noch Provider-Typen
-  (Kapitel~\ref{ch:what-belongs-in-the-core}); beide Provider-Pakete aktivieren sie mit einer
-  Zeile. \\
+  (Kapitel~\ref{ch:what-belongs-in-the-core}); alle drei Provider-Pakete aktivieren sie mit
+  einer Zeile. \\
 \end{datatable}
 
 Die Integrationstests stellen die Lücke aus Kapitel~\ref{ch:interceptors} nach: Ein Context
@@ -1041,7 +1044,7 @@ Pooling bleibt der Eintrag über die Ausleihen hinweg richtig, weil ein Context 
 und damit seine Interceptors sein Leben lang behält; der Mandant selbst wird weiterhin bei
 jeder Zeile gelesen. Scheitert das Nachschlagen, speichert die Tabelle nichts, und der
 Konfigurationsfehler bleibt bei jedem Aufruf sichtbar.
-\code{Materialization\allowbreak{}Tests} prüft wiederholte Zeilen in einem Context,
+Die Unit-Tests in \code{Materialization\allowbreak{}Tests} prüfen wiederholte Zeilen in einem Context,
 Contexts mit verschiedenen Mandanten und einen gepoolten Context über zwei Ausleihen.
 
 \section{Grenzen}
