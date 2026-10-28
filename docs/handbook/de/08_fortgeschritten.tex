@@ -95,38 +95,98 @@ protected override Expression VisitMethodCall(MethodCallExpression node)
         {
             if (setter is NewExpression { Arguments: [var selector, ..] }
                 && Unquote(selector) is LambdaExpression lambda)
-                Check(lambda);
+                Check(lambda, node.Arguments[0]);
         }
     }
 
     return base.VisitMethodCall(node);
 }
 
-private void Check(LambdaExpression selector)
+private void Check(LambdaExpression selector, Expression source)
 {
-    var parameter = selector.Parameters[0];
-    var name = selector.Body switch
+    // Nach einer Projektion: x.Entity.TenantId auf o.TenantId zurückführen
+    var (body, roots) = Inline(selector.Body, selector.Parameters[0], source);
+
+    var (instance, name) = body switch
     {
-        // e => e.TenantId
-        MemberExpression member when member.Expression == parameter => member.Member.Name,
-        // e => EF.Property<TenantId>(e, "TenantId"), auch für Shadow-Properties
+        // o => o.TenantId, o => o.Customer.TenantId
+        MemberExpression { Expression: { } target } member => (target, member.Member.Name),
+        // o => EF.Property<TenantId>(o, "TenantId"), auch für Shadow-Properties
         MethodCallExpression
         {
             Method.Name: nameof(EF.Property),
             Arguments: [var target, ConstantExpression { Value: string property }]
-        } when target == parameter => property,
-        _ => null,
+        } call when call.Method.DeclaringType == typeof(EF) => (target, property),
+        _ => (null, null),
     };
-    // ...
+    if (instance is null || name is null || !IsRootedAt(instance, roots))
+        return;
+
+    // Das Modell entscheidet, nicht der Name: Ist die Instanz eine Entität, deren
+    // Mandanten-Property gesetzt wird?
+    Type[] types = [instance.Type, Unconvert(instance).Type];
+    if (_context.Model.GetEntityTypes().Any(e =>
+            types.Contains(e.ClrType) && e.GetTenantPropertyName() == name))
+        throw new TenancyException(
+            "The tenant property of an entity must not be modified in ExecuteUpdate.");
 }
 \end{sourcecode}
 
 Ist die gesetzte Property die Mandanten-Property laut Laufzeit-Annotation, wirft der
 Interceptor eine \code{Tenancy\allowbreak{}Exception}, noch bevor eine Verbindung geöffnet wird.
 Er läuft nur beim Kompilieren, also einmal pro Abfrageform vor der Übersetzung; Ausführungen
-aus dem Query-Cache kosten nichts. Andere Spalten und gewöhnliche Abfragen passieren unverändert. RLS bleibt die
-eigentliche Grenze: Der Interceptor verhindert nur das Umhängen von Zeilen früh und mit klarer
-Meldung, \code{Execute\allowbreak{}Delete} und rohes SQL prüft er nicht.
+aus dem Query-Cache kosten nichts. Andere Spalten und gewöhnliche Abfragen passieren unverändert.
+
+\code{Execute\allowbreak{}Update} ist auch nach einer Projektion erlaubt. Dann benennt der
+Setter ein Member des projizierten Typs, und der Parameter des Lambdas ist kein Entitätstyp:
+
+\begin{sourcecode}[Setter nach einer Projektion (\allowbreak{}Beispiel)]{csharp}
+db.Orders.Select(o => new { Entity = o })
+    .ExecuteUpdate(s => s.SetProperty(x => x.Entity.TenantId, other));
+
+db.Orders.Select(o => new { Entity = o, o.TenantId })      // projiziertes Skalar
+    .ExecuteUpdate(s => s.SetProperty(x => x.TenantId, other));
+\end{sourcecode}
+
+Beide Formen übersetzt EF in ein \code{UPDATE} der Mandantenspalte. Eine Prüfung, die nur
+direkte Zugriffe auf den Parameter erkennt, ließe sie durch. \code{Inline} ersetzt deshalb den
+Parameter durch den Rumpf jedes \code{Select} unter dem \code{Execute\allowbreak{}Update},
+überspringt Operatoren, die den Elementtyp behalten (\code{Where}, \code{Order\allowbreak{}By},
+\code{Take}), und folgt \code{Join} und \code{Select\allowbreak{}Many} über ihren
+Result-Selector in beide Quellen. Ein Memberzugriff auf ein anonymes Objekt oder auf einen
+Member-Initializer (\code{new Dto \{ Entity = o \}}) wird dabei auf den projizierten Ausdruck
+zurückgeführt, aus \code{x.\allowbreak{}Entity.\allowbreak{}Tenant\allowbreak{}Id} wird
+\code{o.\allowbreak{}Tenant\allowbreak{}Id}. Ob das die Mandanten-Property ist, entscheidet
+das Modell: Die Instanz muss ein Entitätstyp sein, dessen Mandanten-Property (laut
+\code{Get\allowbreak{}Tenant\allowbreak{}Property\allowbreak{}Name}, also auch eine anders benannte
+mit \code{Is\allowbreak{}Tenant\allowbreak{}Property(\allowbreak{})} markierte) gesetzt wird. Eine
+gleichnamige Property einer Entität ohne Mandantenbezug bleibt erlaubt.
+
+\begin{datatable}{H{1.20}H{0.80}H{1.00}}
+  \textbf{Setter} & \textbf{Ergebnis} & \textbf{Test} \\
+  \tablehead
+  \code{o => o.\allowbreak{}Tenant\allowbreak{}Id}, \code{EF.\allowbreak{}Property} auf eine
+  Shadow-Property & abgelehnt &
+  \code{Bulk\allowbreak{}Operation\allowbreak{}Tests} \\
+  \tablerule
+  Nach \code{Select} (auch verschachtelt, auch mehrfach), nach \code{Join} und
+  \code{Select\allowbreak{}Many}, projiziertes Skalar & abgelehnt & ebenda, gegen
+  PostgreSQL und SQL Server: \code{Bulk\allowbreak{}Update\allowbreak{}Projection\allowbreak{}Tests},
+  \code{Sql\allowbreak{}Server\allowbreak{}Bulk\allowbreak{}Update\allowbreak{}Tests} \\
+  \tablerule
+  Andere Spalten, auch nach einer Projektion; gleichnamige Property ohne Mandantenbezug &
+  ausgeführt, RLS begrenzt die Zeilen & ebenda \\
+  \tablerule
+  Projektion über Konstruktorparameter (\code{new Dto(\allowbreak{}o, o.\allowbreak{}Tenant\allowbreak{}Id)}),
+  \code{Group\allowbreak{}By} & nicht geprüft; EF übersetzt sie nicht &
+  \code{Forms\allowbreak{}\_that\allowbreak{}\_EF\allowbreak{}\_does\allowbreak{}\_not\allowbreak{}\_translate\allowbreak{}\_…} \\
+\end{datatable}
+
+Die Datenbanktests zählen die Befehle: Ein abgelehntes Update erreicht die Datenbank nie. Ohne
+die Option übersetzt EF dieselben Setter, und erst \code{WITH CHECK} der Policy bzw. das
+\code{BLOCK}-Prädikat lehnt sie ab. RLS bleibt also die eigentliche Grenze: Der Interceptor
+verhindert nur das Umhängen von Zeilen früh und mit klarer Meldung,
+\code{Execute\allowbreak{}Delete} und rohes SQL prüft er nicht.
 
 Eine Falle steckt in der Registrierung. \code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor}
 erbt wie \code{IMaterialization\allowbreak{}Interceptor} von
@@ -136,7 +196,7 @@ ruft EF ihn aber nie auf: Query-Expression-Interceptors holt EF aus den
 den \code{ISingleton\allowbreak{}Interceptor}-Registrierungen. Das Plugin registriert ihn deshalb
 als \code{IInterceptor}; zustandslos, wie er ist, schadet die Instanz pro Context nicht.
 \code{Bulk\allowbreak{}Operation\allowbreak{}Tests} hält beide Registrierungen fest, die
-Integrationstests zeigen ein erlaubtes und ein abgelehntes Update gegen PostgreSQL.
+Integrationstests zeigen erlaubte und abgelehnte Updates gegen PostgreSQL und SQL Server.
 
 % ------------------------------------------------------------
 \chapter{Value Generation}\label{ch:value-generation}

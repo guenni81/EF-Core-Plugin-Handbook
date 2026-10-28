@@ -92,29 +92,40 @@ protected override Expression VisitMethodCall(MethodCallExpression node)
         {
             if (setter is NewExpression { Arguments: [var selector, ..] }
                 && Unquote(selector) is LambdaExpression lambda)
-                Check(lambda);
+                Check(lambda, node.Arguments[0]);
         }
     }
 
     return base.VisitMethodCall(node);
 }
 
-private void Check(LambdaExpression selector)
+private void Check(LambdaExpression selector, Expression source)
 {
-    var parameter = selector.Parameters[0];
-    var name = selector.Body switch
+    // After a projection: resolve x.Entity.TenantId to o.TenantId
+    var (body, roots) = Inline(selector.Body, selector.Parameters[0], source);
+
+    var (instance, name) = body switch
     {
-        // e => e.TenantId
-        MemberExpression member when member.Expression == parameter => member.Member.Name,
-        // e => EF.Property<TenantId>(e, "TenantId"), also for shadow properties
+        // o => o.TenantId, o => o.Customer.TenantId
+        MemberExpression { Expression: { } target } member => (target, member.Member.Name),
+        // o => EF.Property<TenantId>(o, "TenantId"), also for shadow properties
         MethodCallExpression
         {
             Method.Name: nameof(EF.Property),
             Arguments: [var target, ConstantExpression { Value: string property }]
-        } when target == parameter => property,
-        _ => null,
+        } call when call.Method.DeclaringType == typeof(EF) => (target, property),
+        _ => (null, null),
     };
-    // ...
+    if (instance is null || name is null || !IsRootedAt(instance, roots))
+        return;
+
+    // The model decides, not the name: is the instance an entity whose tenant
+    // property is being set?
+    Type[] types = [instance.Type, Unconvert(instance).Type];
+    if (_context.Model.GetEntityTypes().Any(e =>
+            types.Contains(e.ClrType) && e.GetTenantPropertyName() == name))
+        throw new TenancyException(
+            "The tenant property of an entity must not be modified in ExecuteUpdate.");
 }
 \end{sourcecode}
 
@@ -122,8 +133,56 @@ If the property being set is the tenant property according to the runtime annota
 interceptor throws a \code{Tenancy\allowbreak{}Exception}, before any connection is opened. It runs
 only at compilation, so once per query shape before translation; executions served from the
 query cache cost nothing.
-Other columns and ordinary queries pass unchanged. RLS remains the actual boundary: the
-interceptor only stops reassigning rows early and with a clear message; it does not check
+Other columns and ordinary queries pass unchanged.
+
+\code{Execute\allowbreak{}Update} is also allowed after a projection. The setter then names a member
+of the projected type, and the lambda's parameter is no entity type:
+
+\begin{sourcecode}[Setters after a projection (\allowbreak{}example)]{csharp}
+db.Orders.Select(o => new { Entity = o })
+    .ExecuteUpdate(s => s.SetProperty(x => x.Entity.TenantId, other));
+
+db.Orders.Select(o => new { Entity = o, o.TenantId })      // projected scalar
+    .ExecuteUpdate(s => s.SetProperty(x => x.TenantId, other));
+\end{sourcecode}
+
+EF translates both forms into an \code{UPDATE} of the tenant column. A check that only recognizes
+direct accesses to the parameter would let them through. \code{Inline} therefore replaces the
+parameter with the body of every \code{Select} below the \code{Execute\allowbreak{}Update}, skips
+operators that keep the element type (\code{Where}, \code{Order\allowbreak{}By}, \code{Take}), and
+follows \code{Join} and \code{Select\allowbreak{}Many} through their result selector into both
+sources. A member access on an anonymous object or on a member initializer
+(\code{new Dto \{ Entity = o \}}) is reduced to the projected expression:
+\code{x.\allowbreak{}Entity.\allowbreak{}Tenant\allowbreak{}Id} becomes
+\code{o.\allowbreak{}Tenant\allowbreak{}Id}. Whether that is the tenant property is decided by the
+model: the instance has to be an entity type whose tenant property (according to
+\code{Get\allowbreak{}Tenant\allowbreak{}Property\allowbreak{}Name}, so also one with another name
+marked with \code{Is\allowbreak{}Tenant\allowbreak{}Property(\allowbreak{})}) is being set. A property
+of the same name on an entity without a tenant stays allowed.
+
+\begin{datatable}{H{1.20}H{0.80}H{1.00}}
+  \textbf{Setter} & \textbf{Result} & \textbf{Test} \\
+  \tablehead
+  \code{o => o.\allowbreak{}Tenant\allowbreak{}Id}, \code{EF.\allowbreak{}Property} on a shadow
+  property & rejected & \code{Bulk\allowbreak{}Operation\allowbreak{}Tests} \\
+  \tablerule
+  After \code{Select} (also nested, also repeated), after \code{Join} and
+  \code{Select\allowbreak{}Many}, projected scalar & rejected & same, against PostgreSQL and SQL
+  Server: \code{Bulk\allowbreak{}Update\allowbreak{}Projection\allowbreak{}Tests},
+  \code{Sql\allowbreak{}Server\allowbreak{}Bulk\allowbreak{}Update\allowbreak{}Tests} \\
+  \tablerule
+  Other columns, also after a projection; a property of the same name without a tenant &
+  executed, RLS limits the rows & same \\
+  \tablerule
+  Projection through constructor parameters (\code{new Dto(\allowbreak{}o, o.\allowbreak{}Tenant\allowbreak{}Id)}),
+  \code{Group\allowbreak{}By} & not checked; EF does not translate them &
+  \code{Forms\allowbreak{}\_that\allowbreak{}\_EF\allowbreak{}\_does\allowbreak{}\_not\allowbreak{}\_translate\allowbreak{}\_…} \\
+\end{datatable}
+
+The database tests count the commands: a rejected update never reaches the database. Without the
+option EF translates the same setters, and only \code{WITH CHECK} of the policy or the
+\code{BLOCK} predicate rejects them. RLS therefore remains the actual boundary: the interceptor
+only stops reassigning rows early and with a clear message; it does not check
 \code{Execute\allowbreak{}Delete} or raw SQL.
 
 The registration holds a trap. \code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor}, like
@@ -134,7 +193,7 @@ however, EF never calls it: EF takes query expression interceptors from the
 \code{ISingleton\allowbreak{}Interceptor} registrations. The plugin therefore registers it as
 \code{IInterceptor}; stateless as it is, an instance per context does no harm.
 \code{Bulk\allowbreak{}Operation\allowbreak{}Tests} records both registrations, the integration
-tests show an allowed and a rejected update against PostgreSQL.
+tests show allowed and rejected updates against PostgreSQL and SQL Server.
 
 % ------------------------------------------------------------
 \chapter{Value generation}\label{ch:value-generation}

@@ -118,7 +118,7 @@ per table (FILTER and BLOCK predicates) and `SESSION_CONTEXT`.
 | Design time | Annotation code generator, `[DesignTimeServicesReference]` | 23–25 |
 | Testing | Model, SQL, snapshot round-trip, compiled model and Testcontainers tests | 26 |
 | Shipping | Versioning, stable annotation formats, packaging, CI, Public API analyzer | 27–28, 41 |
-| Bulk operations | `ProtectBulkOperations()`: a query expression interceptor rejects `ExecuteUpdate` on the tenant column | 30 |
+| Bulk operations | `ProtectBulkOperations()`: a query expression interceptor rejects `ExecuteUpdate` on the tenant column, also after projections and joins | 30 |
 | Value generation | `TenantId` keys via convention and `HasValueGeneratorFactory(Type)` | 31 |
 | Operations | RLS pitfalls, threat model, PgBouncer (`UseTransactionPooling()`), legitimate cross-tenant access | 36 |
 | Relationships | Composite foreign keys with the tenant, unique per tenant, shared master data, delete rules | 37 |

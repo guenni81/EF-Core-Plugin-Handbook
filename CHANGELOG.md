@@ -80,6 +80,19 @@ version is given by the dependency range and the compatibility table in the READ
 
 ### Fixed
 
+- `ProtectBulkOperations()` (core interceptor, PostgreSQL and SQL Server): `ExecuteUpdate` after a
+  projection got past the check, e.g. `Select(o => new { Entity = o })` with
+  `SetProperty(x => x.Entity.TenantId, ...)` or a projected scalar `x.TenantId`; only direct
+  accesses to the setter's parameter were recognized. The interceptor now resolves the setter
+  through `Select` (nested and repeated), member initializers, `Join` and `SelectMany` to the
+  entity member it was projected from and decides by the model whether that is the tenant
+  property, also for `EF.Property` and a differently named `IsTenantProperty()`. New tests in
+  `BulkOperationTests`, and against the databases `BulkUpdateProjectionTests` (PostgreSQL) and
+  `SqlServerBulkUpdateTests`: allowed setters update only the own tenant's rows, rejected ones
+  send no command. Handbook (both editions), chapter "Bulk operations and the limits of
+  interceptors": recognized setters, the limit (constructor parameters, `GroupBy`, which EF does
+  not translate) and RLS as the database guarantee.
+
 - PostgreSQL: a migration that adds a tenant column to an existing table together with the
   isolation failed with `column "TenantId" does not exist`, its Down with `cannot drop column
   ... because other objects depend on it`: EF's differ orders the `AlterTableOperation` before
