@@ -27,6 +27,9 @@ its internal API surface shrinks from 13 to 10 Npgsql types.
 
 ### Added
 
+- Handbook (both editions), chapter 18: Dapper and raw ADO.NET on the context's connection,
+  depending on who opens it (EF, the driver itself, transaction pooling); `RawAdoNetTests`
+  checks all three cases against PostgreSQL.
 - `EnrichOpenTelemetry()` (PostgreSQL options builder, SQL Server provider builder, default:
   off): a command interceptor from the relational package tags `Activity.Current` with
   `tenant.id` before every command, only when an activity is recorded and a tenant is set.

@@ -395,6 +395,67 @@ Erkennen lässt sich die Lücke zusätzlich beim Laden: Mit
 geladene Entität gegen den Mandanten des Contexts und wirft, statt fremde Zeilen
 zurückzugeben (Kapitel~\ref{ch:materialization-from-rows-to-objects}).
 
+\section{Dapper und rohes ADO.NET}
+
+Reports und Massenexporte laufen oft über Dapper oder rohes ADO.NET auf der Verbindung des
+Contexts (\code{Database.\allowbreak{}Get\allowbreak{}Db\allowbreak{}Connection(\allowbreak{})}).
+Row Level Security gilt auch für diese Befehle, weil sie in der Datenbank liegt und nicht in EF.
+Es kommt nur darauf an, ob der Session-Wert gesetzt ist, und das hängt davon ab, wer die
+Verbindung öffnet:
+
+\begin{datatable}{H{0.95}H{1.05}}
+  \textbf{Wer die Verbindung öffnet} & \textbf{Ergebnis} \\
+  \tablehead
+  EF, etwa \code{Open\allowbreak{}Connection\allowbreak{}Async(\allowbreak{})} oder eine offene
+  Transaktion & Der Interceptor hat die Session gesetzt; Dapper sieht die Zeilen des aktuellen
+  Mandanten \\
+  \tablerule
+  Dapper oder ADO.NET selbst, auch nachdem EF die Verbindung nach einer Abfrage wieder
+  geschlossen hat & Kein Session-Wert: Die Policies treffen keine Zeile (fail closed), bis
+  \code{Apply\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Async(\allowbreak{})} ihn setzt \\
+  \tablerule
+  Mit Transaction Pooling (\code{Use\allowbreak{}Transaction\allowbreak{}Pooling}) & Der Mandant
+  existiert nur in der Transaktion von EF; Dapper muss darin laufen \\
+\end{datatable}
+
+Die zweite Zeile ist die Falle: EF öffnet und schließt die Verbindung für jede Abfrage, eine
+Verbindung, die eben noch den Mandanten trug, ist danach also wieder geschlossen. Dapper öffnet
+eine geschlossene Verbindung selbst, und der Interceptor läuft nicht. Das sichere Muster öffnet
+die Verbindung für den ganzen Block über EF:
+
+\begin{sourcecode}[Aufruf (\allowbreak{}Dapper)]{csharp}
+await db.Database.OpenConnectionAsync();                // EF öffnet: Session gesetzt
+var connection = db.Database.GetDbConnection();
+var orders = await connection.QueryAsync<OrderDto>(
+    "SELECT \"Id\", \"Total\" FROM \"Orders\"");             // RLS: nur der Mandant
+await db.Database.CloseConnectionAsync();
+
+// PgBouncer im Transaktionsmodus: Mandant nur in der Transaktion von EF
+await using var tx = await db.Database.BeginTransactionAsync();
+var rows = await connection.QueryAsync<OrderDto>(sql, transaction: tx.GetDbTransaction());
+\end{sourcecode}
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests/RawAdoNetTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Raw\allowbreak{}Ado\allowbreak{}Net\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+var tenant = await CreateTenantWithOrdersAsync(2);
+await using var db = _fixture.CreateAppContext(
+    new MutableTenantProvider { CurrentTenantId = tenant });
+await db.Orders.CountAsync();                 // EF hat geöffnet und wieder geschlossen
+
+// Direkt geöffnet, wie Dapper es bei geschlossener Verbindung tut: ohne EF
+var connection = db.Database.GetDbConnection();
+await connection.OpenAsync();
+Assert.Equal(0, await CountOrdersAsync(connection));      // fail closed
+
+await db.Database.ApplyTenantSessionAsync();
+Assert.Equal(2, await CountOrdersAsync(connection));
+\end{sourcecode}
+
+\code{Raw\allowbreak{}Ado\allowbreak{}Net\allowbreak{}Tests} prüft alle drei Zeilen gegen
+PostgreSQL mit einem einfachen Befehl, mehr schickt Dapper auch nicht. Das Ergebnis ist nie ein
+Leck: Ohne Session-Wert sieht die Abfrage nichts. Es ist ein falsches leeres Ergebnis, und
+deshalb gehört das Muster in die Richtlinien der Anwendung.
+
 % ------------------------------------------------------------
 \chapter{Diagnose und Logging}\label{ch:diagnostics-and-logging}
 \versionrisk{stable}
