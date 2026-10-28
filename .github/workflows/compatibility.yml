@@ -35,6 +35,7 @@ jobs:
         run: >
           dotnet list src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL package
           && dotnet list src/Acme.EntityFrameworkCore.Tenancy.SqlServer package
+          && dotnet list src/Acme.EntityFrameworkCore.Tenancy.Cosmos package
 
       - name: Unit tests (no database)
         run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Tests -c Release --no-build
@@ -44,3 +45,7 @@ jobs:
 
       - name: SQL Server tests
         run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests -c Release --no-build
+
+      - name: Cosmos DB tests (emulator, does not fail the run)
+        continue-on-error: true
+        run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Cosmos.Tests -c Release --no-build

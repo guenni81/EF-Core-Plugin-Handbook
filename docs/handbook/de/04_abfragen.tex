@@ -939,7 +939,7 @@ public class TenantMaterializationInterceptor : IMaterializationInterceptor
         var value = (TenantId)readValue(propertyName)!;
 
         if (value != current)
-            throw new TenancyException("... Row level security did not take effect ...");
+            throw new TenancyException("... isolation did not take effect ...");
     }
 
     // Einmal pro Context über seine Interceptors (wie ApplyTenantSession) zum

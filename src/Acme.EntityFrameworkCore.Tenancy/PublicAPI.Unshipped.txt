@@ -8,3 +8,4 @@ override Acme.EntityFrameworkCore.Tenancy.TenantIdJsonConverter.WriteAsPropertyN
 Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantQueryExpressionInterceptor
 Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantQueryExpressionInterceptor.TenantQueryExpressionInterceptor() -> void
 virtual Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantQueryExpressionInterceptor.QueryCompilationStarting(System.Linq.Expressions.Expression! queryExpression, Microsoft.EntityFrameworkCore.Diagnostics.QueryExpressionEventData! eventData) -> System.Linq.Expressions.Expression!
+Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantSaveChangesInterceptor.Tenants.get -> Acme.EntityFrameworkCore.Tenancy.ITenantProvider!

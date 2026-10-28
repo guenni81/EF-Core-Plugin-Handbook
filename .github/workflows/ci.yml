@@ -34,6 +34,21 @@ jobs:
       - name: SQL Server tests (unit + SQL Server via Testcontainers)
         run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests -c Release --no-build
 
+  # Cosmos DB package against the Linux emulator (vNext preview, pinned tag in CosmosFixture).
+  # Does not block the build yet: the preview emulator is known to hang occasionally (chapter
+  # "Without SQL: what carries over to Cosmos DB")
+  cosmos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Cosmos DB tests (model + emulator via Testcontainers)
+        run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Cosmos.Tests -c Release
+
   # The packages as a customer gets them: pack, fresh application, dotnet-ef (migrations, no
   # phantom changes, compiled model) and a NativeAOT application against PostgreSQL in Docker.
   # Uses the newest stable EF Core 10.0.x patch for the tooling; the script prints the versions.

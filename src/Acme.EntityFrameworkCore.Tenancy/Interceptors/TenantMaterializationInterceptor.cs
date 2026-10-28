@@ -65,10 +65,11 @@ public class TenantMaterializationInterceptor : IMaterializationInterceptor
         if (value != current)
             throw new TenancyException(
                 $"A query returned a row of entity type '{entityType.DisplayName()}' that does "
-                + "not belong to the current tenant. Row level security did not take effect: "
-                + "check that the application connects with a restricted role and that the "
-                + "tenant session is set (Database.ApplyTenantSession() for connections opened "
-                + "outside of EF).");
+                + "not belong to the current tenant. The isolation in front of this check did not "
+                + "take effect. With row level security: check that the application connects with "
+                + "a restricted role and that the tenant session is set (Database."
+                + "ApplyTenantSession() for connections opened outside of EF). Without it (Cosmos "
+                + "DB): check that the tenant query filter is active and not ignored.");
     }
 
     // Internal so that unit tests can check the cache

@@ -27,6 +27,16 @@ its internal API surface shrinks from 13 to 10 Npgsql types.
 
 ### Added
 
+- Package `Acme.EntityFrameworkCore.Tenancy.Cosmos`, a deliberately lean contrast example on the
+  core package alone: tenant as partition key by convention (stored as a string, as Cosmos
+  requires), a named query filter on the current tenant via
+  `modelBuilder.HasTenantQueryFilters(this)` that turns queries into single-partition queries,
+  and the core's SaveChanges interceptor, materialization check and key value generation.
+  Deliberately not ported: migrations, scaffolding, SQL nodes, aggregates, session interceptor,
+  bulk update protection. Tests run against the Linux Cosmos DB emulator (pinned vNext tag) in
+  a CI job of their own that does not block the build yet.
+- `TenantSaveChangesInterceptor.Tenants` is public, so that packages without a session (Cosmos)
+  can read the tenant provider of a context.
 - Package `Acme.EntityFrameworkCore.Functions.PostgreSQL` (see above); the handbook (both
   editions) introduces it in chapters 42 and 43 with a note that the examples are deliberately
   unrelated to tenancy, and lists it in chapter 3, appendix B and the README.
@@ -42,6 +52,8 @@ its internal API surface shrinks from 13 to 10 Npgsql types.
 
 ### Changed
 
+- The materialization check's error message no longer assumes row level security; it names the
+  checks for relational providers and for Cosmos DB.
 - Handbook (both editions): new outline of the back parts without renumbering any chapter.
   Part VIII "Advanced extension points" (chapters 30–35), new part IX "Operation and
   integration" (36–41), part X "Deep extensions" (42–45), new part XI "Multiple providers"

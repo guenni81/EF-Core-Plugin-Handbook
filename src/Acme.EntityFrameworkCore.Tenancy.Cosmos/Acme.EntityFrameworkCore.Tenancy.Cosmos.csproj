@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Contrast example (chapter "Without SQL: what carries over to Cosmos DB"): multi-tenancy for
+    a non-relational provider on top of the core package alone. Tenant as partition key, query
+    filter on the current tenant, SaveChanges and materialization checks from the core. No
+    migrations, no SQL, no row level security: isolation lives in the application only.
+  -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsAotCompatible>true</IsAotCompatible>
+    <Description>Multi-tenancy for EF Core with Azure Cosmos DB (partition key per tenant).</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Cosmos" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The core only: no Microsoft.EntityFrameworkCore.Relational (chapter "What belongs in
+         the core") -->
+    <ProjectReference Include="..\Acme.EntityFrameworkCore.Tenancy\Acme.EntityFrameworkCore.Tenancy.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <AdditionalFiles Include="PublicAPI.Shipped.txt" />
+    <AdditionalFiles Include="PublicAPI.Unshipped.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <InternalsVisibleTo Include="Acme.EntityFrameworkCore.Tenancy.Cosmos.Tests" />
+  </ItemGroup>
+</Project>
