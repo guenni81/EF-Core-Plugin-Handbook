@@ -577,9 +577,15 @@ Die Auslassung ist \code{\textbackslash{}connect shop}: Ab dort läuft das Skrip
 Datenbank. Wichtig sind die \code{DEFAULT PRIVILEGES}: Jede Tabelle, die eine spätere Migration als
 \code{shop\_\allowbreak{}owner} anlegt, ist für \code{shop\_\allowbreak{}app} sofort nutzbar.
 Ohne sie scheitert die neue Anwendungsversion mit \code{permission denied}, obwohl Migration und
-Policy stimmen. Die Operation \code{Grant\allowbreak{}Table\allowbreak{}Privileges} des Plugins
-setzt ebenfalls Default Privileges, aber nur für die Rolle, die sie ausführt; das Skript
-legt sie unabhängig davon fest.
+Policy stimmen. Dasselbe gilt für Sequenzen: Ein \code{INSERT} in eine Tabelle mit
+\code{serial}-Spalte ruft \code{nextval} auf ihrer Sequenz auf, EFs HiLo-Verfahren tut das vor
+dem \code{INSERT}; ohne \code{USAGE} auf der Sequenz erhält die App-Rolle \code{permission
+denied for sequence}. Eine Identity-Spalte (\code{GENERATED ... AS IDENTITY}, der Standard von
+Npgsql) braucht für ein \code{INSERT} kein eigenes Recht auf ihre interne Sequenz. Die
+Operation \code{Grant\allowbreak{}Table\allowbreak{}Privileges} des Plugins setzt ebenfalls
+Default Privileges für Tabellen und Sequenzen, aber nur für Objekte, die die ausführende Rolle
+später anlegt; das Skript legt sie für \code{shop\_\allowbreak{}owner} fest, unabhängig davon,
+wer es ausführt.
 
 \subsection*{Die Pipeline}
 

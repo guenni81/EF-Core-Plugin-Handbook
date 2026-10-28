@@ -31,6 +31,12 @@ version is given by the dependency range and the compatibility table in the READ
   relational model, so unchanged models still produce no migration and snapshots stay as before.
   The handbook (both editions) replaces the rule "do not store default values" with the
   distinction between explicit model configuration and its normalization for migrations.
+- PostgreSQL: `GrantTablePrivileges` now also sets default privileges for sequences
+  (`ALTER DEFAULT PRIVILEGES ... GRANT USAGE, SELECT ON SEQUENCES`). A serial column or HiLo
+  sequence created by a later migration failed for the app role with `42501: permission denied
+  for sequence`. As for tables, the default privileges apply to objects the migrating role
+  creates later. API documentation and the handbook (both editions, chapter "Retrofitting and
+  operating multi-tenancy") describe it.
 
 ## [1.2.0] - 2026-10-28
 

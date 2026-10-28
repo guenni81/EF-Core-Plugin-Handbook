@@ -401,7 +401,7 @@ protected override void Up(MigrationBuilder migrationBuilder)
 
     // 3. Was Tabellen voraussetzt: NACH den generierten Operationen
     migrationBuilder.CreateApplicationRole("shop_app", canLogin: true);
-    migrationBuilder.GrantTablePrivileges("shop_app");     // wirkt auf bestehende Tabellen
+    migrationBuilder.GrantTablePrivileges("shop_app");   // bestehende und künftige Tabellen
 }
 \end{sourcecode}
 

@@ -393,7 +393,7 @@ protected override void Up(MigrationBuilder migrationBuilder)
 
     // 3. Whatever requires the tables: AFTER the generated operations
     migrationBuilder.CreateApplicationRole("shop_app", canLogin: true);
-    migrationBuilder.GrantTablePrivileges("shop_app");     // applies to existing tables
+    migrationBuilder.GrantTablePrivileges("shop_app");   // existing and future tables
 }
 \end{sourcecode}
 

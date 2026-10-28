@@ -551,9 +551,14 @@ The elision is \code{\textbackslash{}connect shop}: from there on, the script ru
 database. The \code{DEFAULT PRIVILEGES} matter: every table that a later migration creates as
 \code{shop\_\allowbreak{}owner} is usable by \code{shop\_\allowbreak{}app} right away. Without
 them, the new application version fails with \code{permission denied}, although migration and
-policy are correct. The plugin's \code{Grant\allowbreak{}Table\allowbreak{}Privileges}
-operation also sets default privileges, but only for the role that runs it; the script sets
-them independently of that.
+policy are correct. The same holds for sequences: an \code{INSERT} into a table with a
+\code{serial} column calls \code{nextval} on its sequence, and EF's HiLo pattern does so before
+the \code{INSERT}; without \code{USAGE} on the sequence the app role gets \code{permission
+denied for sequence}. An identity column (\code{GENERATED ... AS IDENTITY}, Npgsql's default)
+needs no privilege of its own on its internal sequence for an \code{INSERT}. The plugin's
+\code{Grant\allowbreak{}Table\allowbreak{}Privileges} operation also sets default privileges
+for tables and sequences, but only for objects that the role running it creates later; the
+script sets them for \code{shop\_\allowbreak{}owner} independently of who runs it.
 
 \subsection*{The pipeline}
 

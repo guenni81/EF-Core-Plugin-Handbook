@@ -76,6 +76,11 @@ public class MigrationSqlTests
         Assert.Contains(sql, s => s.Contains("WHERE rolname = 'shop_app'")
                                   && s.Contains("CREATE ROLE shop_app LOGIN NOSUPERUSER NOBYPASSRLS;"));
         Assert.Contains("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO shop_app;", sql);
+        Assert.Contains("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO shop_app;", sql);
+        Assert.Contains("ALTER DEFAULT PRIVILEGES IN SCHEMA public "
+                        + "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO shop_app;", sql);
+        // Future sequences too: a serial column or HiLo sequence created by a later migration
+        Assert.Contains("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO shop_app;", sql);
         Assert.Contains("DROP ROLE IF EXISTS shop_app;", sql);
     }
 

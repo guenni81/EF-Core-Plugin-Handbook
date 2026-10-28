@@ -208,8 +208,13 @@ public class TenancyMigrationsSqlGenerator : NpgsqlMigrationsSqlGenerator
 
     /// <summary>
     /// Grants schema usage, DML on all tables, sequence usage, and default privileges for tables
-    /// created later.
+    /// and sequences created later.
     /// </summary>
+    /// <remarks>
+    /// The default privileges cover objects that the role running this migration creates later
+    /// (no FOR ROLE clause), e.g. the sequence of a serial column or a HiLo sequence; objects
+    /// created by other roles are not covered.
+    /// </remarks>
     /// <param name="operation">The operation.</param>
     /// <param name="builder">The builder that receives the commands.</param>
     protected virtual void Generate(GrantTablePrivilegesOperation operation, MigrationCommandListBuilder builder)
@@ -221,11 +226,13 @@ public class TenancyMigrationsSqlGenerator : NpgsqlMigrationsSqlGenerator
         Statement(builder,
             $"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {schema} TO {role}");
         Statement(builder, $"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA {schema} TO {role}");
-        // Default privileges only apply to tables created later by the role running this
-        // migration (no FOR ROLE clause).
+        // Default privileges only apply to tables and sequences created later by the role running
+        // this migration (no FOR ROLE clause).
         Statement(builder,
             $"ALTER DEFAULT PRIVILEGES IN SCHEMA {schema} "
             + $"GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {role}");
+        Statement(builder,
+            $"ALTER DEFAULT PRIVILEGES IN SCHEMA {schema} GRANT USAGE, SELECT ON SEQUENCES TO {role}");
     }
 
     // ---------------------------------------------------------------- Helpers
