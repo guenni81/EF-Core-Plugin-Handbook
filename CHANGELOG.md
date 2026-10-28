@@ -19,6 +19,12 @@ version is given by the dependency range and the compatibility table in the READ
   the model is built, as with PostgreSQL. Before, the convention skipped it silently, so the
   table got no security policy and `SaveChanges` no tenant check. The handbook (both editions,
   chapter "Conventions") describes the validation contract.
+- SQL Server: a migration that changes the session key or the policy schema and drops a protected
+  table at the same time failed with error 3729 ("Cannot DROP FUNCTION ... because it is being
+  referenced"): the dropped table's policy was only removed with `DROP TABLE`, after the shared
+  predicate function. The generator now removes the policies of dropped tables before the
+  function as well and restores only those of the target model; the Down path is covered by
+  tests too.
 
 ## [1.2.0] - 2026-10-28
 

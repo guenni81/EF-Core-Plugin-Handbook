@@ -334,6 +334,12 @@ mit dem sie erzeugt wurde.
   geschützten Tabellen entfernen, alte Funktion löschen, Funktion mit den neuen Werten anlegen,
   Policies neu anlegen. Der Down-Weg macht dasselbe rückwärts. \\
   \tablerule
+  Schlüssel oder Schema geändert, Tabellen in derselben Migration gelöscht & Auch die Policies
+  der gelöschten Tabellen werden vor der alten Funktion entfernt, denn sie verweisen bis zum
+  \code{DROP TABLE} noch auf sie; eine Policy bekommen danach nur die Tabellen des Zielmodells.
+  Auf dem Down-Weg erhält die wiederhergestellte Tabelle ihre Policy mit \code{CREATE TABLE},
+  bereits auf der Funktion mit den alten Werten. \\
+  \tablerule
   Erste Migration eines Contexts oder erste nach dem Upgrade von 1.0 (alter Wert unbekannt) &
   Nichts wird gelöscht. Eine vorhandene Funktion muss den Schlüssel lesen, den das Modell nennt,
   sonst bricht die Migration mit \code{THROW 50000} ab. \\

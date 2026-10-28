@@ -82,6 +82,60 @@ public class SqlServerSessionSettingsModelTests
         Assert.StartsWith("CREATE SECURITY POLICY [acme].[tenant_dbo_Invoice]", sql[^1], StringComparison.Ordinal);
     }
 
+    // Every plugin policy, of the remaining and of the dropped tables, must be gone before the
+    // shared function is dropped (SQL Server error 3729 otherwise); only the target's come back
+    private static void AssertFunctionRebuiltAfterAllPolicies(
+        List<string> sql, string[] existing, params string[] restored)
+    {
+        var dropFunction = sql.FindIndex(s => s.StartsWith("DROP FUNCTION", StringComparison.Ordinal));
+        Assert.True(dropFunction > 0, "the function must be dropped");
+        Assert.All(existing, table =>
+        {
+            var dropPolicy = sql.FindIndex(s => s.Contains("DROP SECURITY POLICY", StringComparison.Ordinal)
+                                                && s.Contains($"OBJECT_ID(N'{table}')", StringComparison.Ordinal));
+            Assert.InRange(dropPolicy, 0, dropFunction - 1);
+        });
+
+        var created = sql.Where(s => s.StartsWith("CREATE SECURITY POLICY", StringComparison.Ordinal)).ToList();
+        Assert.Equal(restored.Length, created.Count);
+        Assert.All(restored, table => Assert.Contains(created, s => s.Contains($"ON {table}", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void Changed_session_key_with_a_dropped_table_drops_its_policy_before_the_function()
+    {
+        var sql = Versions.Commands(MappingContext.Create(Versions.WithArchive),
+                MappingContext.Create(Versions.V1, sessionKey: "NewTenant"))
+            .Select(c => c.CommandText.Trim()).ToList();
+
+        AssertFunctionRebuiltAfterAllPolicies(sql, ["[dbo].[Invoice]", "[dbo].[ArchivedInvoice]"],
+            "[dbo].[Invoice]");
+        Assert.True(sql.FindIndex(s => s.StartsWith("DROP FUNCTION", StringComparison.Ordinal))
+                    < sql.FindIndex(s => s.StartsWith("DROP TABLE [ArchivedInvoice]", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void Changed_policy_schema_with_a_dropped_table_drops_its_policy_before_the_function()
+        => AssertFunctionRebuiltAfterAllPolicies(
+            Versions.Commands(MappingContext.Create(Versions.WithArchive),
+                    MappingContext.Create(Versions.V1, policySchema: "rls"))
+                .Select(c => c.CommandText.Trim()).ToList(),
+            ["[dbo].[Invoice]", "[dbo].[ArchivedInvoice]"], "[dbo].[Invoice]");
+
+    [Fact]
+    public void Down_of_a_session_key_change_with_a_dropped_table_restores_both_policies()
+    {
+        var sql = Versions.Commands(MappingContext.Create(Versions.V1, sessionKey: "NewTenant"),
+                MappingContext.Create(Versions.WithArchive))
+            .Select(c => c.CommandText.Trim()).ToList();
+
+        // The archive is created again: its policy comes with CREATE TABLE, after the new function
+        AssertFunctionRebuiltAfterAllPolicies(sql, ["[dbo].[Invoice]"],
+            "[dbo].[Invoice]", "[dbo].[ArchivedInvoice]");
+        Assert.DoesNotContain(sql, s => s.Contains("CREATE FUNCTION", StringComparison.Ordinal)
+                                        && s.Contains("NewTenant", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Historical_migration_uses_its_own_model_not_the_current_options()
     {
@@ -208,6 +262,49 @@ public class SqlServerSessionSettingsTests : IClassFixture<SqlServerFixture>
         await MigrateAsync(owner, MappingContext.Create(Versions.V1, sessionKey: "NewTenant"),
             MappingContext.Create(Versions.V1));
         await AssertAppIsolatedAsync(app, "TenantId");
+    }
+
+    [Fact]
+    public async Task Changed_session_key_with_a_dropped_table_is_migrated_up_and_down()
+    {
+        var (owner, app) = await SqlServerMigrationTests.CreateDatabaseAsync(_fixture);
+        await MigrateAsync(owner, null, MappingContext.Create(Versions.WithArchive));
+
+        // Before the fix: error 3729, the function was still referenced by the archive's policy
+        await MigrateAsync(owner, MappingContext.Create(Versions.WithArchive),
+            MappingContext.Create(Versions.V1, sessionKey: "NewTenant"));
+
+        await AssertAppIsolatedAsync(app, "NewTenant");
+        await SqlServerMigrationTests.AssertIsolatedAsync(app, "[dbo].[Invoice]", "TenantId", "NewTenant");
+        await using (var connection = new SqlConnection(owner))
+        {
+            await connection.OpenAsync();
+            Assert.Equal(1, await SqlServerMigrationTests.Execute(connection,
+                "SELECT count(*) FROM sys.security_policies"));
+            Assert.Equal(0, await SqlServerMigrationTests.Execute(connection,
+                "SELECT count(*) FROM sys.tables WHERE name = N'ArchivedInvoice'"));
+        }
+
+        // Down: the archive comes back with its policy, both tables read the old key again
+        await MigrateAsync(owner, MappingContext.Create(Versions.V1, sessionKey: "NewTenant"),
+            MappingContext.Create(Versions.WithArchive));
+
+        await AssertAppIsolatedAsync(app, "TenantId");
+        await SqlServerMigrationTests.AssertIsolatedAsync(app, "[dbo].[Invoice]", "TenantId");
+        await SqlServerMigrationTests.AssertIsolatedAsync(app, "[dbo].[ArchivedInvoice]", "TenantId");
+    }
+
+    [Fact]
+    public async Task Changed_policy_schema_with_a_dropped_table_is_migrated()
+    {
+        var (owner, app) = await SqlServerMigrationTests.CreateDatabaseAsync(_fixture);
+        await MigrateAsync(owner, null, MappingContext.Create(Versions.WithArchive));
+
+        await MigrateAsync(owner, MappingContext.Create(Versions.WithArchive),
+            MappingContext.Create(Versions.V1, policySchema: "rls"));
+
+        await AssertAppIsolatedAsync(app, "TenantId");
+        await SqlServerMigrationTests.AssertIsolatedAsync(app, "[dbo].[Invoice]", "TenantId");
     }
 
     [Fact]

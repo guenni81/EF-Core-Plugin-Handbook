@@ -328,6 +328,12 @@ way every migration stays with the state it was generated from.
   all protected tables, drop the old function, create the function with the new values,
   recreate the policies. The Down path does the same in reverse. \\
   \tablerule
+  Key or schema changed, tables dropped in the same migration & The policies of the dropped
+  tables are removed before the old function as well, since they still reference it until
+  \code{DROP TABLE}; only the tables of the target model get a policy again. On the Down path the
+  restored table gets its policy with \code{CREATE TABLE}, already on the function with the old
+  values. \\
+  \tablerule
   First migration of a context, or the first after the upgrade from 1.0 (old value unknown) &
   Nothing is dropped. An existing function must read the key that the model names, otherwise the
   migration stops with \code{THROW 50000}. \\

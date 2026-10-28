@@ -52,6 +52,12 @@ internal static class Versions
             b.Property(i => i.TenantId).HasColumnName("Mandant");
         });
 
+    public static void WithArchive(ModelBuilder m)
+    {
+        m.Entity<Invoice>();
+        m.Entity<ArchivedInvoice>();
+    }
+
     public static void Empty(ModelBuilder m)
     {
     }
