@@ -27,6 +27,9 @@ its internal API surface shrinks from 13 to 10 Npgsql types.
 
 ### Added
 
+- Handbook (both editions), chapter 40: messages from a broker. The sender writes the tenant
+  into a header, a consume filter sets it before the scope and the context exist, and messages
+  without a valid tenant are rejected instead of being processed for all tenants.
 - Handbook (both editions), chapter 39: second-level caches and multi-tenancy. With row level
   security the tenant is in neither the SQL text nor the cache key, so a cache hands one
   tenant's rows to another without asking the database; the tenant belongs in every key.

@@ -1106,6 +1106,35 @@ Singleton registriert werden. Parallele Jobs behalten ihren eigenen Mandanten, u
 Eine Anwendung mit Web-Anfragen \emph{und} Jobs kombiniert beide Quellen in einem Provider:
 zuerst der Claim, sonst der Ambient-Mandant.
 
+\textbf{Nachrichten.} Bei einem Message Broker (RabbitMQ, Kafka, Azure Service Bus) oder einem
+Framework darauf (MassTransit, Wolverine) schreibt der Sender den aktuellen Mandanten in einen
+Header der Nachricht, und die Empfängerseite setzt ihn, bevor der Consumer läuft. Der Ort dafür
+ist der Consume-Filter oder die Middleware des Frameworks, damit kein einzelner Consumer es
+vergessen kann:
+
+\begin{sourcecode}[Consume-Filter (\allowbreak{}vereinfacht,\allowbreak{} unabhängig vom Framework)]{csharp}
+// Wo der Broker eine Nachricht übergibt: Mandant aus dem Header, dann Scope und Context
+public async Task HandleAsync(BrokerMessage message, CancellationToken cancellationToken)
+{
+    if (!message.Headers.TryGetValue("X-Tenant-Id", out var value)
+        || !Guid.TryParse(value, out var id))
+        throw new InvalidOperationException("Message without a tenant: rejected.");
+
+    using (AmbientTenantProvider.Use(new TenantId(id)))
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var handler = scope.ServiceProvider.GetRequiredService<IOrderHandler>();
+        await handler.HandleAsync(message, cancellationToken);   // nutzt ShopContext
+    }
+}
+\end{sourcecode}
+
+Zwei Regeln übertragen sich von den Jobs. Der Header wird gelesen, bevor der Scope entsteht,
+denn Context und Interceptors leben im Scope. Und eine Nachricht ohne gültigen Mandanten wird
+abgewiesen und landet in der Dead-Letter-Queue; sie wird nie für alle Mandanten verarbeitet.
+Ein Scoped-Tenant-Provider mit Setter funktioniert genauso, solange der Filter den Mandanten im
+Scope des Consumers setzt, bevor der Context aufgelöst wird.
+
 \begin{important}[Nie auf „alle Mandanten“ zurückfallen]
   Ohne Mandant muss ein Job scheitern oder nichts sehen, niemals alles. Das Plugin verhält
   sich so: Der Session-Wert bleibt leer, die Policies treffen keine Zeile, und Speichern
