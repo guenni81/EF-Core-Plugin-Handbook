@@ -248,7 +248,8 @@ public abstract class TenantSessionInterceptor : DbConnectionInterceptor
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    // ConnectionOpened (synchronous) analogous
+    // ConnectionOpened (synchronous) analogous; if the command fails, both close
+    // the connection again (section "When the session command fails")
 
     protected abstract DbCommand CreateSessionCommand(
         DbConnection connection, DbContext? context, TenantId? tenant);
@@ -391,6 +392,77 @@ The gap can also be detected while loading: with
 \code{Verify\allowbreak{}Materialized\allowbreak{}Tenants(\allowbreak{})} the plugin checks
 every loaded entity against the context's tenant and throws instead of returning another
 tenant's rows (chapter~\ref{ch:materialization-from-rows-to-objects}).
+
+\section{When the session command fails}
+
+The command that sets the tenant is an ordinary database call: it can fail, run into its
+\code{Command\allowbreak{}Timeout} or be cancelled. What matters is what happens to the
+connection afterwards. EF only counts an opening once \code{Connection\allowbreak{}Opened}
+returns. If the interceptor throws, the \code{Db\allowbreak{}Connection} is open, but EF
+considers it closed. The next operation finds it open, treats it like a connection opened from
+outside and runs without the interceptor, that is with whatever session value the connection
+has. Against PostgreSQL this could be shown before the fix: with the default pool, the context
+then silently read nothing. With \code{No Reset On Close=true}, a common performance setting, the
+context for tenant~B read the rows of tenant~A, who had used the physical connection before.
+
+The interceptor therefore closes the connection again before passing the exception on:
+
+% source: src/Acme.EntityFrameworkCore.Tenancy.Relational/Interceptors/TenantSessionInterceptor.cs
+\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+public override void ConnectionOpened(
+    DbConnection connection, ConnectionEndEventData eventData)
+{
+    ArgumentNullException.ThrowIfNull(connection);
+    ArgumentNullException.ThrowIfNull(eventData);
+
+    try
+    {
+        using var command =
+            CreateSessionCommand(connection, eventData.Context, Tenants.CurrentTenantId);
+        command.ExecuteNonQuery();
+    }
+    catch
+    {
+        connection.Close();
+        throw;
+    }
+}
+\end{sourcecode}
+
+The asynchronous variant closes with \code{Close\allowbreak{}Async(\allowbreak{})} without a
+cancellation token: after a cancelled command the connection must stay open even less. The
+context remains usable; the next operation opens anew, and the interceptor sets the tenant. The
+tests produce the failures in a controlled way, through a subclass of the interceptor whose next
+command fails (\code{1 / 0}), runs into a \code{Command\allowbreak{}Timeout} of one second, or is
+cancelled beforehand:
+
+\begin{datatable}{H{0.95}H{1.05}H{1.00}}
+  \textbf{Case} & \textbf{Behavior} & \textbf{Test} \\
+  \tablehead
+  Command fails, timeout, cancellation while EF opens & Exception (timeout: reported by EF as a
+  transient failure), connection closed; the next operation sets the tenant again, with and
+  without \code{No Reset On Close} &
+  \code{Session\allowbreak{}Failure\allowbreak{}Tests}, also for SQL Server \\
+  \tablerule
+  The same with \code{Open\allowbreak{}Connection\allowbreak{}Async} & Connection closed; a second
+  opening then applies to all queries & same \\
+  \tablerule
+  \code{Apply\allowbreak{}Tenant\allowbreak{}Session} fails on an open connection & The connection
+  belongs to the caller and stays open, with the \emph{previous} tenant. The exception must not
+  be swallowed; a second call sets the new one & same \\
+  \tablerule
+  \code{Use\allowbreak{}Transaction\allowbreak{}Pooling(\allowbreak{})}: \code{set\_config} in the new
+  transaction fails & The transaction is rolled back and disposed; the next transaction gets the
+  tenant. Before, it stayed open and blocked every further \code{Begin\allowbreak{}Transaction}
+  of the context & \code{Transaction\allowbreak{}Session\allowbreak{}Failure\allowbreak{}Tests} \\
+\end{datatable}
+
+In session mode a leftover value is dangerous because it outlives the connection's use. With
+transaction pooling the value ends with the transaction anyway, and a failed \code{set\_config}
+aborts it in PostgreSQL; the defect there was an unusable context, not a foreign tenant. Retries
+of an execution strategy open a new connection anyway and set the tenant again
+(\code{Retry\allowbreak{}\_after\allowbreak{}\_a\allowbreak{}\_lost\allowbreak{}\_connection\allowbreak{}\_…},
+chapter~\ref{ch:retrofitting-and-operating}).
 
 \section{Dapper and raw ADO.NET}
 

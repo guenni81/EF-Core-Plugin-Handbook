@@ -36,20 +36,50 @@ public abstract class TenantSessionInterceptor : DbConnectionInterceptor
     protected ITenantProvider Tenants { get; }
 
     /// <summary>Writes the current tenant into the session after a synchronous open.</summary>
+    /// <remarks>
+    /// If the command fails (error, timeout, cancellation), the connection is closed again
+    /// before the exception propagates. EF only counts an opening once this method returns; an
+    /// open connection left behind would be used by the next operation as if someone else had
+    /// opened it, without this interceptor, and with whatever session value it still has.
+    /// </remarks>
     public override void ConnectionOpened(DbConnection connection, ConnectionEndEventData eventData)
     {
-        using var command = CreateSessionCommand(connection, eventData.Context, Tenants.CurrentTenantId);
-        command.ExecuteNonQuery();
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(eventData);
+
+        try
+        {
+            using var command = CreateSessionCommand(connection, eventData.Context, Tenants.CurrentTenantId);
+            command.ExecuteNonQuery();
+        }
+        catch
+        {
+            connection.Close();
+            throw;
+        }
     }
 
     /// <summary>Writes the current tenant into the session after an asynchronous open.</summary>
+    /// <remarks>Closes the connection again if the command fails, like <see cref="ConnectionOpened"/>.</remarks>
     public override async Task ConnectionOpenedAsync(
         DbConnection connection,
         ConnectionEndEventData eventData,
         CancellationToken cancellationToken = default)
     {
-        await using var command = CreateSessionCommand(connection, eventData.Context, Tenants.CurrentTenantId);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(eventData);
+
+        try
+        {
+            await using var command = CreateSessionCommand(connection, eventData.Context, Tenants.CurrentTenantId);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        catch
+        {
+            // Not cancellable: the connection must not stay open after a cancelled command
+            await connection.CloseAsync();
+            throw;
+        }
     }
 
     /// <summary>

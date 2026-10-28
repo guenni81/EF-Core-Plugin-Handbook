@@ -90,6 +90,20 @@ version is given by the dependency range and the compatibility table in the READ
 
 ### Fixed
 
+- Session interceptors (`TenantSessionInterceptor`, so PostgreSQL and SQL Server): if the
+  command that sets the tenant failed, timed out or was cancelled, the connection stayed open
+  while EF considered it closed; the next operation of the context then ran without the
+  interceptor and with the connection's old session value. Against PostgreSQL the context read
+  nothing, with `No Reset On Close=true` it read the rows of the tenant that used the physical
+  connection before. The interceptor now closes the connection before the exception
+  propagates. With `UseTransactionPooling()`, a failed `set_config` left the new transaction
+  open and blocked every later `BeginTransaction` of the context; it is now rolled back and
+  disposed. New `SessionFailureTests` and `TransactionSessionFailureTests` (PostgreSQL) and
+  `SqlServerSessionFailureTests` with a controlled faulty interceptor (failure, one-second
+  timeout, cancellation); a failed `ApplyTenantSession` keeps the open connection and its
+  previous tenant, which is documented. Handbook (both editions), chapter "Interceptors": new
+  section "When the session command fails".
+
 - PostgreSQL scaffolding: a valid policy without `USING` and `WITH CHECK`
   (`CREATE POLICY allow_all ON t;`) crashed `dotnet ef dbcontext scaffold` with an
   `ArgumentOutOfRangeException` in `TenancyAnnotationCodeGenerator`, because the Fluent chain

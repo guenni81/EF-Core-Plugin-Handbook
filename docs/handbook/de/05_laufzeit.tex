@@ -248,7 +248,8 @@ public abstract class TenantSessionInterceptor : DbConnectionInterceptor
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    // ConnectionOpened (synchron) analog
+    // ConnectionOpened (synchron) analog; scheitert der Befehl, schließen beide
+    // die Verbindung wieder (Abschnitt „Wenn der Session-Befehl scheitert“)
 
     protected abstract DbCommand CreateSessionCommand(
         DbConnection connection, DbContext? context, TenantId? tenant);
@@ -395,6 +396,79 @@ Erkennen lässt sich die Lücke zusätzlich beim Laden: Mit
 \code{Verify\allowbreak{}Materialized\allowbreak{}Tenants(\allowbreak{})} prüft das Plugin jede
 geladene Entität gegen den Mandanten des Contexts und wirft, statt fremde Zeilen
 zurückzugeben (Kapitel~\ref{ch:materialization-from-rows-to-objects}).
+
+\section{Wenn der Session-Befehl scheitert}
+
+Der Befehl, der den Mandanten setzt, ist ein gewöhnlicher Datenbankaufruf: Er kann scheitern,
+in sein \code{Command\allowbreak{}Timeout} laufen oder abgebrochen werden. Entscheidend ist,
+was danach mit der Verbindung geschieht. EF zählt eine Öffnung erst, wenn
+\code{Connection\allowbreak{}Opened} zurückkehrt. Wirft der Interceptor, ist die
+\code{Db\allowbreak{}Connection} offen, EF hält sie aber für geschlossen. Die nächste
+Operation findet sie offen vor, behandelt sie wie eine von außen geöffnete Verbindung und
+läuft ohne Interceptor, also mit dem Session-Wert, den die Verbindung gerade hat. Gegen
+PostgreSQL ließ sich das vor der Korrektur nachweisen: Mit dem Standard-Pool las der Context
+danach stillschweigend nichts. Mit \code{No Reset On Close=true}, einer verbreiteten
+Performance-Einstellung, las der Context für Mandant~B die Zeilen von Mandant~A, der die
+physische Verbindung zuvor benutzt hatte.
+
+Der Interceptor schließt die Verbindung deshalb wieder, bevor er die Exception weitergibt:
+
+% source: src/Acme.EntityFrameworkCore.Tenancy.Relational/Interceptors/TenantSessionInterceptor.cs
+\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+public override void ConnectionOpened(
+    DbConnection connection, ConnectionEndEventData eventData)
+{
+    ArgumentNullException.ThrowIfNull(connection);
+    ArgumentNullException.ThrowIfNull(eventData);
+
+    try
+    {
+        using var command =
+            CreateSessionCommand(connection, eventData.Context, Tenants.CurrentTenantId);
+        command.ExecuteNonQuery();
+    }
+    catch
+    {
+        connection.Close();
+        throw;
+    }
+}
+\end{sourcecode}
+
+Die asynchrone Variante schließt mit \code{Close\allowbreak{}Async(\allowbreak{})} ohne
+Cancellation-Token: Nach einem abgebrochenen Befehl darf die Verbindung erst recht nicht offen
+bleiben. Der Context bleibt danach benutzbar; die nächste Operation öffnet neu, und der
+Interceptor setzt den Mandanten. Die Tests erzeugen die Fehler kontrolliert, über eine
+Unterklasse des Interceptors, deren nächster Befehl scheitert (\code{1 / 0}), in ein
+\code{Command\allowbreak{}Timeout} von einer Sekunde läuft oder vorher abgebrochen wird:
+
+\begin{datatable}{H{0.95}H{1.05}H{1.00}}
+  \textbf{Fall} & \textbf{Verhalten} & \textbf{Test} \\
+  \tablehead
+  Befehl scheitert, Timeout, Cancellation beim Öffnen durch EF & Exception (Timeout: von EF als
+  transienter Fehler gemeldet), Verbindung geschlossen; die nächste Operation setzt den
+  Mandanten neu, mit und ohne \code{No Reset On Close} &
+  \code{Session\allowbreak{}Failure\allowbreak{}Tests}, auch für SQL Server \\
+  \tablerule
+  Dasselbe bei \code{Open\allowbreak{}Connection\allowbreak{}Async} & Verbindung geschlossen; ein
+  zweites Öffnen gilt danach für alle Abfragen & ebenda \\
+  \tablerule
+  \code{Apply\allowbreak{}Tenant\allowbreak{}Session} auf einer offenen Verbindung scheitert &
+  Die Verbindung gehört dem Aufrufer und bleibt offen, mit dem \emph{bisherigen} Mandanten. Die
+  Exception darf nicht verschluckt werden; ein zweiter Aufruf setzt den neuen & ebenda \\
+  \tablerule
+  \code{Use\allowbreak{}Transaction\allowbreak{}Pooling(\allowbreak{})}: \code{set\_config} in der
+  neuen Transaktion scheitert & Die Transaktion wird zurückgerollt und verworfen; die nächste
+  Transaktion bekommt den Mandanten. Vorher blieb sie offen und blockierte jedes weitere
+  \code{Begin\allowbreak{}Transaction} des Contexts & \code{Transaction\allowbreak{}Session\allowbreak{}Failure\allowbreak{}Tests} \\
+\end{datatable}
+
+Im Session-Modus ist ein liegen gebliebener Wert gefährlich, weil er die Verbindung überdauert.
+Mit Transaction-Pooling endet der Wert ohnehin mit der Transaktion, und ein gescheiterter
+\code{set\_config} bricht sie in PostgreSQL ab; der Fehler dort war ein unbenutzbarer Context,
+kein fremder Mandant. Retries einer Execution Strategy öffnen ohnehin eine neue Verbindung und
+setzen den Mandanten neu (\code{Retry\allowbreak{}\_after\allowbreak{}\_a\allowbreak{}\_lost\allowbreak{}\_connection\allowbreak{}\_…},
+Kapitel~\ref{ch:retrofitting-and-operating}).
 
 \section{Dapper und rohes ADO.NET}
 
