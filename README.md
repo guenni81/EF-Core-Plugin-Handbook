@@ -17,10 +17,10 @@ nodes. A decision guide leads from a concrete problem to the right extension poi
 concept is shown in the plugin in this repository, and the behavior the book describes is
 backed by more than 100 tests.
 
-> **Status:** `Acme.EntityFrameworkCore.Tenancy` is the reference implementation for the
-> handbook ("Acme" is a placeholder name). It is complete and tested, but deliberately not
-> published as a NuGet package: use it as a template for your own plugin or reference the
-> projects directly.
+> **Status:** This repository is first and foremost a handbook with a reference
+> implementation, not a ready-made library. `Acme.EntityFrameworkCore.Tenancy` ("Acme" is a
+> placeholder name) is complete and tested, but deliberately not published as a NuGet
+> package: use it as a template for your own plugin or reference the projects directly.
 
 ## 📖 The handbook
 
@@ -36,7 +36,9 @@ for how to build them.
 
 ## Quick start
 
-Reference `Acme.EntityFrameworkCore.Tenancy.PostgreSQL` (it brings the core package along)
+There is no NuGet package to install: copy the projects from `src/` into your solution as a
+starting point for your own plugin, or reference them with `<ProjectReference>`. Then
+reference `Acme.EntityFrameworkCore.Tenancy.PostgreSQL` (it brings the core project along)
 and provide an `ITenantProvider` that tells the plugin the current tenant; the sample
 [`HttpTenantProvider`](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/samples/ShopApi/HttpTenantProvider.cs) reads it from a claim.
 
@@ -115,6 +117,7 @@ per table (FILTER and BLOCK predicates) and `SESSION_CONTEXT`.
 | Design time | Annotation code generator, `[DesignTimeServicesReference]` | 23–25 |
 | Testing | Model, SQL, snapshot round-trip, compiled model and Testcontainers tests | 26 |
 | Shipping | Versioning, stable annotation formats, packaging, CI, Public API analyzer | 27–28, 41 |
+| Bulk operations | `ProtectBulkOperations()`: a query expression interceptor rejects `ExecuteUpdate` on the tenant column | 30 |
 | Value generation | `TenantId` keys via convention and `HasValueGeneratorFactory(Type)` | 31 |
 | Operations | RLS pitfalls, threat model, PgBouncer (`UseTransactionPooling()`), legitimate cross-tenant access | 36 |
 | Relationships | Composite foreign keys with the tenant, unique per tenant, shared master data, delete rules | 37 |
@@ -144,7 +147,9 @@ tests/
   ...Tenancy.SqlServer.Tests                    Unit and integration tests for SQL Server (Docker)
 benchmarks/
   ...Tenancy.Benchmarks                         BenchmarkDotNet micro benchmarks
-docs/handbook/                                  Handbook sources (Python) and PDFs
+docs/handbook/                                  Handbook: LaTeX sources (de/, en/), check scripts (Python), PDFs (out/)
+docs/deployment/                                Deployment pipeline and role setup for the migrations
+eng/consumer-test/                              Consumer test: packs the libraries, fresh app, dotnet-ef, NativeAOT
 docker-compose.yml                              PostgreSQL for the samples
 ```
 

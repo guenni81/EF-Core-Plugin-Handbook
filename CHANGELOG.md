@@ -7,6 +7,14 @@ version is given by the dependency range and the compatibility table in the READ
 
 ## [Unreleased]
 
+### Changed
+
+- README: states up front that the repository is a handbook with a reference implementation,
+  not a library; the quick start no longer reads as if there were a NuGet package. The
+  repository layout describes `docs/handbook` correctly and lists `docs/deployment` and
+  `eng/consumer-test`; the table "What the plugin demonstrates" lists chapter 30 (bulk
+  operations).
+
 ### Fixed
 
 - Handbook (both editions): the title page gave 45 chapters and 4 appendices; the structure
