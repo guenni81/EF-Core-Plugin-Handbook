@@ -744,3 +744,16 @@ public void Scaffolding_reads_rls_and_policies()
     Assert.Equal(true, orders[RlsAnnotationNames.Forced]);
 }
 \end{sourcecode}
+
+Dieser Test prüft nur das Einlesen. \code{Scaffolding\allowbreak{}Roundtrip\allowbreak{}Tests}
+geht den ganzen Weg wie \code{dotnet ef dbcontext scaffold}: Policies in einer echten Datenbank
+anlegen (ohne Ausdrücke, \code{FOR SELECT TO} einer Rolle ohne Ausdrücke, restrictive ohne
+Ausdrücke und eine mit \code{USING}/\code{WITH CHECK}), über
+\code{IReverse\allowbreak{}Engineer\allowbreak{}Scaffolder} Code erzeugen, ihn mit Roslyn kompilieren,
+das Modell des erzeugten Contexts bauen und mit dem eingelesenen Datenbankmodell vergleichen,
+ohne Phantom-Migration gegen sich selbst, und daraus eine neue Datenbank anlegen. Deren
+\code{pg\_\allowbreak{}policies} müssen der Ausgangsdatenbank gleichen, und als App-Rolle gilt die
+Semantik aus Kapitel~\ref{ch:annotations-and-fluent-api}. Vor der Korrektur brach schon der
+erste Schritt mit einer \code{Argument\allowbreak{}Out\allowbreak{}Of\allowbreak{}Range\allowbreak{}Exception}
+ab: Für \code{CREATE POLICY allow\_all ON t;} blieb die Fluent-Kette leer. Die Ausdrücke werden
+dabei nicht normalisiert; der Context enthält den Text aus \code{pg\_\allowbreak{}policies}.

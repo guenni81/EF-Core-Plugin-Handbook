@@ -112,7 +112,12 @@ public class TenancyAnnotationCodeGenerator : NpgsqlAnnotationCodeGenerator
         if (policy.WithCheck is not null)
             calls.Add(new(PolicyMethod(nameof(PolicyBuilder.WithCheck)), policy.WithCheck));
 
-        // At least Using or WithCheck always exists (validated in PolicyBuilder)
+        // Only default values (FOR ALL, PERMISSIVE, PUBLIC, no expressions; valid in PostgreSQL):
+        // the default stated explicitly, p => p.For(PolicyCommand.All). It builds the same
+        // annotation, so neither the policy nor the snapshot changes.
+        if (calls.Count == 0)
+            return new(PolicyMethod(nameof(PolicyBuilder.For)), PolicyCommand.All);
+
         return calls.Skip(1).Aggregate(calls[0], (chain, next) => chain.Chain(next));
     }
 }

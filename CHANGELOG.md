@@ -80,6 +80,20 @@ version is given by the dependency range and the compatibility table in the READ
 
 ### Fixed
 
+- PostgreSQL scaffolding: a valid policy without `USING` and `WITH CHECK`
+  (`CREATE POLICY allow_all ON t;`) crashed `dotnet ef dbcontext scaffold` with an
+  `ArgumentOutOfRangeException` in `TenancyAnnotationCodeGenerator`, because the Fluent chain
+  stayed empty, and `PolicyBuilder.Build()` rejected such a policy although both clauses are
+  optional in PostgreSQL. The builder now checks exactly the rules of `CREATE POLICY` (INSERT
+  only `WITH CHECK`, SELECT/DELETE only `USING`); a policy with default values only is written
+  as `p => p.For(PolicyCommand.All)`, which builds the same annotation (no phantom migration,
+  annotation format unchanged). New `ScaffoldingRoundtripTests`: real database, scaffolding,
+  compiling the generated context, comparing its model, recreating the schema and checking the
+  semantics as the app role (a permissive policy without expressions grants nothing, a
+  restrictive one restricts nothing); unit and snapshot tests for such policies. Handbook (both
+  editions): chapters "Annotations and Fluent API", "Design-time services" and "Scaffolding in
+  practice" separate PostgreSQL's rules from the former, stricter plugin rule.
+
 - `ProtectBulkOperations()` (core interceptor, PostgreSQL and SQL Server): `ExecuteUpdate` after a
   projection got past the check, e.g. `Select(o => new { Entity = o })` with
   `SetProperty(x => x.Entity.TenantId, ...)` or a projected scalar `x.TenantId`; only direct

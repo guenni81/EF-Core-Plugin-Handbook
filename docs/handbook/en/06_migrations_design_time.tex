@@ -513,9 +513,14 @@ public override IReadOnlyList<MethodCallCodeFragment> GenerateFluentApiCalls(
   built with
   \code{fragment.\allowbreak{}Chain(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}.
   \\
+  \tablerule
+  Policy with default values only & Without expressions, roles and command the chain would be
+  empty; \code{p => } without a call does not compile. \code{Build\allowbreak{}Policy\allowbreak{}Chain}
+  then writes the default explicitly, \code{p => p.\allowbreak{}For(\allowbreak{}Policy\allowbreak{}Command.\allowbreak{}All)}:
+  the same annotation, so no phantom migration. \\
 \end{datatable}
 
-The generator only affects the snapshot and designer files. The actual migrations keep
+The generator affects the snapshot, the designer files and the scaffolded context. The actual migrations keep
 \code{.\allowbreak{}Annotation(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})} on
 \code{Alter\allowbreak{}Table}; that is the intended mechanism for changes.
 

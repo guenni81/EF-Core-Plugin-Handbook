@@ -119,7 +119,7 @@ the relational model (chapter~\ref{ch:declarative-sql-from-annotations}). That w
 model without a change still produces no migration.
 
 Nested configuration such as \code{Has\allowbreak{}Policy} accepts an
-\code{Action<\allowbreak{}Policy\allowbreak{}Builder>}. The builder checks the database's
+\code{Action<\allowbreak{}Policy\allowbreak{}Builder>}. The builder checks PostgreSQL's
 rules already while the model is built. A mistake like “INSERT policy with USING” therefore
 surfaces on the application's first start, not when the migration runs in production:
 
@@ -127,10 +127,6 @@ surfaces on the application's first start, not when the migration runs in produc
 \begin{sourcecode}[Builders/\allowbreak{}Policy\allowbreak{}Builder.\allowbreak{}cs › Build]{csharp}
 internal RlsPolicy Build()
 {
-    if (_using is null && _withCheck is null)
-        throw new InvalidOperationException(
-            $"Policy '{_name}' requires USING or WITH CHECK.");
-
     if (_command == PolicyCommand.Insert && _using is not null)
         throw new InvalidOperationException(
             $"INSERT policy '{_name}' only allows WITH CHECK.");
@@ -143,6 +139,31 @@ internal RlsPolicy Build()
         _roles.Count > 0 ? [.. _roles] : null, _using, _withCheck);
 }
 \end{sourcecode}
+
+The builder adopts exactly the rules of \code{CREATE POLICY}, nothing more. Both clauses are
+optional in PostgreSQL; only which command allows which clause is restricted:
+
+\begin{datatable}{H{0.70}H{0.75}H{1.55}}
+  \textbf{Command} & \textbf{Allowed} & \textbf{Without an expression} \\
+  \tablehead
+  \code{ALL}, \code{UPDATE} & \code{USING}, \code{WITH CHECK} & Without \code{WITH CHECK},
+  \code{USING} also applies to new rows. \\
+  \tablerule
+  \code{SELECT}, \code{DELETE} & only \code{USING} & --- \\
+  \tablerule
+  \code{INSERT} & only \code{WITH CHECK} & --- \\
+  \tablerule
+  Neither clause & valid for every command & Permissive: grants no row, so it adds nothing to
+  the OR of the permissive policies. Restrictive: restricts nothing. \\
+\end{datatable}
+
+The PostgreSQL documentation does not state the last row explicitly; it is checked against
+PostgreSQL~17 (\code{Scaffolding\allowbreak{}Roundtrip\allowbreak{}Tests}). A policy
+\code{CREATE POLICY allow\_all ON t;} therefore grants nothing despite its name. The plugin used
+to be stricter here and required \code{USING} or \code{WITH CHECK}. That rule is gone: a valid
+policy from the database has to be representable as Fluent API again when scaffolding
+(chapter~\ref{ch:scaffolding-in-practice}). A stricter house rule belongs in a model test of its
+own, not in the builder.
 
 \section{Configuration sources}
 

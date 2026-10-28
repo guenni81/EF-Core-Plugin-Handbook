@@ -1,3 +1,4 @@
+using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata;
 using Microsoft.EntityFrameworkCore;
 
 namespace Acme.EntityFrameworkCore.Tenancy.Tests;
@@ -34,7 +35,7 @@ public class ValidationTests
     [Theory]
     [InlineData(PolicyCommand.Insert, true, false)]   // INSERT does not allow USING
     [InlineData(PolicyCommand.Select, false, true)]   // SELECT does not allow WITH CHECK
-    [InlineData(PolicyCommand.All, false, false)]     // neither USING nor WITH CHECK
+    [InlineData(PolicyCommand.Delete, false, true)]   // DELETE does not allow WITH CHECK
     public void Invalid_policy_is_rejected_while_building_the_model(
         PolicyCommand command, bool withUsing, bool withCheck)
     {
@@ -46,5 +47,25 @@ public class ValidationTests
         }));
 
         Assert.Throws<InvalidOperationException>(() => ctx.Model);
+    }
+
+    [Theory]
+    [InlineData(PolicyCommand.All)]
+    [InlineData(PolicyCommand.Select)]
+    [InlineData(PolicyCommand.Insert)]
+    [InlineData(PolicyCommand.Update)]
+    [InlineData(PolicyCommand.Delete)]
+    public void Policy_without_expressions_is_valid_as_in_PostgreSQL(PolicyCommand command)
+    {
+        // CREATE POLICY p ON t; is valid: both clauses are optional
+        using var ctx = Contexts.Create(model: m => m.Entity<Order>().HasPolicy("bare", p => p.For(command)));
+
+        var policy = RlsPolicy.Deserialize((string)ctx.DesignModel().FindEntityType(typeof(Order))!
+            [RlsAnnotationNames.PolicyPrefix + "bare"]!);
+        Assert.Equal(command, policy.Command);
+        Assert.Null(policy.Using);
+        Assert.Null(policy.WithCheck);
+        Assert.Contains(Contexts.MigrationSql(null, ctx),
+            s => s == $"CREATE POLICY bare ON \"Orders\" AS PERMISSIVE FOR {command.ToString().ToUpperInvariant()};");
     }
 }

@@ -7,6 +7,12 @@ namespace Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Builders;
 /// Fluent builder for a policy. Checks PostgreSQL's rules while the model is built,
 /// so mistakes surface at startup and not only when the migration is executed.
 /// </summary>
+/// <remarks>
+/// USING and WITH CHECK are both optional, as in CREATE POLICY. Without either, a permissive
+/// policy makes no row visible or writable (it adds nothing to the OR of the permissive
+/// policies), a restrictive one restricts nothing. Scaffolding reproduces such policies, so
+/// the builder accepts them.
+/// </remarks>
 public sealed class PolicyBuilder
 {
     private readonly string _name;
@@ -47,10 +53,8 @@ public sealed class PolicyBuilder
 
     internal RlsPolicy Build()
     {
-        // The same rules PostgreSQL enforces in CREATE POLICY, checked early
-        if (_using is null && _withCheck is null)
-            throw new InvalidOperationException($"Policy '{_name}' requires USING or WITH CHECK.");
-
+        // The same rules PostgreSQL enforces in CREATE POLICY, checked early; both clauses
+        // are optional
         if (_command == PolicyCommand.Insert && _using is not null)
             throw new InvalidOperationException($"INSERT policy '{_name}' only allows WITH CHECK.");
 

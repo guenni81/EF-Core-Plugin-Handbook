@@ -520,9 +520,14 @@ public override IReadOnlyList<MethodCallCodeFragment> GenerateFluentApiCalls(
   entstehen mit
   \code{fragment.\allowbreak{}Chain(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}.
   \\
+  \tablerule
+  Policy nur mit Standardwerten & Ohne Ausdrücke, Rolle und Befehl bliebe die Kette leer;
+  \code{p => } ohne Aufruf kompiliert nicht. \code{Build\allowbreak{}Policy\allowbreak{}Chain}
+  schreibt dann den Standard ausdrücklich, \code{p => p.\allowbreak{}For(\allowbreak{}Policy\allowbreak{}Command.\allowbreak{}All)}:
+  dieselbe Annotation, also keine Phantom-Migration. \\
 \end{datatable}
 
-Der Generator betrifft nur Snapshot und Designer-Dateien. Die eigentlichen Migrationen
+Der Generator betrifft Snapshot, Designer-Dateien und den per Scaffolding erzeugten Context. Die eigentlichen Migrationen
 behalten
 \code{.\allowbreak{}Annotation(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})} an
 \code{Alter\allowbreak{}Table}; das ist der vorgesehene Mechanismus für Änderungen.

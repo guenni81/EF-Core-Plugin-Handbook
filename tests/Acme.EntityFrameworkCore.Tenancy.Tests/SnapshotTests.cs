@@ -111,6 +111,28 @@ public class SnapshotTests
             model.GetRelationalModel(), ctx.DesignModel().GetRelationalModel()));
     }
 
+    [Fact]
+    public void Policies_with_only_default_values_survive_the_snapshot_roundtrip()
+    {
+        using var ctx = Contexts.Create(model: m => m.Entity<Customer>()
+            .HasPolicy("deny_all", p => p.For(PolicyCommand.All))
+            .HasPolicy("no_limit", p => p.Restrictive()));
+        var code = GenerateSnapshot(ctx);
+
+        // An empty chain would not compile: the default is written explicitly
+        Assert.Contains("HasPolicy(b, \"deny_all\", p => p.For(PolicyCommand.All))", code);
+        Assert.Contains("HasPolicy(b, \"no_limit\", p => p.Restrictive())", code);
+
+        var model = Compile(code).Model;
+        if (model is IMutableModel mutable)
+            model = mutable.FinalizeModel();
+        model = ctx.GetService<IModelRuntimeInitializer>()
+            .Initialize(model, designTime: true, validationLogger: null);
+
+        Assert.Empty(ctx.GetService<IMigrationsModelDiffer>().GetDifferences(
+            model.GetRelationalModel(), ctx.DesignModel().GetRelationalModel()));
+    }
+
     private static ModelSnapshot Compile(string code)
     {
         // Load the required assemblies: AppDomain.GetAssemblies() below only returns
