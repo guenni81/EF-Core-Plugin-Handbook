@@ -345,7 +345,7 @@ public virtual void ProcessModelFinalizing(
         // Marked property or "TenantId" with ITenantOwned (core package,
         // chapter "Property-level Fluent API and runtime annotations")
         if (entityType.FindTenantPropertyCandidate() is not IConventionProperty property)
-            continue;                             // (+ type check, shortened)
+            continue;      // (ITenantOwned without a mapped TenantId: exception, shortened)
 
         if (entityType.IsRlsOptedOut())
         {
@@ -370,6 +370,20 @@ public virtual void ProcessModelFinalizing(
     }
 }
 \end{sourcecode}
+
+Before the convention annotates anything, it checks the tenant property. Both provider packages
+follow the same contract: a property marked with
+\code{Is\allowbreak{}Tenant\allowbreak{}Property(\allowbreak{})} wins, otherwise an
+\code{ITenant\allowbreak{}Owned} type needs a mapped property \code{Tenant\allowbreak{}Id} of
+type \code{Tenant\allowbreak{}Id}. If an \code{ITenant\allowbreak{}Owned} type has no such
+property, because \code{Ignore(\allowbreak{}e => e.\allowbreak{}Tenant\allowbreak{}Id)} removed
+it or because an explicit interface implementation is not a mapped property, the model throws an
+\code{Invalid\allowbreak{}Operation\allowbreak{}Exception}. That also applies to an entity
+excluded with \code{[No\allowbreak{}Tenant\allowbreak{}Isolation]}, since the interface
+promises a tenant column. Skipping the type silently would cost it the policy, the index and,
+because the runtime annotation would be missing, the check in
+\code{Save\allowbreak{}Changes}. Types without \code{ITenant\allowbreak{}Owned} and without a
+marked property are not tenant data and stay untouched.
 
 % source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Conventions/TenantIsolationConvention.cs
 \begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Convention.\allowbreak{}cs › Apply\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security]{csharp}

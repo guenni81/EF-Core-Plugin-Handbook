@@ -346,7 +346,7 @@ public virtual void ProcessModelFinalizing(
         // Markierte Property oder "TenantId" bei ITenantOwned (Kernpaket,
         // Kapitel „Fluent API auf Property-Ebene und Laufzeit-Annotations“)
         if (entityType.FindTenantPropertyCandidate() is not IConventionProperty property)
-            continue;                             // (+ Typprüfung, gekürzt)
+            continue;      // (ITenantOwned ohne gemappte TenantId: Exception, gekürzt)
 
         if (entityType.IsRlsOptedOut())
         {
@@ -371,6 +371,19 @@ public virtual void ProcessModelFinalizing(
     }
 }
 \end{sourcecode}
+
+Bevor die Convention etwas annotiert, prüft sie die Mandanten-Property. Beide Provider-Pakete
+folgen demselben Vertrag: Eine mit \code{Is\allowbreak{}Tenant\allowbreak{}Property(\allowbreak{})}
+markierte Property hat Vorrang, sonst braucht ein \code{ITenant\allowbreak{}Owned}-Typ eine
+gemappte Property \code{Tenant\allowbreak{}Id} vom Typ \code{Tenant\allowbreak{}Id}. Fehlt sie,
+weil \code{Ignore(\allowbreak{}e => e.\allowbreak{}Tenant\allowbreak{}Id)} sie entfernt hat
+oder weil eine explizite Interface-Implementierung keine gemappte Property ist, wirft das Modell
+eine \code{Invalid\allowbreak{}Operation\allowbreak{}Exception}. Das gilt auch für eine mit
+\code{[No\allowbreak{}Tenant\allowbreak{}Isolation]} ausgenommene Entität, denn das Interface
+verspricht eine Mandantenspalte. Den Typ stillschweigend zu überspringen, kostete ihn die
+Policy, den Index und, weil die Laufzeit-Annotation fehlte, die Prüfung in
+\code{Save\allowbreak{}Changes}. Typen ohne \code{ITenant\allowbreak{}Owned} und ohne
+markierte Property sind keine Mandantendaten und bleiben unberührt.
 
 % source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Conventions/TenantIsolationConvention.cs
 \begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Convention.\allowbreak{}cs › Apply\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security]{csharp}

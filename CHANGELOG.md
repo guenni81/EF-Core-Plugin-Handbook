@@ -14,6 +14,11 @@ version is given by the dependency range and the compatibility table in the READ
   `TemporalAll()` and the other `FOR SYSTEM_TIME` queries returned other tenants' rows from the
   history table. Temporal tables without a tenant and entities excluded with
   `[NoTenantIsolation]` remain allowed. Handbook (both editions) and README document the limit.
+- SQL Server: an `ITenantOwned` entity without a mapped tenant property (`Ignore(e => e.TenantId)`
+  or an explicit interface implementation without `IsTenantProperty()`) is now rejected while
+  the model is built, as with PostgreSQL. Before, the convention skipped it silently, so the
+  table got no security policy and `SaveChanges` no tenant check. The handbook (both editions,
+  chapter "Conventions") describes the validation contract.
 
 ## [1.2.0] - 2026-10-28
 
