@@ -455,6 +455,9 @@ Provider-Pakete rufen ihn auf, der Vertrag ist also für PostgreSQL und SQL Serv
   \tablerule
   View, \code{To\allowbreak{}Sql\allowbreak{}Query}, keyless ohne Tabelle & keine eigene
   Tabelle & keine Policy; die Basistabellen tragen sie \\
+  \tablerule
+  Temporal-Tabelle (SQL Server, \code{Is\allowbreak{}Temporal}) & die aktuelle Tabelle und
+  ihre Historientabelle, die keine Policy hat & abgelehnt (SQL-Server-Paket) \\
 \end{datatable}
 
 Abgelehnt heißt: Das Modell wirft beim ersten Zugriff auf \code{Model} eine
@@ -465,6 +468,16 @@ schreibt, wäre schlimmer als die Ablehnung. TPC wäre grundsätzlich schützbar
 konkrete Tabelle die Mandantenspalte erbt. Das Plugin unterstützt aber genau eine Tabelle pro
 Hierarchie, und eine halbe Umsetzung soll keine Sicherheit vortäuschen. Als Ausweg bleiben TPH
 oder eigenständige Entitäten.
+
+Temporal-Tabellen scheitern aus demselben Grund, obwohl die Historientabelle die Mandantenspalte
+hat. Eine Security Policy in SQL Server schützt genau die Tabellen, die sie nennt, und das Plugin
+nennt nur die aktuelle Tabelle. Abfragen mit \code{FOR SYSTEM\_TIME}, die EF für
+\code{Temporal\allowbreak{}All(\allowbreak{})} und verwandte Methoden absetzt, lesen die
+Historientabelle ohne das Prädikat der aktuellen Tabelle und liefern damit alte Zeilen aller
+Mandanten. Die SQL-Server-Convention lehnt deshalb eine mandantenbezogene Entität mit
+\code{Is\allowbreak{}Temporal(\allowbreak{})} ab; Temporal-Tabellen ohne Mandant und
+ausgenommene Entitäten bleiben erlaubt. Um auch die Historientabelle zu schützen, bräuchte sie
+eigene Prädikate, die das Plugin nicht erzeugt.
 
 Bewusste Ausnahmen bleiben möglich: Eine mit \code{[No\allowbreak{}Tenant\allowbreak{}Isolation]}
 oder \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})}

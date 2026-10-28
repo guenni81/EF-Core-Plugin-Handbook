@@ -453,6 +453,9 @@ SQL Server:
   \tablerule
   View, \code{To\allowbreak{}Sql\allowbreak{}Query}, keyless without a table & no table of
   its own & no policy; the base tables carry it \\
+  \tablerule
+  Temporal table (SQL Server, \code{Is\allowbreak{}Temporal}) & the current table and its
+  history table, which has no policy & rejected (SQL Server package) \\
 \end{datatable}
 
 Rejected means: the model throws an \code{Invalid\allowbreak{}Operation\allowbreak{}Exception}
@@ -462,6 +465,15 @@ Seeming support that writes a policy onto a table without a matching column woul
 the rejection. TPC could be protected in principle, since every concrete table inherits the
 tenant column. The plugin, however, supports exactly one table per hierarchy, and a half-done
 implementation must not pretend to be secure. The ways out are TPH or independent entities.
+
+Temporal tables fail for the same reason, although the history table has the tenant column. A
+SQL Server security policy protects exactly the tables it names, and the plugin names the current
+table only. Queries with \code{FOR SYSTEM\_TIME}, which EF issues for
+\code{Temporal\allowbreak{}All(\allowbreak{})} and its siblings, read the history table without
+the current table's predicate and so return old rows of every tenant. The SQL Server convention
+therefore rejects a tenant-owned entity mapped with \code{Is\allowbreak{}Temporal(\allowbreak{})};
+temporal tables without a tenant and excluded entities remain allowed. Protecting the history
+table as well would require predicates of its own on it, which the plugin does not generate.
 
 Deliberate exceptions remain possible: an entity excluded with
 \code{[No\allowbreak{}Tenant\allowbreak{}Isolation]} or

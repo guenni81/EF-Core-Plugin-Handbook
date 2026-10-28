@@ -246,6 +246,9 @@ the very top of `Up()`.
   many-to-many join tables) are rejected while the model is built; TPH, owned types in the
   owner's table or as JSON, table splitting and join entities with a tenant property are
   protected (chapter "Conventions", section "Which table mappings are protected").
+  SQL Server temporal tables are rejected for tenant-owned types too: the security policy
+  covers the current table, not its history table, so `TemporalAll()` would return other
+  tenants' old rows.
 * Access across tenants (reports, maintenance) belongs in a separate database role, never
   in a switch the application role could flip (chapter "Row Level Security in production").
 

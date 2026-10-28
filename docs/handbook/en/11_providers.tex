@@ -143,6 +143,9 @@ has to solve anew per database:
   Table mappings & \multicolumn{2}{>{\RaggedRight\arraybackslash}p{0.6\linewidth}}{Same
   contract from the relational package (chapter~\ref{ch:conventions}, page~\pageref{sec:supported-table-mappings})} \\
   \tablerule
+  Temporal tables & No system-versioned tables & Rejected for tenant-owned types: the policy
+  does not cover the history table \\
+  \tablerule
   Deliberate exception & Attribute or
   \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})}
   & Attribute only \\

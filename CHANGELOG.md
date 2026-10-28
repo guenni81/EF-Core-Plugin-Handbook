@@ -7,6 +7,14 @@ version is given by the dependency range and the compatibility table in the READ
 
 ## [Unreleased]
 
+### Fixed
+
+- SQL Server: a tenant-owned entity mapped to a temporal table (`IsTemporal()`) is now rejected
+  while the model is built. The security policy protected only the current table, so
+  `TemporalAll()` and the other `FOR SYSTEM_TIME` queries returned other tenants' rows from the
+  history table. Temporal tables without a tenant and entities excluded with
+  `[NoTenantIsolation]` remain allowed. Handbook (both editions) and README document the limit.
+
 ## [1.2.0] - 2026-10-28
 
 Packages 1.2.0, handbook edition 1.2.

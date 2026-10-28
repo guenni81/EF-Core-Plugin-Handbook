@@ -144,3 +144,68 @@ public class SqlServerTableMappingTests
         => Assert.Contains("join table", Rejected(m =>
             m.Entity<Project>().HasMany(p => p.Labels).WithMany(l => l.Projects)));
 }
+
+/// <summary>Entity type without tenant reference.</summary>
+public class Country
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+}
+
+/// <summary>
+/// Temporal tables: the security policy protects the current table only, the history table
+/// stays readable for every tenant via FOR SYSTEM_TIME (chapter "Multiple providers").
+/// </summary>
+public class SqlServerTemporalTableTests
+{
+    private static ITable Table(DbContext ctx, string name)
+        => ctx.GetService<IDesignTimeModel>().Model.GetRelationalModel().Tables
+            .Single(t => t.Name == name);
+
+    [Fact]
+    public void Temporal_tenant_owned_table_is_rejected()
+    {
+        using var ctx = MappingContext.Create(m => m.Entity<Order>().ToTable(t => t.IsTemporal()));
+
+        var message = Assert.Throws<InvalidOperationException>(() => ctx.Model).Message;
+
+        Assert.Contains("temporal table", message);
+        Assert.Contains("history table", message);
+    }
+
+    [Fact]
+    public void Temporal_tph_hierarchy_is_rejected()
+    {
+        using var ctx = MappingContext.Create(m =>
+        {
+            m.Entity<Payment>().ToTable(t => t.IsTemporal());
+            m.Entity<CardPayment>();
+        });
+
+        Assert.Contains("temporal table", Assert.Throws<InvalidOperationException>(() => ctx.Model).Message);
+    }
+
+    [Fact]
+    public void Temporal_table_without_tenant_reference_stays_supported()
+    {
+        using var ctx = MappingContext.Create(m =>
+        {
+            m.Entity<Country>().ToTable(t => t.IsTemporal());
+            m.Entity<Order>();
+        });
+
+        Assert.True(ctx.Model.FindEntityType(typeof(Country))!.IsTemporal());
+        Assert.Null(Table(ctx, "Country")[SqlServerRlsAnnotationNames.TenantColumn]);
+        Assert.Equal("TenantId", Table(ctx, "Order")[SqlServerRlsAnnotationNames.TenantColumn]);
+    }
+
+    [Fact]
+    public void Temporal_table_of_an_opted_out_entity_type_stays_supported()
+    {
+        using var ctx = MappingContext.Create(m => m.Entity<AuditEntry>().ToTable(t => t.IsTemporal()));
+
+        Assert.True(ctx.Model.FindEntityType(typeof(AuditEntry))!.IsTemporal());
+        Assert.Null(Table(ctx, "AuditEntry")[SqlServerRlsAnnotationNames.TenantColumn]);
+        Assert.Empty(Contexts.CreateSql(ctx).Where(s => s.Contains("SECURITY POLICY")));
+    }
+}
