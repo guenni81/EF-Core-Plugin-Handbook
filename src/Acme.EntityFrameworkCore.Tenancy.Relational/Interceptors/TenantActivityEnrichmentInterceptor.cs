@@ -16,8 +16,8 @@ namespace Acme.EntityFrameworkCore.Tenancy.Interceptors;
 /// activity of the command already exists when the interceptor runs; with only the database
 /// driver's tracing, the driver starts its activity later, and the tag lands on the enclosing
 /// one (typically the request). Costs nothing when no activity is recorded. Registered in EF's
-/// internal service provider, one instance for all contexts; the tenant comes from the context
-/// of each command.
+/// internal service provider as an <c>IInterceptor</c>, which EF resolves per context (scoped);
+/// the tenant comes from the context of each command.
 /// </remarks>
 public class TenantActivityEnrichmentInterceptor : DbCommandInterceptor
 {

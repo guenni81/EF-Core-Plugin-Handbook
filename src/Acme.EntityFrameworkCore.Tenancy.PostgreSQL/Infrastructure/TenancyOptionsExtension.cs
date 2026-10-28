@@ -93,8 +93,8 @@ public class TenancyOptionsExtension : IDbContextOptionsExtension
             new EntityFrameworkServicesBuilder(services)
                 .TryAdd<IInterceptor, TenantQueryExpressionInterceptor>();
 
-        // Optional tagging of traces (chapter "Diagnostics and logging"); one instance for all
-        // contexts, the tenant comes from the context of each command
+        // Optional tagging of traces (chapter "Diagnostics and logging"); IInterceptor is scoped,
+        // one instance per context, the tenant comes from the context of each command
         if (Settings.EnrichOpenTelemetry)
             new EntityFrameworkServicesBuilder(services)
                 .TryAdd<IInterceptor, TenantActivityEnrichmentInterceptor>();
