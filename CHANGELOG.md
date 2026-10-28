@@ -33,6 +33,15 @@ version is given by the dependency range and the compatibility table in the READ
   the ShopApi session, now shown in chapter "Using the plugin in ASP.NET Core", against
   PostgreSQL in a temporary container. Both editions and `docs/handbook/README.md` describe
   which listings are executed and which are shortened or simplified.
+- Handbook (both editions), chapter "The update pipeline": a complete, tested teaching example
+  of a provider-specific write extension. `DatabaseClockUpdateSqlGenerator` (in the integration
+  test project, not part of the packages) derives from Npgsql's update SQL generator and sets
+  columns marked with `HasDatabaseClockOnUpdate()` to `now()` in every `UPDATE`; EF reads the
+  value back with `RETURNING`. The chapter explains why a SaveChanges or command interceptor
+  cannot do this, registration and lifetime of the replaced singleton, and the limits (one
+  generator per context, not for `ExecuteUpdate`, provider-specific). `UpdatePipelineTests`
+  checks the SQL, the value read back and optimistic concurrency against PostgreSQL. The chapter
+  is now rated volatile (internal Npgsql base class).
 
 ### Changed
 

@@ -209,7 +209,7 @@ dass die Factory im erzeugten Code auftaucht.
 
 % ------------------------------------------------------------
 \chapter{Die Update-Pipeline}\label{ch:the-update-pipeline}
-\versionrisk{medium}
+\versionrisk{volatile}
 
 Kapitel~\ref{ch:the-query-pipeline} beschreibt den Weg von LINQ zu SQL. Für das Schreiben
 gibt es eine eigene Pipeline, die Plugins für Massenoperationen, datenbankseitige
@@ -247,6 +247,122 @@ es \code{Execute\allowbreak{}Update}. Ein eigener
 \code{IUpdate\allowbreak{}Sql\allowbreak{}Generator} ist erst dann gerechtfertigt, wenn das
 SQL selbst eine andere Form braucht, etwa \code{INSERT
 .\allowbreak{}.\allowbreak{}.\allowbreak{} ON CONFLICT} für Upserts.
+
+\section{Beispiel: die Datenbankuhr beim UPDATE}
+
+Eine Spalte \code{Updated\allowbreak{}At} soll den Zeitpunkt der letzten Änderung tragen, und
+darüber soll die Uhr der Datenbank entscheiden, nicht die des Anwendungsservers, der die Zeile
+gerade schreibt. Für \code{INSERT} hat EF das Mittel:
+\code{Has\allowbreak{}Default\allowbreak{}Value\allowbreak{}Sql(\allowbreak{}"now()")}. Für
+\code{UPDATE} gibt es keines.
+\code{Value\allowbreak{}Generated\allowbreak{}On\allowbreak{}Add\allowbreak{}Or\allowbreak{}Update(\allowbreak{})}
+sagt EF nur, dass die Datenbank den Wert erzeugt; EF lässt die Spalte im \code{SET} weg, liest
+sie mit \code{RETURNING} zurück und erwartet, dass ein Trigger sie gesetzt hat. Die einfacheren
+Mittel erreichen das Ziel nicht:
+
+\begin{itemize}
+  \item Ein \textbf{SaveChanges-Interceptor} kann nur einen Wert aus der Anwendung setzen: die
+    Uhr des Anwendungsservers, nicht \code{now()} der Transaktion.
+  \item Ein \textbf{Command-Interceptor} müsste fertigen SQL-Text bearbeiten, mit
+    Parameternamen und \code{RETURNING}-Klausel, in jedem Batch: fragil.
+  \item Ein \textbf{Trigger} funktioniert, ist aber ein Schemaobjekt außerhalb des EF-Modells,
+    das jede Migration mitführen muss.
+\end{itemize}
+
+Es fehlt eine andere Form des \code{UPDATE} selbst, und die schreibt nur der
+\code{IUpdate\allowbreak{}Sql\allowbreak{}Generator}. Das Beispiel ist ein Lehrbeispiel im
+Testprojekt, nicht Teil der Tenancy-Pakete. Eine Fluent-API-Methode markiert die Property, der
+abgeleitete Generator ergänzt die Zuweisung:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests/UpdatePipeline/DatabaseClockUpdateSqlGenerator.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Update\allowbreak{}Pipeline/\allowbreak{}Database\allowbreak{}Clock\allowbreak{}Update\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+public static PropertyBuilder<T> HasDatabaseClockOnUpdate<T>(this PropertyBuilder<T> builder)
+{
+    builder.Metadata.SetAnnotation(Annotation, true);
+    return builder.HasDefaultValueSql("now()").ValueGeneratedOnAddOrUpdate();
+}
+
+public class DatabaseClockUpdateSqlGenerator : NpgsqlUpdateSqlGenerator   // internal (EF1001)
+{
+    protected override void AppendUpdateCommand(
+        StringBuilder commandStringBuilder,
+        string name,
+        string? schema,
+        IReadOnlyList<IColumnModification> writeOperations,
+        IReadOnlyList<IColumnModification> readOperations,
+        IReadOnlyList<IColumnModification> conditionOperations,
+        bool appendReturningOneClause = false)
+    {
+        AppendUpdateCommandHeader(commandStringBuilder, name, schema, writeOperations);
+
+        // EFs Reihenfolge, mit den zusätzlichen Zuweisungen nach SET
+        foreach (var column in readOperations.Where(IsDatabaseClock))
+        {
+            commandStringBuilder.Append(", ");
+            SqlGenerationHelper.DelimitIdentifier(commandStringBuilder, column.ColumnName);
+            commandStringBuilder.Append(" = now()");
+        }
+
+        AppendWhereClause(commandStringBuilder, conditionOperations);
+        AppendReturningClause(commandStringBuilder, readOperations,
+            appendReturningOneClause ? "1" : null);
+        commandStringBuilder.AppendLine(SqlGenerationHelper.StatementTerminator);
+    }
+}
+\end{sourcecode}
+
+Die Überschreibung ändert so wenig wie möglich. Eine beim Ändern generierte Spalte ist für EF
+eine Leseoperation: Sie steht im \code{RETURNING}, nicht im \code{SET}. Die Methode schreibt den
+Kopf von EF, hängt für jede markierte Lesespalte \code{"Spalte" = now()} an und überlässt die
+\code{WHERE}-Klausel mit Schlüssel und Concurrency-Token sowie die \code{RETURNING}-Klausel EF.
+Deshalb funktionieren der zurückgelesene Wert und die optimistische Konkurrenzprüfung weiter.
+Mit \code{xmin} als Row Version sendet SaveChanges:
+
+\begin{sourcecode}[SaveChanges nach einer Änderung von Title]{sql}
+UPDATE "Documents" SET "Title" = @p0, "UpdatedAt" = now()
+WHERE "Id" = @p1 AND xmin = @p2
+RETURNING "UpdatedAt", xmin;
+\end{sourcecode}
+
+\code{IUpdate\allowbreak{}Sql\allowbreak{}Generator} ist ein Singleton (Tabelle oben): Der
+Generator darf keinen Zustand pro Befehl halten; alles, was er braucht, kommt aus den
+Parametern. Er ersetzt einen Provider-Dienst mit \code{Replace\allowbreak{}Service}, hier neben
+dem Tenancy-Plugin, das diesen Dienst nicht berührt:
+
+\begin{sourcecode}[Registrierung]{csharp}
+options.UseNpgsql(connectionString)
+    .UseAcmeTenancy()
+    .ReplaceService<IUpdateSqlGenerator, DatabaseClockUpdateSqlGenerator>();
+
+modelBuilder.Entity<Document>(b =>
+{
+    b.Property(d => d.UpdatedAt).HasDatabaseClockOnUpdate();
+    b.Property(d => d.Version).IsRowVersion();            // Npgsql: die Systemspalte xmin
+});
+\end{sourcecode}
+
+Wie weit das Beispiel trägt, entscheidet die Basisklasse. Sie leitet von
+\code{Npgsql\allowbreak{}Update\allowbreak{}Sql\allowbreak{}Generator} ab, einer internen
+Npgsql-Klasse (EF1001): Mit EFs Basisklasse gingen Npgsqls eigene SQL-Formen verloren, etwa
+Teilaktualisierungen von JSON-Spalten. Daher rührt die Einstufung dieses Kapitels. Die Grenzen:
+
+\begin{itemize}
+  \item \textbf{Einer pro Context.} Es gibt genau einen Update-SQL-Generator. Ein zweites
+    Plugin, das ihn ersetzt, gewinnt oder verliert je nach Reihenfolge der Registrierung;
+    kombinieren lassen sich beide nur, indem einer vom anderen ableitet.
+  \item \textbf{Nur SaveChanges.} \code{Execute\allowbreak{}Update} läuft nicht durch diese
+    Pipeline (Kapitel~\ref{ch:bulk-operations-and-the-limits}); es muss die Spalte selbst
+    setzen. Auf Stored Procedures abgebildete Entitäten ebenfalls nicht.
+  \item \textbf{Providerspezifisch.} Die Überschreibung setzt auf \code{RETURNING} von
+    PostgreSQL; SQL Server schreibt \code{OUTPUT} und braucht einen eigenen Generator.
+\end{itemize}
+
+\code{Update\allowbreak{}Pipeline\allowbreak{}Tests} prüft das Beispiel gegen PostgreSQL: Das
+aufgezeichnete \code{UPDATE} enthält die Zuweisung, das \code{WHERE} mit \code{xmin} und das
+\code{RETURNING}; die Entität trägt danach genau den Wert der Datenbank; und ein zweiter
+Schreiber mit veralteter Version erhält eine
+\code{Db\allowbreak{}Update\allowbreak{}Concurrency\allowbreak{}Exception} und ändert nichts.
+Ohne \code{Replace\allowbreak{}Service} scheitert der SQL-Test.
 
 % ------------------------------------------------------------
 \chapter{Complex Types und JSON}\label{ch:complex-types-and-json}
