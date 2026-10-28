@@ -778,6 +778,44 @@ provider from the options, caches it by the hash of the options extensions
 configuration. The lifetime of an EF service is set by EF (appendix~\ref{app:A});
 \code{Try\allowbreak{}Add} applies it (chapter~\ref{ch:registering-services}).
 
+\begin{center}
+\begin{tikzpicture}[
+  cbox/.style={draw=codeborder, fill=accentlight, rounded corners=3pt, line width=0.6pt,
+    text width=0.265\linewidth, align=left, inner sep=5pt,
+    font={\footnotesize\hyphenpenalty=10000\exhyphenpenalty=10000},
+    minimum height=46mm, anchor=north},
+  bridge/.style={cbox, draw=accent, fill=codebg},
+  link/.style={accent, line width=1pt, -{Triangle[length=5pt, width=6pt]}},
+  num/.style={circle, draw=accent, fill=white, font=\scriptsize\bfseries\color{accent},
+    inner sep=1pt, minimum size=4mm}]
+\node[cbox] (app) at (0,0) {{\small\bfseries\color{accent}Application container}\\[1pt]
+  {\color{muted}per application; scope per request}\\[5pt]
+  \code{ITenant\allowbreak{}Provider} (scoped)\\[2pt]
+  \code{IHttp\allowbreak{}Context\allowbreak{}Accessor}\\[2pt]
+  \code{Db\allowbreak{}Context} (scoped)};
+\node[bridge] (ctx) at (0.355\linewidth,0) {{\small\bfseries\color{accent}DbContext instance}\\[1pt]
+  {\color{muted}per request; with pooling longer}\\[5pt]
+  \code{Core\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}Interceptors}:\\
+  \code{Tenant\allowbreak{}Save\allowbreak{}Changes\allowbreak{}Interceptor(\allowbreak{}tenants)}\\[4pt]
+  \code{Conditional\allowbreak{}Weak\allowbreak{}Table<\allowbreak{}Db\allowbreak{}Context,\allowbreak{} ITenant\allowbreak{}Provider>}: held weakly, gone with the context};
+\node[cbox] (ef) at (0.71\linewidth,0) {{\small\bfseries\color{accent}EF's internal provider}\\[1pt]
+  {\color{muted}cached per options hash, shared by all contexts}\\[5pt]
+  \code{IModel}, \code{IRelational\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source}
+  (singleton)\\[2pt]
+  \code{IMigrations\allowbreak{}Sql\allowbreak{}Generator} (scoped)\\[2pt]
+  \code{Tenant\allowbreak{}Materialization\allowbreak{}Interceptor} (singleton)};
+\draw[link] (app.east) -- node[num] {1} (ctx.west);
+\draw[link] (ef.west) -- node[num] {2} (ctx.east);
+\end{tikzpicture}
+\end{center}
+
+\begin{enumerate}[label={\protect\tikz[baseline=-0.6ex]\protect\node[circle, draw=accent,
+    font=\scriptsize\bfseries\color{accent}, inner sep=1pt, minimum size=4mm] {\arabic*};},
+    leftmargin=2em, itemsep=2pt]
+  \item \code{Use\allowbreak{}Acme\allowbreak{}Tenancy(\allowbreak{}sp)} resolves the tenant provider from the application container and hands it to the SaveChanges interceptor in the options of this context.
+  \item A singleton in the internal provider gets the context with every event and looks up the tenant provider of exactly that context. Nothing tenant-specific is stored in the internal provider or in the hash, so one internal provider serves all tenants without a leak and without a warning about many service providers.
+\end{enumerate}
+
 \section{Which state belongs where}
 
 \begin{datatable}{H{0.85}H{1.30}H{0.85}}

@@ -782,6 +782,44 @@ derselben Konfiguration. Die Lebensdauer eines EF-Dienstes legt EF fest
 (Anhang~\ref{app:A}); \code{Try\allowbreak{}Add} übernimmt sie
 (Kapitel~\ref{ch:registering-services}).
 
+\begin{center}
+\begin{tikzpicture}[
+  cbox/.style={draw=codeborder, fill=accentlight, rounded corners=3pt, line width=0.6pt,
+    text width=0.265\linewidth, align=left, inner sep=5pt,
+    font={\footnotesize\hyphenpenalty=10000\exhyphenpenalty=10000},
+    minimum height=46mm, anchor=north},
+  bridge/.style={cbox, draw=accent, fill=codebg},
+  link/.style={accent, line width=1pt, -{Triangle[length=5pt, width=6pt]}},
+  num/.style={circle, draw=accent, fill=white, font=\scriptsize\bfseries\color{accent},
+    inner sep=1pt, minimum size=4mm}]
+\node[cbox] (app) at (0,0) {{\small\bfseries\color{accent}Anwendungs-Container}\\[1pt]
+  {\color{muted}pro Anwendung; Scope pro Request}\\[5pt]
+  \code{ITenant\allowbreak{}Provider} (scoped)\\[2pt]
+  \code{IHttp\allowbreak{}Context\allowbreak{}Accessor}\\[2pt]
+  \code{Db\allowbreak{}Context} (scoped)};
+\node[bridge] (ctx) at (0.355\linewidth,0) {{\small\bfseries\color{accent}DbContext-Instanz}\\[1pt]
+  {\color{muted}pro Request; mit Pooling länger}\\[5pt]
+  \code{Core\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}Interceptors}:\\
+  \code{Tenant\allowbreak{}Save\allowbreak{}Changes\allowbreak{}Interceptor(\allowbreak{}tenants)}\\[4pt]
+  \code{Conditional\allowbreak{}Weak\allowbreak{}Table<\allowbreak{}Db\allowbreak{}Context,\allowbreak{} ITenant\allowbreak{}Provider>}: schwach gehalten, verschwindet mit dem Context};
+\node[cbox] (ef) at (0.71\linewidth,0) {{\small\bfseries\color{accent}Interner Provider von EF}\\[1pt]
+  {\color{muted}gecacht pro Options-Hash, geteilt von allen Contexts}\\[5pt]
+  \code{IModel}, \code{IRelational\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source}
+  (singleton)\\[2pt]
+  \code{IMigrations\allowbreak{}Sql\allowbreak{}Generator} (scoped)\\[2pt]
+  \code{Tenant\allowbreak{}Materialization\allowbreak{}Interceptor} (singleton)};
+\draw[link] (app.east) -- node[num] {1} (ctx.west);
+\draw[link] (ef.west) -- node[num] {2} (ctx.east);
+\end{tikzpicture}
+\end{center}
+
+\begin{enumerate}[label={\protect\tikz[baseline=-0.6ex]\protect\node[circle, draw=accent,
+    font=\scriptsize\bfseries\color{accent}, inner sep=1pt, minimum size=4mm] {\arabic*};},
+    leftmargin=2em, itemsep=2pt]
+  \item \code{Use\allowbreak{}Acme\allowbreak{}Tenancy(\allowbreak{}sp)} holt den Tenant-Provider aus dem Anwendungs-Container und gibt ihn dem SaveChanges-Interceptor in den Options dieses Contexts.
+  \item Ein Singleton im internen Provider bekommt mit jedem Ereignis den Context und sucht den Tenant-Provider genau dieses Contexts. Im internen Provider und im Hash liegt nichts Mandantenspezifisches, ein interner Provider bedient also alle Mandanten, ohne Leck und ohne Warnung vor vielen Service Providern.
+\end{enumerate}
+
 \section{Welcher Zustand wohin gehört}
 
 \begin{datatable}{H{0.85}H{1.30}H{0.85}}

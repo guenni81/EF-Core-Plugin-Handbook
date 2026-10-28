@@ -27,6 +27,9 @@ its internal API surface shrinks from 13 to 10 Npgsql types.
 
 ### Added
 
+- Handbook (both editions), chapter 8: a diagram of the application container, the context
+  instance and EF's internal provider, showing how the scoped tenant provider reaches the
+  singleton interceptors without a leak and without a value in the hash.
 - Handbook (both editions), chapter 40: messages from a broker. The sender writes the tenant
   into a header, a consume filter sets it before the scope and the context exist, and messages
   without a valid tenant are rejected instead of being processed for all tenants.
