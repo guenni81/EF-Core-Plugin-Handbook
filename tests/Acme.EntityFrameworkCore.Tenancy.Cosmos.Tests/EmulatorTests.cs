@@ -6,6 +6,12 @@ namespace Acme.EntityFrameworkCore.Tenancy.Cosmos.Tests;
 /// <summary>
 /// Against the Cosmos DB emulator. Cosmos only supports asynchronous I/O, so every test is async.
 /// </summary>
+/// <remarks>
+/// The trait separates these tests from the model tests: CI runs "Category!=Emulator" as a
+/// required step and "Category=Emulator" as a non-blocking one. A new test without the trait
+/// therefore lands in the required group; only tests that need the emulator carry it.
+/// </remarks>
+[Trait("Category", "Emulator")]
 public class EmulatorTests : IClassFixture<CosmosFixture>
 {
     private readonly CosmosFixture _fixture;

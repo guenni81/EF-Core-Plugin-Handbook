@@ -643,6 +643,12 @@ werfen, Anwendung und Tests nutzen also durchgehend die asynchronen Varianten.
   Die Tests laufen gegen den Linux-Emulator von Cosmos DB (vNext), eine Preview. Der Image-Tag
   ist festgenagelt, die Verbindung nutzt den Gateway-Modus über den HTTP-Client des Containers,
   und das Testprojekt referenziert ein neueres Cosmos-SDK, als EF Core~10.0.0 mitbringt: Das
-  SDK~3.51 kann nicht jede binäre Antwort des aktuellen Emulators lesen. Weil der
-  Preview-Emulator gelegentlich hängt, blockiert der Cosmos-Job in der CI den Build noch nicht.
+  SDK~3.51 kann nicht jede binäre Antwort des aktuellen Emulators lesen. Das Projekt hat zwei
+  Gruppen. Die Modelltests (\code{Model\allowbreak{}Tests}: Partition Key, Query-Filter,
+  Validierung) brauchen weder Emulator noch Docker und laufen im Build-Job der CI mit dem
+  Filter \code{Category!=\allowbreak{}Emulator}; scheitert einer, scheitert der Build, auch im
+  Kompatibilitätslauf. Nur die Tests in \code{Emulator\allowbreak{}Tests} tragen den Trait
+  \code{Category=\allowbreak{}Emulator}. Weil der Preview-Emulator gelegentlich hängt, laufen sie
+  in einem eigenen Job mit Zeitlimit, der den Build noch nicht blockiert. Ein neuer Test ohne
+  Trait landet in der Pflichtgruppe, so fällt kein Test aus beiden heraus.
 \end{note}

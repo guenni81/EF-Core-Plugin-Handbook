@@ -171,6 +171,7 @@ dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Tests                # no dat
 dotnet test tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests     # requires Docker
 dotnet test tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests      # requires Docker
 dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Cosmos.Tests         # requires Docker (emulator)
+dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Cosmos.Tests --filter "Category!=Emulator"   # model tests only, no Docker
 ```
 
 The packages as a customer gets them (pack, fresh application, `dotnet-ef`, compiled model;

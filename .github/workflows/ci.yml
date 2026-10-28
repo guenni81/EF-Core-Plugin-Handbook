@@ -34,9 +34,15 @@ jobs:
       - name: SQL Server tests (unit + SQL Server via Testcontainers)
         run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests -c Release --no-build
 
+      # Required: everything in the Cosmos test project that does not carry the trait
+      # Category=Emulator. Needs neither the emulator nor Docker.
+      - name: Cosmos DB model tests (no database)
+        run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Cosmos.Tests -c Release --no-build --filter "Category!=Emulator"
+
   # Cosmos DB package against the Linux emulator (vNext preview, pinned tag in CosmosFixture).
-  # Does not block the build yet: the preview emulator is known to hang occasionally (chapter
-  # "Without SQL: what carries over to Cosmos DB")
+  # Only the tests with the trait Category=Emulator; the model tests run in the build job and
+  # are required. Does not block the build yet: the preview emulator is known to hang
+  # occasionally (chapter "Without SQL: what carries over to Cosmos DB")
   cosmos:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -46,8 +52,9 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
-      - name: Cosmos DB tests (model + emulator via Testcontainers)
-        run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Cosmos.Tests -c Release
+      - name: Cosmos DB emulator tests (via Testcontainers)
+        timeout-minutes: 15
+        run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Cosmos.Tests -c Release --filter "Category=Emulator"
 
   # The packages as a customer gets them: pack, fresh application, dotnet-ef (migrations, no
   # phantom changes, compiled model) and a NativeAOT application against PostgreSQL in Docker.

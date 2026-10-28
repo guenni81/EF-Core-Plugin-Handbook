@@ -28,6 +28,15 @@ version is given by the dependency range and the compatibility table in the READ
   section "Combinations of migrations and isolation" with the matrix and the combinations that
   remain untested.
 
+### Changed
+
+- CI: the Cosmos DB model tests are required. They run in the build job (and in the
+  compatibility workflow) with the filter `Category!=Emulator` and need no Docker; only the
+  tests with the trait `Category=Emulator` run against the preview emulator, still
+  non-blocking, now with a step time limit. Before, the whole Cosmos test project ran with
+  `continue-on-error`, so failing model tests did not stop the build either. Handbook (both
+  editions) and README describe the split.
+
 ### Fixed
 
 - SQL Server: a tenant-owned entity mapped to a temporal table (`IsTemporal()`) is now rejected

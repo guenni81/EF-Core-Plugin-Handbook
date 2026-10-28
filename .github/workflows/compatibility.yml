@@ -46,6 +46,10 @@ jobs:
       - name: SQL Server tests
         run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests -c Release --no-build
 
-      - name: Cosmos DB tests (emulator, does not fail the run)
+      - name: Cosmos DB model tests (no database)
+        run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Cosmos.Tests -c Release --no-build --filter "Category!=Emulator"
+
+      - name: Cosmos DB emulator tests (preview emulator, does not fail the run)
         continue-on-error: true
-        run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Cosmos.Tests -c Release --no-build
+        timeout-minutes: 15
+        run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Cosmos.Tests -c Release --no-build --filter "Category=Emulator"
