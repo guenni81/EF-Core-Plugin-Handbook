@@ -526,6 +526,36 @@ Notably, the filter uses the plugin's own function
 is therefore translated to SQL by the translator from
 chapter~\ref{ch:translating-methods-and-members}. The plugin's building blocks interlock.
 
+\textbf{Combined with soft delete.} Before EF Core~10 an entity type had exactly one query
+filter: a second \code{Has\allowbreak{}Query\allowbreak{}Filter} replaced the first, and
+\code{Ignore\allowbreak{}Query\allowbreak{}Filters(\allowbreak{})} switched off all of them at
+once, the tenant filter included. With named filters the application's own filters stay
+independent of the plugin's:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/QueryTranslationTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Query\allowbreak{}Translation\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+m.Entity<Order>().HasQueryFilter("SoftDelete", o => !EF.Property<bool>(o, "IsDeleted"));
+
+// WHERE NOT (o."IsDeleted") AND o."TenantId" = nullif(current_setting(...), '')::uuid
+var both = ctx.Orders.ToQueryString();
+
+// Deleted rows become visible, the tenant filter stays
+var withDeleted = ctx.Orders.IgnoreQueryFilters(["SoftDelete"]).ToQueryString();
+
+// Only the tenant filter is off (with RLS the database still filters)
+var allTenants = ctx.Orders.IgnoreQueryFilters(["Acme.Tenancy"]).ToQueryString();
+\end{sourcecode}
+
+\begin{important}[Switch off filters by name only]
+  An \code{Ignore\allowbreak{}Query\allowbreak{}Filters(\allowbreak{})} without names also
+  switches off the tenant filter. Where an application shows deleted records, for example in a
+  recycle bin, it names its own filter:
+  \code{Ignore\allowbreak{}Query\allowbreak{}Filters(\allowbreak{}[\textquotedbl{}Soft\allowbreak{}Delete\textquotedbl{}])}.
+  Switching off \code{Acme.\allowbreak{}Tenancy} belongs to support or reporting roles only:
+  with RLS the database still filters, without it (Cosmos DB,
+  chapter~\ref{ch:without-sql-what-carries-over}) the query then sees every tenant.
+\end{important}
+
 \section{Final names, whoever sets them}
 
 The isolation convention reads the column name only at \code{Model\allowbreak{}Finalizing}

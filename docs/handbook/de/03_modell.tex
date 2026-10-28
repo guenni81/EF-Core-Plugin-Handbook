@@ -534,6 +534,36 @@ verwendet. Er wird damit über den Translator aus
 Kapitel~\ref{ch:translating-methods-and-members} nach SQL übersetzt. Die Bausteine des
 Plugins greifen ineinander.
 
+\textbf{Zusammen mit Soft Delete.} Vor EF Core~10 hatte ein Entitätstyp genau einen
+Query-Filter: Ein zweites \code{Has\allowbreak{}Query\allowbreak{}Filter} ersetzte das erste,
+und \code{Ignore\allowbreak{}Query\allowbreak{}Filters(\allowbreak{})} schaltete alle auf einmal
+ab, den Mandantenfilter eingeschlossen. Mit benannten Filtern bleiben die eigenen Filter der
+Anwendung unabhängig von denen des Plugins:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/QueryTranslationTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Query\allowbreak{}Translation\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+m.Entity<Order>().HasQueryFilter("SoftDelete", o => !EF.Property<bool>(o, "IsDeleted"));
+
+// WHERE NOT (o."IsDeleted") AND o."TenantId" = nullif(current_setting(...), '')::uuid
+var both = ctx.Orders.ToQueryString();
+
+// Gelöschte Zeilen werden sichtbar, der Mandantenfilter bleibt
+var withDeleted = ctx.Orders.IgnoreQueryFilters(["SoftDelete"]).ToQueryString();
+
+// Nur der Mandantenfilter ist aus (mit RLS filtert die Datenbank weiter)
+var allTenants = ctx.Orders.IgnoreQueryFilters(["Acme.Tenancy"]).ToQueryString();
+\end{sourcecode}
+
+\begin{important}[Filter nur mit Namen abschalten]
+  Ein \code{Ignore\allowbreak{}Query\allowbreak{}Filters(\allowbreak{})} ohne Namen schaltet auch
+  den Mandantenfilter ab. Wo eine Anwendung gelöschte Datensätze zeigt, etwa in einem
+  Papierkorb, nennt sie ihren eigenen Filter:
+  \code{Ignore\allowbreak{}Query\allowbreak{}Filters(\allowbreak{}[\textquotedbl{}Soft\allowbreak{}Delete\textquotedbl{}])}.
+  \code{Acme.\allowbreak{}Tenancy} abzuschalten ist Support- oder Reporting-Rollen vorbehalten:
+  Mit RLS filtert die Datenbank weiter, ohne RLS (Cosmos DB,
+  Kapitel~\ref{ch:without-sql-what-carries-over}) sieht die Abfrage dann alle Mandanten.
+\end{important}
+
 \section{Endgültige Namen, egal wer sie setzt}
 
 Die Isolations-Convention liest den Spaltennamen erst bei

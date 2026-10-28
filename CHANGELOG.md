@@ -27,6 +27,9 @@ its internal API surface shrinks from 13 to 10 Npgsql types.
 
 ### Added
 
+- Handbook (both editions), chapter 10: the tenant filter combined with an application's soft
+  delete filter through EF Core 10 named query filters, with an important box on switching off
+  filters by name only; a unit test checks all three combinations.
 - Handbook (both editions): new chapter 48 "Without SQL: what carries over to Cosmos DB" in part
   XI, with an important box on the missing row level security (raw access through the SDK and
   FromSql, architectural alternatives: container or account per tenant), a comparison of the

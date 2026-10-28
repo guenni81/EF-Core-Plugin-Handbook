@@ -71,4 +71,32 @@ public class QueryTranslationTests
 
         Assert.DoesNotContain("current_setting(", ctx.Orders.ToQueryString());
     }
+
+    private const string SoftDelete = "NOT (o.\"IsDeleted\")";
+
+    [Fact]
+    public void Named_filters_combine_with_soft_delete_and_can_be_switched_off_one_by_one()
+    {
+        // The application's own soft delete filter next to the plugin's tenant filter (EF 10
+        // named query filters; chapter "Conventions")
+        using var ctx = Contexts.Create(t => t.ApplyQueryFilter(), model: m =>
+        {
+            m.Entity<Order>().Property<bool>("IsDeleted");
+            m.Entity<Order>().HasQueryFilter("SoftDelete", o => !EF.Property<bool>(o, "IsDeleted"));
+        });
+
+        var both = ctx.Orders.ToQueryString();
+        Assert.Contains("current_setting(", both);
+        Assert.Contains(SoftDelete, both);
+
+        // Deleted rows become visible, the tenant filter stays
+        var withDeleted = ctx.Orders.IgnoreQueryFilters(["SoftDelete"]).ToQueryString();
+        Assert.Contains("current_setting(", withDeleted);
+        Assert.DoesNotContain(SoftDelete, withDeleted);
+
+        // Only the tenant filter is off (with RLS the database still filters)
+        var allTenants = ctx.Orders.IgnoreQueryFilters(["Acme.Tenancy"]).ToQueryString();
+        Assert.DoesNotContain("current_setting(", allTenants);
+        Assert.Contains(SoftDelete, allTenants);
+    }
 }
