@@ -228,8 +228,8 @@ während des Modellbaus. Die wichtigsten:
   \code{IModel\allowbreak{}Finalizing\allowbreak{}Convention} & Modell wird abgeschlossen
   (noch änderbar) & Alles, was vom fertigen Modell abhängt \\
   \tablerule
-  \code{IModel\allowbreak{}Finalized\allowbreak{}Convention} & Modell ist fertig (read-only)
-  & Validierung \\
+  \code{IModel\allowbreak{}Finalized\allowbreak{}Convention} & Modell ist fertig und von EF
+  validiert (read-only) & Validierung \\
 \end{datatable}
 
 Der häufigste Convention-Fehler ist der falsche Zeitpunkt:
@@ -534,7 +534,7 @@ verwendet. Er wird damit über den Translator aus
 Kapitel~\ref{ch:translating-methods-and-members} nach SQL übersetzt. Die Bausteine des
 Plugins greifen ineinander.
 
-\textbf{Zusammen mit Soft Delete.} Vor EF Core~10 hatte ein Entitätstyp genau einen
+\textbf{Zusammen mit Soft Delete.} Vor EF Core~10 hatte ein Entity-Typ genau einen
 Query-Filter: Ein zweites \code{Has\allowbreak{}Query\allowbreak{}Filter} ersetzte das erste,
 und \code{Ignore\allowbreak{}Query\allowbreak{}Filters(\allowbreak{})} schaltete alle auf einmal
 ab, den Mandantenfilter eingeschlossen. Mit benannten Filtern bleiben die eigenen Filter der
@@ -636,6 +636,16 @@ gibt und der dem Provider gehört. Für Plugins ist eine
 \code{IModel\allowbreak{}Finalized\allowbreak{}Convention} der bessere Ort: Sie läuft auf
 dem fertigen Modell und kollidiert mit niemandem.
 
+Der Zeitpunkt ist genauer, als der Name verrät. EF ruft die Finalized-Conventions erst
+\emph{nach} dem \code{IModel\allowbreak{}Validator} auf, wenn es aus dem fertigen Modell das
+schlanke Laufzeitmodell erzeugt. Diese Umwandlung ist selbst eine Finalized-Convention
+(\code{Runtime\allowbreak{}Model\allowbreak{}Convention}), und weil
+\code{Convention\allowbreak{}Set.\allowbreak{}Add} eigene Conventions ans Ende hängt, bekommt
+die Validierung des Plugins bereits das Laufzeitmodell. Sie liest deshalb nur Annotations,
+die dort erhalten bleiben (Kapitel~\ref{ch:property-level-fluent-api-and}). Mit einem
+Compiled Model läuft sie zur Laufzeit gar nicht mehr, sondern schon beim Erzeugen mit
+\code{dotnet ef dbcontext optimize}.
+
 \begin{sourcecode}[Conventions/\allowbreak{}Tenancy\allowbreak{}Model\allowbreak{}Validation\allowbreak{}Convention.\allowbreak{}cs (\allowbreak{}vereinfacht)]{csharp}
 public virtual IModel ProcessModelFinalized(IModel model)
 {
@@ -689,7 +699,8 @@ Typen hat ein Plugin zwei Möglichkeiten:
 \section{Der Typ und sein Konverter}
 
 Der stark typisierte \code{Tenant\allowbreak{}Id} und sein Konverter liegen im Kernpaket.
-Der Konverter hat eine gemeinsame Instanz; warum, zeigt der Abschnitt über Compiled Models.
+Der Konverter hat eine gemeinsame Instanz; warum, zeigt der Hinweis zu Compiled Models am
+Ende des Kapitels.
 
 \begin{sourcecode}[Tenant\allowbreak{}Id.\allowbreak{}cs,\allowbreak{} Tenant\allowbreak{}Id\allowbreak{}Converter.\allowbreak{}cs (\allowbreak{}gekürzt, vereinfacht)]{csharp}
 public readonly record struct TenantId(Guid Value)

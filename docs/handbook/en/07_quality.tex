@@ -260,7 +260,7 @@ public async Task Database_rejects_rows_of_other_tenant()
 \section{Package version and supported EF version}
 
 The sample versions plugin and handbook together: the package version equals the book
-edition, packages 1.1.0 belong to edition~1.1. That way every code excerpt belongs to exactly
+edition, packages 1.2.0 belong to edition~1.2. That way every code excerpt belongs to exactly
 one package state. Which EF version a state supports is therefore not part of the version
 number but of the packages' dependency range and the compatibility table in the README: plugin
 1.x supports EF Core~10. Moving to a new EF major version is a breaking change for users and
@@ -282,12 +282,11 @@ patch channel (section “Patches and previews in CI”):
 \section{Dealing with internal APIs}
 
 Plugins rarely get by without internal APIs: the sample derives from
-\code{Npgsql\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator},
 \code{Npgsql\allowbreak{}Annotation\allowbreak{}Provider} and
 \code{Npgsql\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator} and uses
 \code{Npgsql\allowbreak{}Options\allowbreak{}Extension}; in total, the PostgreSQL package
-touches 13 internal types, the SQL Server package 2 and the core none (inventory in the
-upgrade playbook). Such types can change even in minor versions. EF reports their use with
+touches 10 internal types, the SQL Server package 2, the Cosmos package 1, the core and the
+relational layer none (inventory in the upgrade playbook). Such types can change even in minor versions. EF reports their use with
 warning \textbf{EF1001}.
 
 \begin{datatable}{H{0.80}H{1.20}}
@@ -441,7 +440,7 @@ framework.
 \begin{datatable}{H{0.24}H{1.27}H{1.76}H{0.73}}
   \textbf{No.} & \textbf{Step} & \textbf{Approach} & \textbf{In the sample} \\
   \tablehead
-  1 & Update packages & As above, plus companion packages released with EF
+  1 & Update packages & Versions from step~1, plus companion packages released with EF
   (\code{Microsoft.\allowbreak{}Extensions.\allowbreak{}*}); pinned companion packages
   already block the restore & \code{EFCore\allowbreak{}Version} \\
   \tablerule
@@ -452,7 +451,7 @@ framework.
   3 & Investigate internal API & Compare the EF1001 inventory (below) against the sources of
   both versions; every place individually, including those that still compile; start with the
   volatile chapters (page~\pageref{sec:version-dependency}) & Core: 0,
-  PostgreSQL: 10, SQL Server: 2 internal types (functions sample: 5) \\
+  PostgreSQL: 10, SQL Server: 2, Cosmos DB: 1 internal types (functions sample: 5) \\
   \tablerule
   4 & Compare registrations and lifetimes & Compare EF's service tables of both versions;
   the plugin's own \code{Replace} calls fix lifetimes &
@@ -688,7 +687,7 @@ Package Management):
 <PropertyGroup>
   <PackageLicenseExpression>MIT</PackageLicenseExpression>
   <PackageReadmeFile>README.md</PackageReadmeFile>
-  <VersionPrefix>1.1.0</VersionPrefix>       <!-- = book edition -->
+  <VersionPrefix>1.2.0</VersionPrefix>       <!-- = book edition -->
   <IncludeSymbols>true</IncludeSymbols>
   <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   <PublishRepositoryUrl>true</PublishRepositoryUrl>      <!-- SourceLink -->
@@ -741,8 +740,7 @@ For every new plugin, in the order of development. Each item sums up a rule; the
   \item Decide the level: helpers, model helpers, real plugin or provider?
   \item Separate core and provider packages; types for entity assemblies go into the core.
   \item For every extension point, look for a plugin interface first, replace only then.
-  \item Check every mechanism against the simpler alternative with the decision guide
-    (chapter~\ref{ch:choosing-the-right-extension-point}).
+  \item Check every mechanism against the simpler alternative with the decision guide.
 \end{checklist}
 
 \section{Options}
@@ -763,11 +761,10 @@ For every new plugin, in the order of development. Each item sums up a rule; the
 
 \begin{checklist}
   \item Registration through the services builder (lifetimes from EF's table).
-  \item Decorate single services where the public interface suffices
-    (chapter~\ref{ch:registering-services}).
+  \item Decorate single services where the public interface suffices.
   \item Otherwise Replace, and offer the logic publicly and virtually.
   \item ISingletonOptions for singleton services, registered twice.
-  \item Classify every piece of state according to chapter~\ref{ch:state-lifetimes-and-thread-safety}: request data never
+  \item Classify every piece of state: request data never
     in options, hash, model, singleton or translated query.
   \item Reset scoped services with state for pooling (IResettableService).
   \item App dependencies via AddInterceptors, document pooling behavior.
@@ -803,7 +800,7 @@ For every new plugin, in the order of development. Each item sums up a rule; the
 
 \section{Queries}
 
-\noindent Details: chapters~\ref{ch:the-query-pipeline}, \ref{ch:translating-methods-and-members}.
+\noindent Details: chapters~\ref{ch:the-query-pipeline}, \ref{ch:translating-methods-and-members}, \ref{ch:preventing-client-side-evaluation}.
 
 \begin{checklist}
   \item EF.Functions methods in the core, translation in the provider package.
@@ -825,12 +822,12 @@ For every new plugin, in the order of development. Each item sums up a rule; the
     new one per context; get per-request data on every call through the context.
   \item Own event IDs in an own range, EventDefinitions cached.
   \item Security-relevant cases as warnings, escalatable via ConfigureWarnings.
-  \item Where hooks cannot run, offer an explicit API (e.g. ApplyTenantSession).
+  \item Where interceptors do not apply, offer an explicit API (e.g. ApplyTenantSession).
 \end{checklist}
 
 \section{Migrations \& design time}
 
-\noindent Details: chapters~\ref{ch:how-migrations-work}, \ref{ch:design-time-services}.
+\noindent Details: chapters~\ref{ch:how-migrations-work}, \ref{ch:declarative-sql-from-annotations}, \ref{ch:custom-migration-operations}, \ref{ch:design-time-services}, \ref{ch:compiled-models-trimming-and-nativeaot}.
 
 \begin{checklist}
   \item Declarative via annotation provider (design time only) and SQL generator.
@@ -838,7 +835,7 @@ For every new plugin, in the order of development. Each item sums up a rule; the
   \item Custom operations idempotent, extensions in the migrations namespace.
   \item Remove schema-bound objects before renames and recreate them with the final names
     afterwards (page~\pageref{sec:sqlserver-schema-bound-changes}).
-  \item DesignTimeServicesReference with forProvider; code generator removes annotations.
+  \item DesignTimeServicesReference with forProvider in the application's startup project (not in the plugin); code generator removes annotations.
   \item Check compiled models: Default, Instance, runtime annotations.
 \end{checklist}
 
@@ -849,8 +846,8 @@ For every new plugin, in the order of development. Each item sums up a rule; the
 \begin{checklist}
   \item Model, SQL, snapshot round trip and integration tests.
   \item Caching test with different options; test for no phantom migration.
-  \item Version range per EF major, CI against the newest patches and previews, EF1001
-    deliberately; upgrades following the playbook (chapter~\ref{ch:versioning-and-compatibility}).
+  \item Version range per EF major, EF1001 deliberately; CI with a patch channel, a preview
+    channel only as an early warning; upgrades following the playbook.
   \item XML docs, SourceLink, symbols, README, CHANGELOG, limitations documented.
   \item Check the packages as a consumer: tooling, compiled model, NativeAOT
     (page~\pageref{sec:consumer-test}).
@@ -861,7 +858,7 @@ For every new plugin, in the order of development. Each item sums up a rule; the
 
 \section{Advanced extension points (part~\ref{part:advanced})}
 
-\noindent Details: chapters~\ref{ch:bulk-operations-and-the-limits}, \ref{ch:value-generation}, \ref{ch:advanced-migrations}.
+\noindent Details: chapters~\ref{ch:bulk-operations-and-the-limits}, \ref{ch:value-generation}, \ref{ch:complex-types-and-json}, \ref{ch:advanced-migrations}.
 
 \begin{checklist}
   \item Document paths that bypass interceptors (ExecuteUpdate, raw SQL).
@@ -873,7 +870,7 @@ For every new plugin, in the order of development. Each item sums up a rule; the
 
 \section{Operation and integration (part~\ref{part:operations})}
 
-\noindent Details: chapters~\ref{ch:row-level-security-in-production}, \ref{ch:tenant-safe-relationships}, \ref{ch:retrofitting-and-operating}.
+\noindent Details: chapters~\ref{ch:row-level-security-in-production}, \ref{ch:tenant-safe-relationships}, \ref{ch:retrofitting-and-operating}, \ref{ch:plugin-performance}, \ref{ch:using-the-plugin-in-asp}, \ref{ch:ci-and-api-stability}.
 
 \begin{checklist}
   \item Document operational assumptions (roles, pooling, transaction pooling).
@@ -885,13 +882,12 @@ For every new plugin, in the order of development. Each item sums up a rule; the
   \item Retrofit existing tables in two migrations with a guard.
   \item Measure hot paths (interceptors), do not guess.
   \item Second-level caches: the tenant in every cache key, no caching without a tenant.
-  \item CI with a patch channel, a preview channel only as an early warning, public API
-    analyzer as errors.
+  \item Public API analyzer as errors, not as warnings.
 \end{checklist}
 
 \section{Deep extensions (part~\ref{part:deep-extensions})}
 
-\noindent Details: chapters~\ref{ch:custom-sql-expression-nodes}, \ref{ch:scaffolding-in-practice}.
+\noindent Details: chapters~\ref{ch:custom-sql-expression-nodes}, \ref{ch:aggregate-translators}, \ref{ch:property-level-fluent-api-and}, \ref{ch:scaffolding-in-practice}.
 
 \begin{checklist}
   \item Custom SQL nodes: VisitChildren, Update, Quote, Print, Equals/GetHashCode.

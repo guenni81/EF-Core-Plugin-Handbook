@@ -22,7 +22,8 @@ it carries the configuration, it registers the services in the internal provider
 
 \section{Configuration as a record}
 
-All model-relevant settings of the sample live in a record. Records provide \code{Equals}
+All settings of the sample live in a record. Each of them influences the model, the
+registered services or what services read through the singleton options. Records provide \code{Equals}
 and \code{Get\allowbreak{}Hash\allowbreak{}Code} over all fields, which is exactly what the
 cache key needs. New settings are added to the record without touching hashing or
 comparison.
@@ -39,6 +40,9 @@ public sealed record TenancySettings
     public bool ApplyQueryFilter { get; init; }
     public bool CreateTenantIndex { get; init; } = true;
     public bool VerifyMaterializedTenants { get; init; }
+    public bool ProtectBulkOperations { get; init; }
+    public bool UseTransactionPooling { get; init; }
+    public bool EnrichOpenTelemetry { get; init; }
 }
 \end{sourcecode}
 
@@ -166,8 +170,9 @@ public override bool ShouldUseSameServiceProvider(DbContextOptionsExtensionInfo 
 \end{failure}
 
 \begin{important}[The rule of thumb for the hash]
-  The hash must contain exactly what \textbf{influences which services are registered or
-  what the model looks like}, and nothing else. The tenant itself changes per request and
+  The hash must contain exactly what \textbf{influences which services are registered,
+  what the model looks like or what services read through
+  \code{ISingleton\allowbreak{}Options}}, and nothing else. The tenant itself changes per request and
   must therefore never end up in the options; it arrives at run time through an interceptor
   (chapter~\ref{ch:interceptors}).
 \end{important}
@@ -226,6 +231,9 @@ public virtual void ApplyServices(IServiceCollection services)
         .TryAddProviderSpecificServices(m => m
             .TryAddSingleton<ITenancySingletonOptions, TenancySingletonOptions>()
             .TryAddSingleton<TenancyLoggingDefinitions, TenancyLoggingDefinitions>());
+
+    // ... optional interceptors depending on the settings, also via the services builder
+    //     (chapters "Materialization", "Bulk operations", "Diagnostics and logging")
 
     // 3) Replace single services of the provider
     services.Replace(ServiceDescriptor
@@ -677,8 +685,10 @@ public class TenancyOptionsBuilder
   and reach the actual builder through
   \code{IRelational\allowbreak{}Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder\allowbreak{}Infrastructure.\allowbreak{}Options\allowbreak{}Builder}.
   The PostgreSQL package uses the simpler route via
-  \code{Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder}; the SQL Server
-  package in chapter~\ref{ch:a-second-provider-sql-server} shows the provider-builder style.
+  \code{Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder}, the SQL Server
+  package the provider builder (chapter~\ref{ch:a-second-provider-sql-server}). Why the
+  provider builder is the better choice as soon as there are several provider packages is
+  explained in chapter~\ref{ch:what-belongs-in-the-core}.
 \end{note}
 
 \section{Connecting two containers}
@@ -688,7 +698,7 @@ needs the current tenant, which only the application knows. The internal EF prov
 resolve app services, though. The clean solution: such components live in the app container
 and are handed to EF via \code{Add\allowbreak{}Interceptors}.
 
-\begin{sourcecode}[Dependency\allowbreak{}Injection/\allowbreak{}… (\allowbreak{}core),\allowbreak{} Infrastructure/\allowbreak{}… (\allowbreak{}Postgre\allowbreak{}SQL),\allowbreak{} excerpts]{csharp}
+\begin{sourcecode}[Dependency\allowbreak{}Injection/\allowbreak{}… (\allowbreak{}core),\allowbreak{} Infrastructure/\allowbreak{}… (\allowbreak{}Postgre\allowbreak{}SQL),\allowbreak{} excerpts,\allowbreak{} simplified]{csharp}
 // Core package: only register the tenant provider in the app container
 public static IServiceCollection AddAcmeTenancy<TTenantProvider>(
     this IServiceCollection services,
@@ -869,12 +879,14 @@ configuration share \emph{one} instance, on all threads at the same time: parall
 work with different contexts but with the same singletons.
 
 A singleton must therefore be immutable after its initialization or cache in a thread-safe
-way. The sample shows three forms: the type mapping plugin and the materialization
-interceptor are stateless, \code{Tenancy\allowbreak{}Singleton\allowbreak{}Options} is
-initialized once and then only read, and
-\code{Tenancy\allowbreak{}Logging\allowbreak{}Definitions} creates its definitions with
-\code{Lazy\allowbreak{}Initializer.\allowbreak{}Ensure\allowbreak{}Initialized}
-(chapter~\ref{ch:diagnostics-and-logging}). A single \code{Db\allowbreak{}Context}, on the
+way. The sample shows four forms: the type mapping plugin is stateless,
+\code{Tenancy\allowbreak{}Singleton\allowbreak{}Options} is initialized once and then only
+read, \code{Tenancy\allowbreak{}Logging\allowbreak{}Definitions} creates its definitions
+with \code{Lazy\allowbreak{}Initializer.\allowbreak{}Ensure\allowbreak{}Initialized}
+(chapter~\ref{ch:diagnostics-and-logging}), and the materialization interceptor only
+remembers each context's tenant provider, in a static, thread-safe
+\code{Conditional\allowbreak{}Weak\allowbreak{}Table} that holds the context weakly
+(figure above). A single \code{Db\allowbreak{}Context}, on the
 other hand, is not thread-safe and is never used concurrently; a scoped service therefore
 only ever sees one caller at a time.
 
@@ -892,13 +904,11 @@ reject that.
 
 Both caches amplify every decision about state. The provider cache uses the options
 extensions as its key; the model is built per provider and context type
-(chapter~\ref{ch:models-per-runtime-context}). This leads to two directions of error, which
-chapter~\ref{ch:the-options-extension} covers in detail: what is missing from the key
-although it influences the model leads to a wrong, shared model. What is in the key although
-it changes per request creates a provider including model per value; from the 21st on, EF
-throws by default with
-\code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}.
-Instances of singleton interceptors are part of the key as well
+(chapter~\ref{ch:models-per-runtime-context}). Chapter~\ref{ch:the-options-extension}
+covers the two directions of error: what is missing from the key although it influences the
+model leads to a wrong, shared model; what is in the key although it changes per request
+creates a provider including model per value (failure case~2 below). Instances of singleton
+interceptors are part of the key as well
 (chapter~\ref{ch:materialization-from-rows-to-objects}).
 
 \section{Pooling, factories, jobs and open connections}
@@ -913,7 +923,7 @@ creating contexts shift them:
   are created once from the root provider; the context instance and its scoped services serve
   many requests one after the other & Tenant provider reads per access; scoped services with
   state implement \code{IResettable\allowbreak{}Service}
-  (chapter~\ref{ch:using-the-plugin-in-asp}) \\
+  (failure case~6 below) \\
   \tablerule
   \code{Add\allowbreak{}Db\allowbreak{}Context\allowbreak{}Factory} & Factory and options are
   singletons by default; the options callback gets the root provider & Register the factory

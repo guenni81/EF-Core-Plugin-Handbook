@@ -175,7 +175,8 @@ Beispiels gegen dieselben Tabellen.
   \tablerule
   \code{ICommand\allowbreak{}Batch\allowbreak{}Preparer},
   \code{IModification\allowbreak{}Command\allowbreak{}Batch\allowbreak{}Factory}
-  \cellmeta{Update-Pipeline: Reihenfolge und Batches} & Scoped, einzeln & Provider-Basis† &
+  \cellmeta{Update-Pipeline: Reihenfolge und Batches} & Scoped, einzeln & pubternal†
+  bzw. Provider-Basis† &
   \code{Replace} & ○ \textbf{exklusiv} & \ref{ch:the-update-pipeline} \\
   \tablerule
   \code{IUpdate\allowbreak{}Sql\allowbreak{}Generator}
@@ -199,7 +200,8 @@ Beispiels gegen dieselben Tabellen.
   \tablerule
   \code{ISql\allowbreak{}Generation\allowbreak{}Helper}
   \cellmeta{Bezeichner maskieren, Befehle beenden} & Singleton, einzeln & öffentlich &
-  injizieren & ● nur nutzen & \ref{ch:declarative-sql-from-annotations} \\
+  injizieren & ● nur nutzen & \ref{ch:conventions},
+  \ref{ch:declarative-sql-from-annotations} \\
   \tablerule
   \tablegroup{6}{Design-Time (über \code{IDesign\allowbreak{}Time\allowbreak{}Services})}
   \code{IAnnotation\allowbreak{}Code\allowbreak{}Generator}
@@ -279,6 +281,9 @@ internen Provider. Sie sind fast immer der erste Weg:
   \code{Tenant\allowbreak{}Id\allowbreak{}Converter.\allowbreak{}cs} & Stark typisierte ID,
   Konverter & \ref{ch:type-mappings-and-value-converters} \\
   \tablerule
+  \code{Tenant\allowbreak{}Id\allowbreak{}Value\allowbreak{}Comparer.\allowbreak{}cs} &
+  Geteilte Value Comparer, NativeAOT-tauglich & \ref{ch:compiled-models-trimming-and-nativeaot} \\
+  \tablerule
   \code{Tenant\allowbreak{}Id\allowbreak{}Json\allowbreak{}Reader\allowbreak{}Writer.\allowbreak{}cs},
   \code{Tenant\allowbreak{}Id\allowbreak{}Json\allowbreak{}Converter.\allowbreak{}cs} &
   JSON-Spalten in EF; JSON in Web-APIs & \ref{ch:type-mappings-and-value-converters},
@@ -287,12 +292,16 @@ internen Provider. Sie sind fast immer der erste Weg:
   \code{ITenant\allowbreak{}Owned.\allowbreak{}cs},
   \code{ITenant\allowbreak{}Provider.\allowbreak{}cs} & Marker, Mandantenquelle & \ref{ch:the-sample-scenario} \\
   \tablerule
+  \code{Tenancy\allowbreak{}Exception.\allowbreak{}cs} & Ausnahme bei Verstößen gegen die
+  Isolation & \ref{ch:interceptors} \\
+  \tablerule
   \code{No\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Attribute.\allowbreak{}cs} &
   Data Annotation & \ref{ch:conventions} \\
   \tablerule
-  \code{Tenancy\allowbreak{}Db\allowbreak{}Functions\allowbreak{}Extensions.\allowbreak{}cs}
-  & \code{EF.\allowbreak{}Functions.\allowbreak{}Current\allowbreak{}Tenant(\allowbreak{})}
-  & \ref{ch:translating-methods-and-members} \\
+  \code{Tenancy\allowbreak{}Db\allowbreak{}Functions\allowbreak{}Extensions.\allowbreak{}cs},
+  \code{Tenancy\allowbreak{}Db\allowbreak{}Functions\allowbreak{}Attribute.\allowbreak{}cs}
+  & \code{EF.\allowbreak{}Functions.\allowbreak{}Current\allowbreak{}Tenant(\allowbreak{})}, Attribut für die Client-Prüfung
+  & \ref{ch:translating-methods-and-members}, \ref{ch:preventing-client-side-evaluation} \\
   \tablerule
   \code{Diagnostics/\allowbreak{}*} & Event-IDs, Definitionen, Logger-Extensions & \ref{ch:diagnostics-and-logging} \\
   \tablerule
@@ -301,6 +310,10 @@ internen Provider. Sie sind fast immer der erste Weg:
   \tablerule
   \code{Interceptors/\allowbreak{}Tenant\allowbreak{}Materialization\allowbreak{}Interceptor.\allowbreak{}cs}
   & Prüfung beim Laden (optional) & \ref{ch:materialization-from-rows-to-objects} \\
+  \tablerule
+  \code{Interceptors/\allowbreak{}Tenant\allowbreak{}Query\allowbreak{}Expression\allowbreak{}Interceptor.\allowbreak{}cs}
+  & Weist \code{Execute\allowbreak{}Update} ab, das den Mandanten setzt (optional)
+  & \ref{ch:bulk-operations-and-the-limits} \\
   \tablerule
   \code{Metadata/\allowbreak{}*} (Kern) & Laufzeit-Annotation, IsTenantProperty,
   Kandidatensuche & \ref{ch:property-level-fluent-api-and} \\
@@ -327,6 +340,9 @@ internen Provider. Sie sind fast immer der erste Weg:
   \code{Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs}
   & Abstrakte Basis für Session-Befehle & \ref{ch:interceptors}, \ref{ch:what-belongs-in-the-core} \\
   \tablerule
+  \code{Interceptors/\allowbreak{}Tenant\allowbreak{}Activity\allowbreak{}Enrichment\allowbreak{}Interceptor.\allowbreak{}cs}
+  & Mandant als Tag an der \code{Activity} (optional) & \ref{ch:diagnostics-and-logging} \\
+  \tablerule
   \code{Metadata/\allowbreak{}Tenant\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Validator.\allowbreak{}cs}
   & Unterstützte Tabellenabbildungen (TPT, TPC, Entity Splitting) & \ref{ch:conventions}, \ref{ch:what-belongs-in-the-core} \\
   \tablerule
@@ -348,15 +364,15 @@ internen Provider. Sie sind fast immer der erste Weg:
   \code{Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Builder.\allowbreak{}cs}
   & Options-Builder & \ref{ch:public-api-and-integration-into} \\
   \tablerule
-  \code{Infrastructure/\allowbreak{}Tenancy*Extensions.\allowbreak{}cs} & UseAcmeTenancy,
-  AddAcmeTenancy & \ref{ch:public-api-and-integration-into} \\
+  \code{Infrastructure/\allowbreak{}Tenancy\allowbreak{}Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs}
+  & UseAcmeTenancy & \ref{ch:public-api-and-integration-into} \\
   \tablerule
   \code{Infrastructure/\allowbreak{}Tenancy\allowbreak{}Identifiers.\allowbreak{}cs} &
   Validierung von Bezeichnern & \ref{ch:conventions}, \ref{ch:custom-migration-operations} \\
   \tablerule
   \code{Storage/\allowbreak{}*} & Type Mapping und Plugin & \ref{ch:type-mappings-and-value-converters} \\
   \tablerule
-  \code{Query/\allowbreak{}*} & Translators, Evaluatable-Filter & \ref{ch:translating-methods-and-members}, \ref{ch:preventing-client-side-evaluation} \\
+  \code{Query/\allowbreak{}*} & Translators und Translator-Plugins & \ref{ch:translating-methods-and-members} \\
   \tablerule
   \code{Metadata/\allowbreak{}*} & Annotations, RlsPolicy, PolicyCommand,
   Annotation-Provider & \ref{ch:annotations-and-fluent-api}, \ref{ch:declarative-sql-from-annotations} \\
@@ -367,12 +383,14 @@ internen Provider. Sie sind fast immer der erste Weg:
   \tablerule
   \code{Migrations/\allowbreak{}*} & SQL-Generator, eigene Operationen & \ref{ch:declarative-sql-from-annotations}, \ref{ch:custom-migration-operations} \\
   \tablerule
-  \code{Design/\allowbreak{}*},
-  \code{Properties/\allowbreak{}Assembly\allowbreak{}Info.\allowbreak{}cs} & Code-Generator,
+  \code{Design/\allowbreak{}*} & Code-Generator,
   Design-Time & \ref{ch:design-time-services} \\
   \tablerule
   \code{Runtime/\allowbreak{}Tenant\allowbreak{}Connection\allowbreak{}Interceptor.\allowbreak{}cs}
   & Session-Setting setzen & \ref{ch:interceptors} \\
+  \tablerule
+  \code{Runtime/\allowbreak{}Postgre\allowbreak{}Sql\allowbreak{}Transaction\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs}
+  & Mandant pro Transaktion (Transaction-Pooling) & \ref{ch:row-level-security-in-production} \\
   \tablerule
   \code{Design/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}CSharp\allowbreak{}Runtime…Generator.\allowbreak{}cs}
   & Compiled-Model-Filter & \ref{ch:property-level-fluent-api-and} \\
@@ -395,8 +413,8 @@ internen Provider. Sie sind fast immer der erste Weg:
   \tablerule
   \textbf{Cosmos-DB-Paket} &  &  \\
   \tablerule
-  \code{Conventions/\allowbreak{}Cosmos\allowbreak{}Tenant\allowbreak{}Partition\allowbreak{}Key\allowbreak{}Convention.\allowbreak{}cs}
-  & Mandant als Partition Key & \ref{ch:without-sql-what-carries-over} \\
+  \code{Conventions/\allowbreak{}*}
+  & Mandant als Partition Key, Convention-Set-Plugin & \ref{ch:without-sql-what-carries-over} \\
   \tablerule
   \code{Storage/\allowbreak{}*}
   & TenantId als String, Type-Mapping-Plugin & \ref{ch:without-sql-what-carries-over} \\
@@ -405,6 +423,15 @@ internen Provider. Sie sind fast immer der erste Weg:
   & Options-Extension, UseAcmeTenancy & \ref{ch:without-sql-what-carries-over} \\
   \tablerule
   \textbf{Funktionen-Beispielpaket (ohne Mandantenbezug)} &  &  \\
+  \tablerule
+  \code{Acme\allowbreak{}Pg\allowbreak{}Db\allowbreak{}Functions\allowbreak{}Extensions.\allowbreak{}cs},
+  \code{Infrastructure/\allowbreak{}*} & EF.Functions-Methoden, Options-Extension,
+  UseAcmeFunctions & \ref{ch:custom-sql-expression-nodes} \\
+  \tablerule
+  \code{Query/\allowbreak{}Functions\allowbreak{}Translator\allowbreak{}Plugins.\allowbreak{}cs},
+  \code{Query/\allowbreak{}Functions\allowbreak{}Evaluatable\allowbreak{}Expression\allowbreak{}Filter\allowbreak{}Plugin.\allowbreak{}cs}
+  & Translator-Plugins, Evaluatable-Filter & \ref{ch:custom-sql-expression-nodes},
+  \ref{ch:aggregate-translators} \\
   \tablerule
   \code{Query/\allowbreak{}Expressions/\allowbreak{}*},
   \code{Query/\allowbreak{}Distinct\allowbreak{}From\allowbreak{}Translator.\allowbreak{}cs}
@@ -429,6 +456,10 @@ internen Provider. Sie sind fast immer der erste Weg:
   \tablerule
   \code{.\allowbreak{}github/\allowbreak{}workflows/\allowbreak{}ci.\allowbreak{}yml} &
   Build, Tests, Handbuch & \ref{ch:ci-and-api-stability} \\
+  \tablerule
+  \code{eng/\allowbreak{}consumer-test/\allowbreak{}run.\allowbreak{}sh} & Pakete in einer frischen
+  App: \code{dotnet ef}, Compiled Model, NativeAOT & \ref{ch:compiled-models-trimming-and-nativeaot},
+  \ref{ch:versioning-and-compatibility} \\
   \tablerule
   \code{Public\allowbreak{}API.\allowbreak{}*.\allowbreak{}txt} & Public-API-Analyzer & \ref{ch:ci-and-api-stability}
   \\
@@ -459,10 +490,10 @@ internen Provider. Sie sind fast immer der erste Weg:
   Grenzen und gemerkter Mandant (Integration) & \ref{ch:materialization-from-rows-to-objects} \\
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Design\allowbreak{}Time\allowbreak{}Services\allowbreak{}Tests.\allowbreak{}cs}
-  & Lebensdauern der ersetzten Design-Time-Dienste & \ref{ch:choosing-the-right-extension-point}, \ref{ch:scaffolding-in-practice} \\
+  & Lebensdauern der ersetzten Design-Time-Dienste & \ref{ch:design-time-services}, \ref{ch:versioning-and-compatibility} \\
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Debugging\allowbreak{}Tests.\allowbreak{}cs}
-  & Debugging-Techniken & Anh. D \\
+  & Debugging-Techniken & Anh.~\ref{app:D} \\
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Schema\allowbreak{}Per\allowbreak{}Tenant\allowbreak{}Tests.\allowbreak{}cs}
   & Modell-Cache-Schlüssel pro Schema & \ref{ch:models-per-runtime-context} \\
@@ -475,6 +506,9 @@ internen Provider. Sie sind fast immer der erste Weg:
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Sql\allowbreak{}Server.\allowbreak{}Tests}
   & Unit- und Testcontainers-Tests für SQL Server & \ref{ch:a-second-provider-sql-server} \\
+  \tablerule
+  \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Cosmos.\allowbreak{}Tests}
+  & Unit-Tests und Tests gegen den Cosmos-DB-Emulator & \ref{ch:without-sql-what-carries-over} \\
 \end{datatable}
 
 % ------------------------------------------------------------
@@ -524,14 +558,16 @@ internen Provider. Sie sind fast immer der erste Weg:
   (\code{Get\allowbreak{}Or\allowbreak{}Add\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Value}),
   etwa als Cache; er erscheint nie in Snapshot oder Migrations. \\
   \tablerule
-  Interner Service Provider & EFs eigener DI-Container pro Konfiguration. \\
+  Interner Service Provider & EFs eigener DI-Container, einer pro Provider-Schlüssel
+  der Options-Extensions (Kapitel~\ref{ch:the-options-extension}). \\
   \tablerule
   Pubternal & Öffentlich sichtbare, aber interne API ohne Kompatibilitätsgarantie (EF1001).
   \\
   \tablerule
   Relationales Modell & Tabellen, Spalten, Indizes, abgeleitet aus dem EF-Modell. \\
   \tablerule
-  RLS & Row Level Security: Zeilenfilter, die PostgreSQL selbst erzwingt. \\
+  RLS & Row Level Security: Zeilenfilter, die die Datenbank selbst erzwingt (PostgreSQL,
+  SQL Server). \\
   \tablerule
   Snapshot & Generierter C\#-Code mit dem Modellstand der letzten Migration. \\
   \tablerule
@@ -606,7 +642,7 @@ Console.WriteLine(query.ToQueryString());
   liefern Symbole und Source Link mit. Ein Breakpoint in der eigenen Convention zeigt, wann
   und wie oft sie läuft. \\
   \tablerule
-  \code{Debug\allowbreak{}View} im Debugger & Modell, Entitätstypen, Query-Objekte und der
+  \code{Debug\allowbreak{}View} im Debugger & Modell, Entity-Typen, Query-Objekte und der
   Change Tracker zeigen dieselben Texte wie \code{To\allowbreak{}Debug\allowbreak{}String}.
   \\
   \tablerule

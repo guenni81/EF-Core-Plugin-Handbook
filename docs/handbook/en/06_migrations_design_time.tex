@@ -56,8 +56,8 @@ model, imperative for everything else.
 
 The differ compares the \emph{relational} model (tables, columns), not the entity types.
 Which annotations a table carries is decided by the
-\code{IRelational\allowbreak{}Annotation\allowbreak{}Provider}. There is one per context,
-and it belongs to the provider; the plugin therefore derives from the Npgsql implementation:
+\code{IRelational\allowbreak{}Annotation\allowbreak{}Provider}. There is only one (a
+singleton per internal service provider), and it belongs to the provider; the plugin therefore derives from the Npgsql implementation:
 
 % source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Metadata/Internal/TenancyAnnotationProvider.cs
 \begin{sourcecode}[Metadata/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Annotation\allowbreak{}Provider.\allowbreak{}cs]{csharp}
@@ -106,8 +106,7 @@ migrationBuilder.AlterTable(name: "Orders")
 \end{sourcecode}
 
 Because the annotation provider only passes the annotations on for \code{design\allowbreak{}Time},
-they are missing from one model: the runtime model that \code{context.\allowbreak{}Model}
-returns.
+they are missing from the runtime model that \code{context.\allowbreak{}Model} returns.
 
 \begin{sourcecode}[Startup check of a plugin (\allowbreak{}WRONG)]{csharp}
 // Does every isolated table have RLS? Read from the runtime model
@@ -342,14 +341,17 @@ The \code{dotnet ef} tools (adding migrations, writing snapshots, scaffolding, c
 models) use their own service provider with design-time services. A plugin extends it
 through \code{IDesign\allowbreak{}Time\allowbreak{}Services}.
 
-\section{Loaded automatically}
+\section{Loaded through the startup project}
 
-So that users do not need to configure anything, an assembly attribute points to the class.
-The tooling finds it in every assembly the startup project references. The second argument
-restricts loading to contexts with the matching provider:
+An assembly attribute points to the class. The tooling, however, reads it only from the
+startup project and from the migrations assembly, not from referenced packages; an attribute
+in the plugin assembly itself would have no effect. The plugin therefore documents one line
+that the application adds once to its startup project. The second argument restricts loading
+to contexts with the matching provider. The consumer test
+(page~\pageref{sec:consumer-test}) does exactly that:
 
-% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Properties/AssemblyInfo.cs
-\begin{sourcecode}[Properties/\allowbreak{}Assembly\allowbreak{}Info.\allowbreak{}cs]{csharp}
+% source: eng/consumer-test/template/DesignTimeServices.cs
+\begin{sourcecode}[eng/\allowbreak{}consumer-test/\allowbreak{}template/\allowbreak{}Design\allowbreak{}Time\allowbreak{}Services.\allowbreak{}cs]{csharp}
 [assembly: DesignTimeServicesReference(
     "Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Design.TenancyDesignTimeServices, "
         + "Acme.EntityFrameworkCore.Tenancy.PostgreSQL",
@@ -357,7 +359,7 @@ restricts loading to contexts with the matching provider:
 \end{sourcecode}
 
 % source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Design/TenancyDesignTimeServices.cs
-\begin{sourcecode}[Design/\allowbreak{}Tenancy\allowbreak{}Design\allowbreak{}Time\allowbreak{}Services.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Design/\allowbreak{}Tenancy\allowbreak{}Design\allowbreak{}Time\allowbreak{}Services.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 public class TenancyDesignTimeServices : IDesignTimeServices
 {
     public void ConfigureDesignTimeServices(IServiceCollection services)
@@ -366,6 +368,9 @@ public class TenancyDesignTimeServices : IDesignTimeServices
         // independent of the order in which the tooling loads services
         services.RemoveAll<IAnnotationCodeGenerator>();
         services.AddSingleton<IAnnotationCodeGenerator, TenancyAnnotationCodeGenerator>();
+
+        // ... likewise ICSharpRuntimeAnnotationCodeGenerator (compiled models) and
+        // IDatabaseModelFactory (scaffolding)
     }
 }
 \end{sourcecode}
@@ -494,18 +499,19 @@ must be prepared for it in four places:
   keeps the runtime annotation (chapter~\ref{ch:property-level-fluent-api-and}) \\
 \end{datatable}
 
-The third point is often misunderstood. EF takes annotations with simple values (strings,
+The last point is often misunderstood. EF takes annotations with simple values (strings,
 numbers, bool, enums) into the compiled model \textbf{automatically}; the source of
 \code{CSharp\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator}
 shows this, writing them via \code{Generate\allowbreak{}Simple\allowbreak{}Annotations}. A
 custom generator is therefore not needed to \emph{keep} annotations, but to \emph{filter
 out} pure design-time annotations that nobody reads at run time, and to translate
 annotations with complex values into code. Chapter~\ref{ch:property-level-fluent-api-and}
-shows both in the sample.
+shows the filtering in the sample; the policies are stored there as JSON strings, that is,
+as simple values.
 
 \section{Trimming and AOT}
 
-All four packages set
+All packages of the plugin set
 \code{<\allowbreak{}Is\allowbreak{}Aot\allowbreak{}Compatible>true<\allowbreak{}/\allowbreak{}Is\allowbreak{}Aot\allowbreak{}Compatible>}.
 The compiler then reports code that uses reflection without annotations. The JSON
 serialization of the policies uses a source generator instead of reflection:
@@ -543,13 +549,14 @@ the end:
 \begin{datatable}{H{0.55}H{1.45}}
   \textbf{Step} & \textbf{Check} \\
   \tablehead
-  Packages & \code{dotnet pack} of the three libraries into a local source; a fresh project
+  Packages & \code{dotnet pack} of the four libraries (core, relational layer,
+  PostgreSQL, SQL Server) into a local source; a fresh project
   references the packages, not the projects. Its own NuGet cache, package source mapping with
   \code{Acme.*} only from the local source and a SHA-512 comparison prove that exactly the
   packages just built are resolved. \\
   \tablerule
-  Tooling & \code{dotnet-ef} as a local tool. The design-time services are found without any
-  help. Migration and SQL script contain RLS, \code{FORCE}, policy and index (PostgreSQL) and
+  Tooling & \code{dotnet-ef} as a local tool. The design-time services are loaded by the
+  attribute in the startup project. Migration and SQL script contain RLS, \code{FORCE}, policy and index (PostgreSQL) and
   security policy and session key (SQL Server).
   \code{has-\allowbreak{}pending-\allowbreak{}model-\allowbreak{}changes} then reports no
   change. \\
@@ -609,9 +616,9 @@ too. The route goes through two design-time services:
   \textbf{Service} & \textbf{Task} \\
   \tablehead
   \code{IDatabase\allowbreak{}Model\allowbreak{}Factory} & Reads the schema into a
-  \code{Database\allowbreak{}Model}. A derived Npgsql factory can query
+  \code{Database\allowbreak{}Model}. A derived Npgsql factory queries
   \code{pg\_\allowbreak{}policies} and
-  \code{pg\_\allowbreak{}class.\allowbreak{}relrowsecurity} and attach them as annotations
+  \code{pg\_\allowbreak{}class.\allowbreak{}relrowsecurity} and attaches them as annotations
   to \code{Database\allowbreak{}Table}. \\
   \tablerule
   \code{IAnnotation\allowbreak{}Code\allowbreak{}Generator} & Writes these annotations as

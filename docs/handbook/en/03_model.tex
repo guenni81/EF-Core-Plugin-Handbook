@@ -226,7 +226,8 @@ building. The most important ones:
   \code{IModel\allowbreak{}Finalizing\allowbreak{}Convention} & Model is being finalized
   (still mutable) & Everything that depends on the finished model \\
   \tablerule
-  \code{IModel\allowbreak{}Finalized\allowbreak{}Convention} & Model is finished (read-only)
+  \code{IModel\allowbreak{}Finalized\allowbreak{}Convention} & Model is finished and validated by
+  EF (read-only)
   & Validation \\
 \end{datatable}
 
@@ -625,6 +626,16 @@ belongs to the provider. For plugins, an
 \code{IModel\allowbreak{}Finalized\allowbreak{}Convention} is the better place: it runs on
 the finished model and collides with nobody.
 
+The timing is more precise than the name suggests. EF calls the finalized conventions only
+\emph{after} the \code{IModel\allowbreak{}Validator}, when it creates the lean runtime model
+from the finished model. That conversion is itself a finalized convention
+(\code{Runtime\allowbreak{}Model\allowbreak{}Convention}), and because
+\code{Convention\allowbreak{}Set.\allowbreak{}Add} appends custom conventions at the end, the
+plugin's validation already receives the runtime model. It therefore only reads annotations
+that are kept there (chapter~\ref{ch:property-level-fluent-api-and}). With a compiled model
+it no longer runs at runtime at all, but already when the model is generated with
+\code{dotnet ef dbcontext optimize}.
+
 \begin{sourcecode}[Conventions/\allowbreak{}Tenancy\allowbreak{}Model\allowbreak{}Validation\allowbreak{}Convention.\allowbreak{}cs (\allowbreak{}simplified)]{csharp}
 public virtual IModel ProcessModelFinalized(IModel model)
 {
@@ -676,7 +687,8 @@ options:
 \section{The type and its converter}
 
 The strongly typed \code{Tenant\allowbreak{}Id} and its converter live in the core package.
-The converter has a shared instance; the section on compiled models explains why.
+The converter has a shared instance; the note on compiled models at the end of the chapter
+explains why.
 
 \begin{sourcecode}[Tenant\allowbreak{}Id.\allowbreak{}cs,\allowbreak{} Tenant\allowbreak{}Id\allowbreak{}Converter.\allowbreak{}cs (\allowbreak{}shortened, simplified)]{csharp}
 public readonly record struct TenantId(Guid Value)

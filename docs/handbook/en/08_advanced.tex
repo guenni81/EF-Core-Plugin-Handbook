@@ -1,7 +1,7 @@
 % ============================================================
 \setpartpreamble{\partintro
   {Limits of the run-time hooks and further extension points: bulk operations, value
-  generation, the update pipeline, complex types, models per context and advanced migrations.}
+  generation, the update pipeline, complex types, models per runtime context and advanced migrations.}
   {
     \item Chapter~\ref{ch:bulk-operations-and-the-limits}: Bulk operations and the limits of
     interceptors
@@ -120,7 +120,8 @@ private void Check(LambdaExpression selector)
 
 If the property being set is the tenant property according to the runtime annotation, the
 interceptor throws a \code{Tenancy\allowbreak{}Exception}, before any connection is opened. It runs
-once per query shape, before translation and the query cache; later executions cost nothing.
+only at compilation, so once per query shape before translation; executions served from the
+query cache cost nothing.
 Other columns and ordinary queries pass unchanged. RLS remains the actual boundary: the
 interceptor only stops reassigning rows early and with a clear message; it does not check
 \code{Execute\allowbreak{}Delete} or raw SQL.
@@ -273,11 +274,12 @@ concern entities.
 \section{JSON columns}
 
 Owned types and (since EF Core 10) complex types can be stored as a single JSON column with
-\code{To\allowbreak{}Json(\allowbreak{})}. Values in it are not read and written through
-converters but through the type mapping's
-\code{Json\allowbreak{}Value\allowbreak{}Reader\allowbreak{}Writer}
-(chapter~\ref{ch:type-mappings-and-value-converters}). Without it, model building fails. The
-sample's unit and integration tests check both sides:
+\code{To\allowbreak{}Json(\allowbreak{})}. Values in it are read and written through the
+type mapping's \code{Json\allowbreak{}Value\allowbreak{}Reader\allowbreak{}Writer}
+(chapter~\ref{ch:type-mappings-and-value-converters}). A value converter alone is enough only
+if EF can wrap the provider type's reader/writer around it
+(\code{Json\allowbreak{}Converted\allowbreak{}Value\allowbreak{}Reader\allowbreak{}Writer}); a
+custom mapping with neither makes model building fail. The sample's unit and integration tests check both sides:
 
 % source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/JsonTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Json\allowbreak{}Tests.\allowbreak{}cs]{csharp}
@@ -313,7 +315,7 @@ System.Text.Json serialize independently of each other
 \chapter{Models per runtime context}\label{ch:models-per-runtime-context}
 \versionrisk{stable}
 
-EF builds the model once per context type and caches it
+EF builds the model once per internal service provider and context type and caches it
 (chapter~\ref{ch:ef-core-s-architecture-from}). If the model should depend on run-time data,
 such as one schema per tenant, the cache key must contain that data. That is what
 \code{IModel\allowbreak{}Cache\allowbreak{}Key\allowbreak{}Factory} is for:
@@ -380,7 +382,7 @@ Generated and hand-written operations run in the order they appear in
 it directly after \code{CREATE TABLE}. If the role is only created at the end of
 \code{Up(\allowbreak{})}, the migration fails.
 
-\begin{sourcecode}[Migrations/\allowbreak{}20261021\_\allowbreak{}Initial.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Migrations/\allowbreak{}20261021\_\allowbreak{}Initial.\allowbreak{}cs (\allowbreak{}hand-edited, simplified)]{csharp}
 protected override void Up(MigrationBuilder migrationBuilder)
 {
     // 1. Whatever policies reference: BEFORE the generated operations

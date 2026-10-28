@@ -60,6 +60,10 @@ package of its own:
   \code{Database.\allowbreak{}Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})} &
   Relational & Uses the session interceptor of the provider \\
   \tablerule
+  \code{Tenant\allowbreak{}Activity\allowbreak{}Enrichment\allowbreak{}Interceptor} &
+  Relational & Command interceptor; needs only \code{Db\allowbreak{}Command}, no SQL
+  dialect \\
+  \tablerule
   Type mapping, translators, migrations, RLS conventions & Provider & Store types, SQL
   syntax, schema objects \\
   \tablerule
@@ -72,7 +76,7 @@ layer; SQL syntax and store types belong in the provider.} The core package refe
 \code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core}, the package
 \code{Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Relational}
 adds \code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Relational},
-and both provider packages build on it. \code{Package\allowbreak{}Layer\allowbreak{}Tests}
+and the two relational provider packages build on it. \code{Package\allowbreak{}Layer\allowbreak{}Tests}
 makes sure that no relational type creeps back into the core. That this pays off shows in
 chapter~\ref{ch:without-sql-what-carries-over}: the Cosmos package builds on the core alone.
 
@@ -92,7 +96,7 @@ chapter~\ref{ch:without-sql-what-carries-over}: the Cosmos package builds on the
   \code{Use\allowbreak{}Acme\allowbreak{}Tenancy} on
   \code{Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder} cannot be referenced
   at the same time: the call would be ambiguous. The PostgreSQL package uses EF's builder,
-  the SQL Server package the provider's builder
+  the SQL Server and Cosmos packages the provider's builder
   (\code{Use\allowbreak{}Sql\allowbreak{}Server(\allowbreak{}cs,\allowbreak{} x =>
   x.\allowbreak{}Use\allowbreak{}Acme\allowbreak{}Tenancy(\allowbreak{}))}). If you plan
   several provider packages, use the provider builder consistently from the start, as the
@@ -151,6 +155,7 @@ services.AddAcmeTenancy<HttpTenantProvider>();                    // core packag
 services.AddDbContext<ShopContext>((sp, o) => o
     .UseSqlServer(connectionString, sql => sql.UseAcmeTenancy(sp)));
 
+// Overload without IServiceProvider; the one taking sp (above) adds the interceptors
 public static SqlServerDbContextOptionsBuilder UseAcmeTenancy(
     this SqlServerDbContextOptionsBuilder sqlServerOptionsBuilder,
     string sessionKey = "TenantId",
@@ -378,7 +383,8 @@ public class SqlServerTenantSessionInterceptor : TenantSessionInterceptor
 
 The SQL Server package is a self-contained but leaner provider. Fluent API policies, the optional
 query filter, the snapshot code generator and scaffolding are missing there, and the custom
-SQL node and the aggregate of the functions sample package exist for PostgreSQL only. That is a product decision, not a technical obstacle: each of these chapters
+SQL node and the aggregate of the functions sample package exist for PostgreSQL only.
+That is a product decision, not a technical obstacle: each of these chapters
 can be transferred to SQL Server with the same patterns. The list belongs in the package's
 documentation so users know what to expect.
 

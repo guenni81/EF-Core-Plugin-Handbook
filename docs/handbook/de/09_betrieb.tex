@@ -29,7 +29,7 @@ stillschweigend wirkungslos oder unbrauchbar:
   \tablerule
   Superuser oder \code{BYPASSRLS} & RLS wird immer umgangen, auch mit FORCE & App-Rolle mit
   \code{NOSUPERUSER NOBYPASSRLS} (eigene Operation,
-  Kap.~\ref{ch:custom-migration-operations}) \\
+  Kapitel~\ref{ch:custom-migration-operations}) \\
   \tablerule
   Setting nicht gesetzt & Ohne \code{nullif}: Fehler; mit: leere Ergebnisse & Interceptor
   setzt den Wert bei jedem Öffnen \\
@@ -214,9 +214,9 @@ Optimierungen verhindern kann (\href{https://www.postgresql.org/docs/17/ddl-rows
 
 Aussagekräftig ist deshalb nur der Plan unter realen Bedingungen: \code{EXPLAIN
 (\allowbreak{}ANALYZE,\allowbreak{} BUFFERS)} als App-Rolle mit gesetztem Mandanten, mit
-realistischer Datenmenge und aktuellen Statistiken. Als Owner oder Superuser gemessen fehlen
+realistischer Datenmenge und aktuellen Statistiken. Als Eigentümer oder Superuser gemessen fehlen
 die Policies im Plan, weil Superuser und Rollen mit \code{BYPASSRLS} sie umgehen und der
-Owner ohne \code{FORCE} ebenso. Den Overhead zeigt der Vergleich derselben Abfrage mit
+Eigentümer ohne \code{FORCE} ebenso. Den Overhead zeigt der Vergleich derselben Abfrage mit
 und ohne Policy, nicht die Zahl der Funktionsaufrufe.
 
 \section{Legitimer mandantenübergreifender Zugriff}
@@ -245,7 +245,7 @@ entstehen:
   (Kapitel~\ref{ch:using-the-plugin-in-asp}) & Läuft durch die normalen Policies \\
 \end{datatable}
 
-\begin{sourcecode}[Reporting-Rolle (\allowbreak{}tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Cross\allowbreak{}Tenant\allowbreak{}Access\allowbreak{}Tests.\allowbreak{}cs)]{sql}
+\begin{sourcecode}[Reporting-Rolle (\allowbreak{}tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Cross\allowbreak{}Tenant\allowbreak{}Access\allowbreak{}Tests.\allowbreak{}cs,\allowbreak{} vereinfacht)]{sql}
 -- Angelegt von einem Administrator: BYPASSRLS erfordert einen Superuser
 CREATE ROLE shop_reporting LOGIN PASSWORD '...' NOSUPERUSER BYPASSRLS;
 GRANT USAGE ON SCHEMA public TO shop_reporting;
@@ -452,7 +452,7 @@ DO $$ BEGIN
 END $$;
 \end{sourcecode}
 
-\begin{sourcecode}[Migrations/\allowbreak{}…\allowbreak{}\_Enable\allowbreak{}Ticket\allowbreak{}Isolation.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Migrations/\allowbreak{}…\allowbreak{}\_Enable\allowbreak{}Ticket\allowbreak{}Isolation.\allowbreak{}cs (Beispiel)]{csharp}
 protected override void Up(MigrationBuilder migrationBuilder)
 {
     // Vor allem anderen: ohne vollständige Zuordnung nicht absichern
@@ -516,7 +516,8 @@ unter den Resilienzmechanismen von EF:
   \item \textbf{Neuinitialisierung der Session.} Npgsql setzt den Zustand einer Verbindung
     zurück, wenn sie in den Pool zurückgeht, solange \code{No Reset On Close} nicht aktiviert
     ist (\href{https://www.npgsql.org/doc/connection-string-parameters.html}{Npgsql: Connection String Parameters}).
-    SQL Server leert den Session-Kontext beim Zurückgeben ebenfalls. Das Plugin verlässt sich
+    SqlClient setzt den Session-Kontext ebenfalls zurück, wenn es eine Verbindung aus dem Pool
+    wiederverwendet (\code{sp\_\allowbreak{}reset\_\allowbreak{}connection}). Das Plugin verlässt sich
     auf keines von beidem, sondern setzt den Mandanten bei jedem Öffnen; nur Verbindungen, die
     nicht EF öffnet, brauchen
     \code{Apply\allowbreak{}Tenant\allowbreak{}Session} (Kapitel~\ref{ch:interceptors}).
@@ -524,7 +525,7 @@ unter den Resilienzmechanismen von EF:
 
 Für Transaction-Pooling setzt \code{Use\allowbreak{}Transaction\allowbreak{}Pooling(\allowbreak{})}
 den Mandanten pro Transaktion (Seite~\pageref{sec:transaction-pooling}). Nicht implementiert ist
-ein schreibgeschützter Session-Schlüssel (Abschnitt „Das Bedrohungsmodell“).
+ein schreibgeschützter Session-Schlüssel (Seite~\pageref{sec:threat-model}).
 \code{Operations\allowbreak{}Tests} enthält den Verbindungsabbruch und die Transaktion in der
 Strategie; die Fälle offener Verbindungen stehen in
 \code{Connection\allowbreak{}Lifetime\allowbreak{}Tests}.
@@ -590,7 +591,7 @@ legt sie unabhängig davon fest.
   \flowstep{Freigabe}{GitHub-Environment \code{production}: Freigabe und Secrets nur für die
   folgenden Jobs}
   \flowstep{Bundle als shop\_owner}{Wendet ausstehende Migrationen in Transaktionen an; der
-  einzige Job mit der Owner-Verbindung}
+  einzige Job mit der Verbindung des Eigentümers}
   \flowstep{Rolling Deployment}{Erst nach erfolgreicher Migration; die Anwendung verbindet
   sich als \code{shop\_\allowbreak{}app}}
   \flowstep{Contract (später)}{Eine Folgemigration räumt auf, wenn keine alte Instanz mehr
@@ -636,11 +637,11 @@ jobs:
 Das Bundle enthält das Startprojekt mit dem Plugin; für dessen Optionen gilt, was
 Abschnitt „Migration Bundles“ in Kapitel~\ref{ch:advanced-migrations} sagt.
 \code{--connection} überschreibt die Verbindung der Design-Time-Factory, und ein zweiter Lauf
-wendet nichts an. Der Owner-Verbindungsstring ist nur dem Job \code{migrate} bekannt; den der
+wendet nichts an. Der Verbindungsstring des Eigentümers ist nur dem Job \code{migrate} bekannt; den der
 Anwendung erhält die Hosting-Plattform, nicht die Pipeline.
 
 Der Consumer-Test (\code{eng/\allowbreak{}consumer-\allowbreak{}test/\allowbreak{}run.\allowbreak{}sh
---nativeaot}) spielt genau diesen Ablauf gegen PostgreSQL in Docker durch: Er führt
+--nativeaot}, Seite~\pageref{sec:consumer-test}) spielt genau diesen Ablauf gegen PostgreSQL in Docker durch: Er führt
 \code{setup-\allowbreak{}roles.\allowbreak{}sql} unverändert aus, baut das Bundle aus der
 erzeugten Migration, wendet es als \code{shop\_\allowbreak{}owner} zweimal an (der zweite Lauf
 ändert nichts), prüft, dass \code{shop\_\allowbreak{}app} die Tabelle nicht ändern darf
@@ -694,7 +695,7 @@ Optimierung lohnt:
 \begin{datatable}{H{0.75}H{1.25}H{1.00}}
   \textbf{Häufigkeit} & \textbf{Code} & \textbf{Folgerung} \\
   \tablehead
-  Einmal pro Provider & Conventions, Type-Mapping-Plugins, Singleton-Options & Lesbarkeit
+  Einmal pro internem Provider oder Modell & Conventions, Type-Mapping-Plugins, Singleton-Options & Lesbarkeit
   vor Mikro-Optimierung \\
   \tablerule
   Einmal pro Abfrageform & Translators, Query-Interceptors & Moderat; Ergebnis wird gecacht
@@ -707,8 +708,10 @@ Optimierung lohnt:
 Daraus ergeben sich einige Regeln, die das Beispiel befolgt: \code{Method\allowbreak{}Info}-
 und \code{Property\allowbreak{}Info}-Lookups liegen in statischen Feldern. Der
 SaveChanges-Interceptor legt seine Liste erst an, wenn er tatsächlich eine mandantenfähige
-Änderung findet. Der Connection-Interceptor kostet einen Roundtrip pro Öffnen, was
-dokumentiert ist. Solche Annahmen sollte man messen, nicht raten. Das Repository enthält ein
+Änderung findet. Der Connection-Interceptor kostet einen Roundtrip pro Öffnen; bei vielen
+kleinen Abfragen in einer Anfrage öffnet die Anwendung die Verbindung deshalb einmal mit
+\code{Open\allowbreak{}Connection\allowbreak{}Async(\allowbreak{})}, und es gilt „Ein Context,
+ein Mandant“ (Kapitel~\ref{ch:interceptors}). Solche Annahmen sollte man messen, nicht raten. Das Repository enthält ein
 BenchmarkDotNet-Projekt; der Benchmark für die SaveChanges-Logik läuft ohne Datenbank:
 
 % source: benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/SaveChangesInterceptorBenchmark.cs
@@ -845,7 +848,7 @@ führt dieselbe Abfrageform mit neuem Parameterwert aus. Verglichen werden EF Co
 Plugin und das Plugin mit Query-Filter:
 
 \begin{datatable}{H{1.40}H{0.90}H{0.90}H{0.90}H{0.90}}
-  \textbf{Kontext} & \textbf{Kompilieren} & \textbf{Allokiert} & \textbf{Cache-Treffer} &
+  \textbf{Context} & \textbf{Kompilieren} & \textbf{Allokiert} & \textbf{Cache-Treffer} &
   \textbf{Allokiert} \\
   \tablehead
   EF Core & 2,64 ms & 146 KB & 18 µs & 9,9 KB \\
@@ -855,8 +858,7 @@ Plugin und das Plugin mit Query-Filter:
   Plugin mit Query-Filter & 2,78 ms & 160 KB & 15 µs & 10,2 KB \\
 \end{datatable}
 
-Translator-Plugins, Evaluatable-Filter, eigener SQL-Generator und Nullability-Prozessor kosten
-beim Kompilieren nichts Messbares; der Query-Filter verlängert den Ausdrucksbaum und damit die
+Translator-Plugins und Evaluatable-Filter kosten beim Kompilieren nichts Messbares; der Query-Filter verlängert den Ausdrucksbaum und damit die
 Übersetzung um wenige Prozent. Bei einem Cache-Treffer verschwindet jeder Unterschied im
 Rauschen. Alle Werte stammen aus einem Short Job (.NET 10, Rechner des Autors); dessen
 Fehlerbalken sind breit, die Größenordnungen aber eindeutig:
@@ -874,6 +876,13 @@ Fehlerbalken sind breit, die Größenordnungen aber eindeutig:
   Materialisierung & Jede gelesene Zeile & Etwa 3,5 µs pro Zeile mit
   \code{Verify\allowbreak{}Materialized\allowbreak{}Tenants(\allowbreak{})}, ohne: keiner \\
 \end{datatable}
+
+Ob alle Benchmarks laufen, zeigt ein Probelauf ohne aussagekräftige Messwerte:
+
+\begin{sourcecode}[Alle Benchmarks, Probelauf]{text}
+dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks \
+    -- --filter '*' --job dry
+\end{sourcecode}
 
 \subsection*{Wann die Prüfung beim Lesen lohnt}
 
@@ -894,13 +903,8 @@ Empfehlung:
     Rollentrennung (Seite~\pageref{sec:deployment}) und Tests, die mit der eingeschränkten
     Rolle der Anwendung lesen.
   \item \textbf{Dazwischen}: in Tests und Staging immer einschalten, in Produktion nur für den
-    Kontext der sensiblen Daten. Die Option gilt pro Kontextkonfiguration, nicht global.
+    Context der sensiblen Daten. Die Option gilt pro Context-Konfiguration, nicht global.
 \end{itemize}
-
-\begin{sourcecode}[Alle Benchmarks, Probelauf]{text}
-dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks \
-    -- --filter '*' --job dry
-\end{sourcecode}
 
 \begin{tip}
   Für den Start großer Modelle ist das Compiled Model
@@ -1089,7 +1093,7 @@ public sealed class AmbientTenantProvider : ITenantProvider
 }
 \end{sourcecode}
 
-\begin{sourcecode}[Job-Muster (\allowbreak{}tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Background\allowbreak{}Tenant\allowbreak{}Tests.\allowbreak{}cs)]{csharp}
+\begin{sourcecode}[Job-Muster (\allowbreak{}tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Background\allowbreak{}Tenant\allowbreak{}Tests.\allowbreak{}cs,\allowbreak{} vereinfacht)]{csharp}
 // Erst der Mandant, dann Scope und Context: die Interceptors entstehen im Scope
 using (AmbientTenantProvider.Use(tenant))
 {
@@ -1149,8 +1153,10 @@ Scope des Consumers setzt, bevor der Context aufgelöst wird.
 \section{Der Workflow}
 
 Der GitHub-Actions-Workflow im Repository setzt die Empfehlungen aus
-Kapitel~\ref{ch:test-strategy} und \ref{ch:versioning-and-compatibility} um. Ein Job baut
-und testet ohne und mit Datenbank, ein zweiter baut das Handbuch:
+Kapitel~\ref{ch:test-strategy} und \ref{ch:versioning-and-compatibility} um. Der Job
+\code{build} baut und testet ohne und mit Datenbank, \code{handbook} baut das Handbuch,
+\code{consumer} prüft die Pakete als Verbraucher. Der Job \code{cosmos} (Emulator, noch nicht
+blockierend) fehlt im Auszug:
 
 \begin{sourcecode}[.\allowbreak{}github/\allowbreak{}workflows/\allowbreak{}ci.\allowbreak{}yml (\allowbreak{}gekürzt)]{text}
 jobs:
@@ -1175,6 +1181,7 @@ jobs:
       - run: python3 check_code.py       # Zeilenlänge, Auszüge gegen die Quellen
       - run: python3 check_structure.py  # beide Fassungen gleich, Verweise, Tabellen
       - run: latexmk EF-Core-Plugin-Handbuch.tex
+      - run: latexmk EF-Core-Plugin-Handbook.tex
 
   consumer:                            # die Pakete als Verbraucher prüfen
     steps:
@@ -1195,11 +1202,9 @@ aufgehen.
 
 Das Beispiel baut nur gegen stabile Versionen (.NET 10, EF Core 10). Ein zweiter Workflow,
 \code{compatibility.\allowbreak{}yml}, läuft wöchentlich und testet gegen die neuesten
-stabilen 10.0.x-Patches, denn die reguläre CI baut gegen den Anfang des Versionsbereichs.
-Einen Kanal für die nächste EF-Major-Version mit Previews und RCs beschreibt
-Kapitel~\ref{ch:versioning-and-compatibility} als Skizze; er braucht das passende Vorab-SDK, weil die
-Vorabversionen von EF Core 11 nur \code{net11.\allowbreak{}0} anbieten. Das ist eine
-Eigenschaft dieser Version, keine allgemeine Regel: EF Core 9 zielte auf .NET 8.
+stabilen 10.0.x-Patches, denn die reguläre CI baut gegen den Anfang des Versionsbereichs. Die
+Kanäle und eine Skizze für die nächste EF-Major-Version mit Previews und RCs beschreibt
+Abschnitt „Patches und Previews in der CI“ in Kapitel~\ref{ch:versioning-and-compatibility}.
 
 \section{Öffentliche API absichern}
 

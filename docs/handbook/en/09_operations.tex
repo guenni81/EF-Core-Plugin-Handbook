@@ -232,7 +232,7 @@ can set too. Separation must come from database roles instead:
   (chapter~\ref{ch:using-the-plugin-in-asp}) & Runs through the normal policies \\
 \end{datatable}
 
-\begin{sourcecode}[Reporting role (\allowbreak{}tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Cross\allowbreak{}Tenant\allowbreak{}Access\allowbreak{}Tests.\allowbreak{}cs)]{sql}
+\begin{sourcecode}[Reporting role (\allowbreak{}tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Cross\allowbreak{}Tenant\allowbreak{}Access\allowbreak{}Tests.\allowbreak{}cs,\allowbreak{} simplified)]{sql}
 -- Created by an administrator: BYPASSRLS requires a superuser
 CREATE ROLE shop_reporting LOGIN PASSWORD '...' NOSUPERUSER BYPASSRLS;
 GRANT USAGE ON SCHEMA public TO shop_reporting;
@@ -430,7 +430,7 @@ DO $$ BEGIN
 END $$;
 \end{sourcecode}
 
-\begin{sourcecode}[Migrations/\allowbreak{}…\allowbreak{}\_Enable\allowbreak{}Ticket\allowbreak{}Isolation.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Migrations/\allowbreak{}…\allowbreak{}\_Enable\allowbreak{}Ticket\allowbreak{}Isolation.\allowbreak{}cs (example)]{csharp}
 protected override void Up(MigrationBuilder migrationBuilder)
 {
     // Before anything else: do not protect without a complete assignment
@@ -493,14 +493,15 @@ resilience mechanisms:
   \item \textbf{Session reinitialization.} Npgsql resets a connection's state when it returns to
     the pool, as long as \code{No Reset On Close} is not enabled
     (\href{https://www.npgsql.org/doc/connection-string-parameters.html}{Npgsql: Connection String Parameters}).
-    SQL Server also clears the session context when the connection is returned. The plugin relies
+    SqlClient also resets the session context when it reuses a pooled connection
+    (\code{sp\_\allowbreak{}reset\_\allowbreak{}connection}). The plugin relies
     on neither, but sets the tenant on every open; only connections that EF does not open need
     \code{Apply\allowbreak{}Tenant\allowbreak{}Session} (chapter~\ref{ch:interceptors}).
 \end{itemize}
 
 For transaction pooling, \code{Use\allowbreak{}Transaction\allowbreak{}Pooling(\allowbreak{})}
 sets the tenant per transaction (page~\pageref{sec:transaction-pooling}). Not implemented is a
-read-only session key (section “The threat model”). \code{Operations\allowbreak{}Tests} contains the lost connection and
+read-only session key (page~\pageref{sec:threat-model}). \code{Operations\allowbreak{}Tests} contains the lost connection and
 the transaction inside the strategy; the cases of open connections are in
 \code{Connection\allowbreak{}Lifetime\allowbreak{}Tests}.
 
@@ -613,7 +614,7 @@ nothing. Only the \code{migrate} job knows the owner connection string; the appl
 given to the hosting platform, not to the pipeline.
 
 The consumer test (\code{eng/\allowbreak{}consumer-\allowbreak{}test/\allowbreak{}run.\allowbreak{}sh
---nativeaot}) runs exactly this sequence against PostgreSQL in Docker: it runs
+--nativeaot}, page~\pageref{sec:consumer-test}) runs exactly this sequence against PostgreSQL in Docker: it runs
 \code{setup-\allowbreak{}roles.\allowbreak{}sql} unchanged, builds the bundle from the generated
 migration, applies it twice as \code{shop\_\allowbreak{}owner} (the second run changes
 nothing), checks that \code{shop\_\allowbreak{}app} may not alter the table
@@ -666,7 +667,7 @@ optimization pays off:
 \begin{datatable}{H{0.75}H{1.25}H{1.00}}
   \textbf{Frequency} & \textbf{Code} & \textbf{Consequence} \\
   \tablehead
-  Once per provider & Conventions, type mapping plugins, singleton options & Readability
+  Once per internal provider or model & Conventions, type mapping plugins, singleton options & Readability
   over micro-optimization \\
   \tablerule
   Once per query shape & Translators, query interceptors & Moderate; the result is cached
@@ -679,7 +680,10 @@ optimization pays off:
 This leads to a few rules the sample follows: \code{Method\allowbreak{}Info} and
 \code{Property\allowbreak{}Info} lookups live in static fields. The SaveChanges interceptor
 only collects entries when there are tenant-relevant changes. The connection interceptor
-costs one round trip per open, which is documented. Such assumptions should be measured, not
+costs one round trip per open; with many small queries in one request the application
+therefore opens the connection once with
+\code{Open\allowbreak{}Connection\allowbreak{}Async(\allowbreak{})}, and “one context, one
+tenant” applies (chapter~\ref{ch:interceptors}). Such assumptions should be measured, not
 guessed. The repository contains a BenchmarkDotNet project; the benchmark for the
 SaveChanges logic runs without a database:
 
@@ -826,8 +830,7 @@ with its query filter:
   Plugin with query filter & 2.78 ms & 160 KB & 15 µs & 10.2 KB \\
 \end{datatable}
 
-Translator plugins, evaluatable filter, custom SQL generator and nullability processor cost
-nothing measurable when compiling; the query filter makes the expression tree, and thus the
+Translator plugins and the evaluatable filter cost nothing measurable when compiling; the query filter makes the expression tree, and thus the
 translation, a few percent longer. On a cache hit every difference disappears in the noise.
 All values come from a short job (.NET 10, author's machine); its error bars are wide, but the
 orders of magnitude are clear:
@@ -844,6 +847,13 @@ orders of magnitude are clear:
   Materialization & Every row read & About 3.5 µs per row with
   \code{Verify\allowbreak{}Materialized\allowbreak{}Tenants(\allowbreak{})}, none without \\
 \end{datatable}
+
+A dry run checks that all benchmarks run, without meaningful measurements:
+
+\begin{sourcecode}[All benchmarks, dry run]{text}
+dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks \
+    -- --filter '*' --job dry
+\end{sourcecode}
 
 \subsection*{When the check on reading pays off}
 
@@ -866,11 +876,6 @@ with \code{BYPASSRLS}, or works on a self-opened connection without
     context of the sensitive data. The option applies per context configuration, not
     globally.
 \end{itemize}
-
-\begin{sourcecode}[All benchmarks, dry run]{text}
-dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks \
-    -- --filter '*' --job dry
-\end{sourcecode}
 
 \begin{tip}
   For the startup of large models, the compiled model
@@ -1057,7 +1062,7 @@ public sealed class AmbientTenantProvider : ITenantProvider
 }
 \end{sourcecode}
 
-\begin{sourcecode}[Job pattern (\allowbreak{}tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Background\allowbreak{}Tenant\allowbreak{}Tests.\allowbreak{}cs)]{csharp}
+\begin{sourcecode}[Job pattern (\allowbreak{}tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Background\allowbreak{}Tenant\allowbreak{}Tests.\allowbreak{}cs,\allowbreak{} simplified)]{csharp}
 // Tenant first, then scope and context: the interceptors are created inside the scope
 using (AmbientTenantProvider.Use(tenant))
 {
@@ -1115,8 +1120,10 @@ consumer's scope before the context is resolved.
 \section{The workflow}
 
 The GitHub Actions workflow in the repository implements the recommendations from
-chapters~\ref{ch:test-strategy} and \ref{ch:versioning-and-compatibility}. One job builds
-and tests without and with a database, a second builds the handbook:
+chapters~\ref{ch:test-strategy} and \ref{ch:versioning-and-compatibility}. The job
+\code{build} builds and tests without and with a database, \code{handbook} builds the
+handbook, \code{consumer} checks the packages as a consumer. The job \code{cosmos} (emulator,
+not blocking yet) is left out of the excerpt:
 
 \begin{sourcecode}[.\allowbreak{}github/\allowbreak{}workflows/\allowbreak{}ci.\allowbreak{}yml (\allowbreak{}shortened)]{text}
 jobs:
@@ -1140,6 +1147,7 @@ jobs:
       # ... checkout ...
       - run: python3 check_code.py       # line length, excerpts against the sources
       - run: python3 check_structure.py  # editions in sync, references, tables
+      - run: latexmk EF-Core-Plugin-Handbuch.tex
       - run: latexmk EF-Core-Plugin-Handbook.tex
 
   consumer:                            # check the packages as a consumer
@@ -1160,11 +1168,9 @@ and that the column widths of every table add up.
 
 The sample builds against stable versions only (.NET 10, EF Core 10). A second workflow,
 \code{compatibility.\allowbreak{}yml}, runs weekly and tests against the newest stable 10.0.x
-patches, because the regular CI builds against the beginning of the version range.
-Chapter~\ref{ch:versioning-and-compatibility} sketches a channel for the next EF major version with previews and
-RCs; it needs the matching .NET prerelease SDK, because the prereleases of EF Core 11 only
-offer \code{net11.\allowbreak{}0}. That is a property of this version, not a general rule:
-EF Core 9 targeted .NET 8.
+patches, because the regular CI builds against the beginning of the version range. The
+channels and a sketch for the next EF major version with previews and RCs are described in
+section “Patches and previews in CI” of chapter~\ref{ch:versioning-and-compatibility}.
 
 \section{Protecting the public API}
 

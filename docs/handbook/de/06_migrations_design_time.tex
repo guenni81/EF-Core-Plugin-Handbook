@@ -56,8 +56,8 @@ alles, was zum Modell gehört, imperativ für alles andere.
 
 Der Differ vergleicht das \emph{relationale} Modell (Tabellen, Spalten), nicht die
 Entity-Typen. Welche Annotations eine Tabelle trägt, entscheidet der
-\code{IRelational\allowbreak{}Annotation\allowbreak{}Provider}. Den gibt es pro Context
-einmal, und er gehört dem Provider; das Plugin erbt deshalb von der Npgsql-Implementierung:
+\code{IRelational\allowbreak{}Annotation\allowbreak{}Provider}. Den gibt es nur einmal (ein
+Singleton pro internem Service Provider), und er gehört dem Provider; das Plugin erbt deshalb von der Npgsql-Implementierung:
 
 % source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Metadata/Internal/TenancyAnnotationProvider.cs
 \begin{sourcecode}[Metadata/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Annotation\allowbreak{}Provider.\allowbreak{}cs]{csharp}
@@ -106,8 +106,7 @@ migrationBuilder.AlterTable(name: "Orders")
 \end{sourcecode}
 
 Weil der Annotation-Provider die Annotations nur für \code{design\allowbreak{}Time} weitergibt,
-fehlen sie in einem Modell: dem Laufzeitmodell, das \code{context.\allowbreak{}Model}
-liefert.
+fehlen sie im Laufzeitmodell, das \code{context.\allowbreak{}Model} liefert.
 
 \begin{sourcecode}[Startprüfung eines Plugins (\allowbreak{}FALSCH)]{csharp}
 // Hat jede isolierte Tabelle RLS? Gelesen aus dem Laufzeitmodell
@@ -347,14 +346,17 @@ Die Werkzeuge von \code{dotnet ef} (Migrationen anlegen, Snapshots schreiben, Sc
 Compiled Models) verwenden einen eigenen Service Provider mit Design-Time-Diensten. Ein
 Plugin erweitert ihn über \code{IDesign\allowbreak{}Time\allowbreak{}Services}.
 
-\section{Automatisch geladen}
+\section{Geladen über das Startprojekt}
 
-Damit Nutzer nichts konfigurieren müssen, verweist ein Assembly-Attribut auf die Klasse. Das
-Tooling findet es in jeder Assembly, die das Startprojekt referenziert. Das zweite Argument
-beschränkt das Laden auf Contexts mit dem passenden Provider:
+Ein Assembly-Attribut verweist auf die Klasse. Das Tooling liest es aber nur aus dem
+Startprojekt und aus der Migrations-Assembly, nicht aus referenzierten Paketen; ein Attribut
+in der Plugin-Assembly selbst bliebe wirkungslos. Das Plugin dokumentiert deshalb eine Zeile,
+die die Anwendung einmal in ihr Startprojekt übernimmt. Das zweite Argument beschränkt das
+Laden auf Contexts mit dem passenden Provider. Der Consumer-Test
+(Seite~\pageref{sec:consumer-test}) tut genau das:
 
-% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Properties/AssemblyInfo.cs
-\begin{sourcecode}[Properties/\allowbreak{}Assembly\allowbreak{}Info.\allowbreak{}cs]{csharp}
+% source: eng/consumer-test/template/DesignTimeServices.cs
+\begin{sourcecode}[eng/\allowbreak{}consumer-test/\allowbreak{}template/\allowbreak{}Design\allowbreak{}Time\allowbreak{}Services.\allowbreak{}cs]{csharp}
 [assembly: DesignTimeServicesReference(
     "Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Design.TenancyDesignTimeServices, "
         + "Acme.EntityFrameworkCore.Tenancy.PostgreSQL",
@@ -362,7 +364,7 @@ beschränkt das Laden auf Contexts mit dem passenden Provider:
 \end{sourcecode}
 
 % source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Design/TenancyDesignTimeServices.cs
-\begin{sourcecode}[Design/\allowbreak{}Tenancy\allowbreak{}Design\allowbreak{}Time\allowbreak{}Services.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Design/\allowbreak{}Tenancy\allowbreak{}Design\allowbreak{}Time\allowbreak{}Services.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 public class TenancyDesignTimeServices : IDesignTimeServices
 {
     public void ConfigureDesignTimeServices(IServiceCollection services)
@@ -371,6 +373,9 @@ public class TenancyDesignTimeServices : IDesignTimeServices
         // unabhängig von der Reihenfolge, in der das Tooling Services lädt
         services.RemoveAll<IAnnotationCodeGenerator>();
         services.AddSingleton<IAnnotationCodeGenerator, TenancyAnnotationCodeGenerator>();
+
+        // ... ebenso ICSharpRuntimeAnnotationCodeGenerator (Compiled Models) und
+        // IDatabaseModelFactory (Scaffolding)
     }
 }
 \end{sourcecode}
@@ -395,7 +400,7 @@ RlsEntityTypeBuilderExtensions.HasPolicy(b, "tenant_isolation", p => p
     .WithCheck("\"TenantId\" = nullif(current_setting('app.tenant_id', true), '')::uuid"));
 \end{sourcecode}
 
-EF Core 10 schreibt Erweiterungsmethoden im Snapshot als statische Aufrufe
+EF Core 10 schreibt Extension-Methods im Snapshot als statische Aufrufe
 (\code{Extensions.\allowbreak{}Methode(\allowbreak{}b,\allowbreak{}
 .\allowbreak{}.\allowbreak{}.\allowbreak{})}) statt als
 \code{b.\allowbreak{}Methode(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}. Das
@@ -502,7 +507,7 @@ Plugin muss dafür an vier Stellen vorbereitet sein:
   behält die Laufzeit-Annotation (Kapitel~\ref{ch:property-level-fluent-api-and}) \\
 \end{datatable}
 
-Der dritte Punkt wird oft missverstanden. EF übernimmt Annotations mit einfachen Werten
+Der letzte Punkt wird oft missverstanden. EF übernimmt Annotations mit einfachen Werten
 (Strings, Zahlen, bool, Enums) \textbf{automatisch} ins Compiled Model; das zeigt der
 Quellcode von
 \code{CSharp\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator},
@@ -510,11 +515,12 @@ der sie mit \code{Generate\allowbreak{}Simple\allowbreak{}Annotations} schreibt.
 Generator ist deshalb nicht nötig, damit Annotations \emph{erhalten} bleiben, sondern um
 reine Design-Time-Annotations \emph{herauszufiltern}, die zur Laufzeit niemand liest, und um
 Annotations mit komplexen Werten in Code zu übersetzen.
-Kapitel~\ref{ch:property-level-fluent-api-and} zeigt beides im Beispiel.
+Kapitel~\ref{ch:property-level-fluent-api-and} zeigt das Herausfiltern im Beispiel; die
+Policies liegen dort als JSON-Strings vor, also als einfache Werte.
 
 \section{Trimming und AOT}
 
-Alle vier Pakete setzen
+Alle Pakete des Plugins setzen
 \code{<\allowbreak{}Is\allowbreak{}Aot\allowbreak{}Compatible>true<\allowbreak{}/\allowbreak{}Is\allowbreak{}Aot\allowbreak{}Compatible>}.
 Der Compiler meldet dann Code, der Reflection ohne Annotationen nutzt. Die
 JSON-Serialisierung der Policies verwendet einen Source-Generator statt Reflection:
@@ -552,13 +558,14 @@ gelöscht wird:
 \begin{datatable}{H{0.55}H{1.45}}
   \textbf{Schritt} & \textbf{Prüfung} \\
   \tablehead
-  Pakete & \code{dotnet pack} der drei Bibliotheken in eine lokale Quelle; ein frisches
+  Pakete & \code{dotnet pack} der vier Bibliotheken (Kern, relationale Schicht,
+  PostgreSQL, SQL Server) in eine lokale Quelle; ein frisches
   Projekt referenziert die Pakete, nicht die Projekte. Eigener NuGet-Cache, Paketquellen-Zuordnung
   \code{Acme.*} nur aus der lokalen Quelle und ein SHA-512-Vergleich belegen, dass genau die
   eben gebauten Pakete aufgelöst werden. \\
   \tablerule
-  Tooling & \code{dotnet-ef} als lokales Tool. Die Design-Time-Dienste werden ohne Zutun
-  gefunden. Migration und SQL-Skript enthalten RLS, \code{FORCE}, Policy und Index
+  Tooling & \code{dotnet-ef} als lokales Tool. Die Design-Time-Dienste lädt das Attribut im
+  Startprojekt. Migration und SQL-Skript enthalten RLS, \code{FORCE}, Policy und Index
   (PostgreSQL) sowie Security Policy und Session-Schlüssel (SQL Server).
   \code{has-\allowbreak{}pending-\allowbreak{}model-\allowbreak{}changes} meldet danach keine
   Änderung. \\
@@ -619,10 +626,10 @@ dabei ebenfalls erkennen. Der Weg führt über zwei Design-Time-Dienste:
   \textbf{Dienst} & \textbf{Aufgabe} \\
   \tablehead
   \code{IDatabase\allowbreak{}Model\allowbreak{}Factory} & Liest das Schema in ein
-  \code{Database\allowbreak{}Model}. Ein abgeleiteter Npgsql-Factory könnte
+  \code{Database\allowbreak{}Model}. Eine abgeleitete Npgsql-Factory fragt
   \code{pg\_\allowbreak{}policies} und
-  \code{pg\_\allowbreak{}class.\allowbreak{}relrowsecurity} abfragen und als Annotations an
-  \code{Database\allowbreak{}Table} hängen. \\
+  \code{pg\_\allowbreak{}class.\allowbreak{}relrowsecurity} ab und hängt sie als Annotations an
+  \code{Database\allowbreak{}Table}. \\
   \tablerule
   \code{IAnnotation\allowbreak{}Code\allowbreak{}Generator} & Schreibt diese Annotations als
   Fluent API in den generierten \code{On\allowbreak{}Model\allowbreak{}Creating}, mit

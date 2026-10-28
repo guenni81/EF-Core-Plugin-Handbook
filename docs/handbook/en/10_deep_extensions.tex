@@ -41,7 +41,7 @@ Npgsql does not offer the comparison as a function; it meets all three reasons.
 
 \begin{note}[A teaching example, deliberately not about tenancy]
   The comparison has nothing to do with multi-tenancy. It lives in a sample package of its own
-  because a custom node forces a plugin to replace two exclusive provider services, the SQL
+  because a custom node forces a plugin to replace two single services of the provider, the SQL
   generator and the nullability processor. Up to edition~1.1 the tenancy plugin did so for this
   example alone, which made it harder to combine with other plugins. A tenancy plugin needs no
   custom node; function composition (chapter~\ref{ch:translating-methods-and-members}) is
@@ -480,7 +480,7 @@ GROUP BY o."TenantId"
 
 Databases without a \code{FILTER} clause (such as SQL Server) emulate predicates with
 \code{CASE WHEN predicate THEN value END}. A provider-neutral aggregate translator must know
-both; that is why this one lives in the PostgreSQL package.
+both; this one uses the Npgsql factory and therefore lives in the PostgreSQL-specific sample package.
 
 % ------------------------------------------------------------
 \chapter{Property-level Fluent API and runtime annotations}\label{ch:property-level-fluent-api-and}
@@ -527,7 +527,7 @@ public static IConventionPropertyBuilder? IsTenantProperty(
         : builder;
 \end{sourcecode}
 
-The method lives in the core package because it only sets metadata. The conventions of both
+The method lives in the core package because it only sets metadata. The conventions of all
 provider packages find the tenant property through the same core function:
 
 \begin{sourcecode}[Metadata/\allowbreak{}Tenancy\allowbreak{}Entity\allowbreak{}Type\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}core package,\allowbreak{} shortened, simplified)]{csharp}
@@ -587,7 +587,7 @@ Two questions decide whether this works. Does the annotation reach the runtime m
 annotations and keeps all others. Does it reach the compiled model? Yes: EF writes simple
 values automatically (chapter~\ref{ch:compiled-models-trimming-and-nativeaot}). The custom
 \code{ICSharp\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator}
-therefore has the opposite job: it removes the RLS annotations that only migrations need:
+of the PostgreSQL package therefore has the opposite job: it removes the RLS annotations that only migrations need:
 
 \begin{sourcecode}[Design/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}CSharp\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}shortened, simplified)]{csharp}
 public class TenancyCSharpRuntimeAnnotationCodeGenerator
@@ -654,9 +654,9 @@ time there. The generator therefore applies the same filter in an override of
 \chapter{Scaffolding in practice}\label{ch:scaffolding-in-practice}
 \versionrisk{volatile}
 
-When scaffolding (\code{dotnet ef dbcontext scaffold}), EF reads the schema and generates
-entities and a context. A plugin managing its own schema objects should recognize them in
-the process. The route has three stations, two of which the plugin already knows:
+Chapter~\ref{ch:scaffolding-reverse-engineering} names the two design-time services through
+which a plugin recognizes its schema objects during scaffolding. This chapter shows the
+implementation. The route has three stations, two of which the plugin already knows:
 
 \begin{flowdiagram}
   \flowstep{IDatabaseModelFactory}{Reads the schema into a DatabaseModel; the plugin

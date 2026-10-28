@@ -1,14 +1,18 @@
 # Changelog
 
 All notable changes to this project are documented in this file. The format is based on
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Package versions equal the handbook edition (1.1.0 = edition 1.1); the supported EF Core
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Package versions equal the handbook edition (1.2.0 = edition 1.2); the supported EF Core
 version is given by the dependency range and the compatibility table in the README
 (1.x = EF Core 10).
 
 ## [Unreleased]
 
-**Breaking change** (binary; the packages are not published on NuGet, so the version stays
-1.2): the core package no longer depends on `Microsoft.EntityFrameworkCore.Relational`. The
+## [1.2.0] - 2026-10-28
+
+Packages 1.2.0, handbook edition 1.2.
+
+**Breaking change** (binary; the packages are not published on NuGet, so the minor version
+suffices): the core package no longer depends on `Microsoft.EntityFrameworkCore.Relational`. The
 relational building blocks moved into the new package
 `Acme.EntityFrameworkCore.Tenancy.Relational`, with unchanged namespaces:
 `TenantSessionInterceptor`, `TenantTableMappingValidator` and `Database.ApplyTenantSession()`.
@@ -111,6 +115,39 @@ its internal API surface shrinks from 13 to 10 Npgsql types.
   versions name the SQL Server provider as well.
 - Handbook (both editions): page 2 held only the box "Public and internal APIs"; the table of
   contents now follows on the same page instead of starting a new one.
+- Design-time services were not loaded in applications: EF Core reads
+  `[DesignTimeServicesReference]` only from the startup and the migrations assembly, so the
+  attribute in the PostgreSQL package had no effect and snapshots kept raw annotations. The
+  attribute moved from the package into the application (`eng/consumer-test/template/
+  DesignTimeServices.cs`); the consumer test now checks the fluent API in the snapshot.
+  Chapter 23 and the checklist say where the line belongs.
+- Code comments: `TenantActivityEnrichmentInterceptor` is an `IInterceptor` and therefore
+  scoped (one instance per context), not one instance for all contexts; the query
+  compilation benchmark no longer claims a replaced SQL generator and nullability processor.
+- Handbook (both editions), integration and consistency review:
+  - New section "The path through the book" in chapter 2: design-time and runtime model,
+    and how the parts follow the pipeline (including why the update pipeline sits in
+    part VIII).
+  - Lifetimes: the OpenTelemetry interceptor is scoped, `IRelationalAnnotationProvider` a
+    singleton per internal service provider; the model is cached per internal service provider
+    and context type; the query expression interceptor runs at compilation after a cache miss;
+    model validation runs before the finalized conventions, so plugin validation sees the
+    runtime model.
+  - Counts and facts: internal types per package (PostgreSQL 10, SQL Server 2, Cosmos 1;
+    `NpgsqlMigrationsSqlGenerator` is public), four packed libraries in the consumer test,
+    package overview including Cosmos and the Functions sample, SQL Server resets the session
+    context on reuse of a pooled connection, JSON values with a value converter
+    (`JsonConvertedValueReaderWriter`), appendix A cardinality of `ICommandBatchPreparer`.
+  - Code excerpts: excerpts that left out registrations or settings are marked as excerpts or
+    simplified, unbound listings that do not match their file literally are marked
+    simplified, appendix B lists the missing source files and no longer names files that do
+    not exist.
+  - Cross-references: the decision guide routes to complex types and JSON, the query pipeline
+    and diagnostics; references that pointed to chapters not covering the topic are fixed.
+  - Repetitions replaced by references: the 21-provider limit, the opening of "Scaffolding in
+    practice", the CI patch/preview paragraph, a duplicate checklist item.
+  - Terminology aligned in the German edition (Interceptors, Extension-Method, threadsicher,
+    Entity-Typ, Eigentümer, Context, Annotations, Massenoperationen, Transaction-Pooling).
 
 ## [1.1.0] - 2026-10-28
 

@@ -8,7 +8,8 @@
 A practical guide to writing **plugins for Entity Framework Core 10**, plus a complete,
 tested reference plugin: **`Acme.EntityFrameworkCore.Tenancy`** adds multi-tenancy with
 database-enforced **Row Level Security** to EF Core, for **PostgreSQL** (full
-implementation) and **SQL Server** (second provider).
+implementation) and **SQL Server** (second provider), plus a lean **Cosmos DB** package
+without Row Level Security.
 
 The handbook explains EF Core's extension points chapter by chapter: options extensions,
 internal services, conventions, type mappings, query translation, interceptors,
@@ -250,7 +251,7 @@ the very top of `Up()`.
 
 ## Compatibility
 
-Package versions equal the handbook edition (packages 1.1.0 = edition 1.1).
+Package versions equal the handbook edition (packages 1.2.0 = edition 1.2).
 
 | Plugin | EF Core | Npgsql EF Core provider |
 |---|---|---|

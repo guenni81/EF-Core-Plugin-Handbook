@@ -164,7 +164,7 @@ auf SQLite und InMemory.
   RLS in PostgreSQL & Isolation, keine Zeilen ohne Mandant, WITH CHECK greift. \\
   \tablerule
   Grenzfälle (Kapitel~\ref{ch:bulk-operations-and-the-limits}--\ref{ch:advanced-migrations})
-  & ExecuteUpdate und Raw SQL gegen RLS, Value Generation, JSON-Spalten, Compiled Model,
+  & ExecuteUpdate und rohes SQL gegen RLS, Value Generation, JSON-Spalten, Compiled Model,
   idempotentes Skript. \\
   \tablerule
   Kombinierbarkeit & Decorator um den Migrations-Generator und die Kompositionsmatrix zweier
@@ -259,7 +259,7 @@ public async Task Database_rejects_rows_of_other_tenant()
 \section{Paketversion und unterstützte EF-Version}
 
 Das Beispiel versioniert Plugin und Handbuch gemeinsam: Die Paketversion entspricht der
-Buchausgabe, Pakete 1.1.0 gehören zu Ausgabe~1.1. So gehört jeder Codeauszug zu genau einem
+Buchausgabe, Pakete 1.2.0 gehören zu Ausgabe~1.2. So gehört jeder Codeauszug zu genau einem
 Paketstand. Welche EF-Version ein Stand unterstützt, steht deshalb nicht in der Versionsnummer,
 sondern im Abhängigkeitsbereich der Pakete und in der Kompatibilitätstabelle der README: Plugin
 1.x unterstützt EF Core~10. Der Wechsel auf eine neue EF-Major-Version ist für Anwender ein
@@ -282,12 +282,11 @@ Bereich an einer Stelle, damit die CI ihn für den Patch-Kanal überschreiben ka
 \section{Umgang mit interner API}
 
 Plugins kommen um interne APIs selten herum: Das Beispiel erbt von
-\code{Npgsql\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator},
 \code{Npgsql\allowbreak{}Annotation\allowbreak{}Provider} und
 \code{Npgsql\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator} und nutzt
 \code{Npgsql\allowbreak{}Options\allowbreak{}Extension}; insgesamt berührt das
-PostgreSQL-Paket 13 interne Typen, das SQL-Server-Paket 2 und der Kern keinen (Inventar im
-Upgrade-Playbook). Solche Typen können sich auch in Minor-Versionen ändern. EF meldet ihre
+PostgreSQL-Paket 10 interne Typen, das SQL-Server-Paket 2, das Cosmos-Paket 1, Kern und
+relationale Schicht keinen (Inventar im Upgrade-Playbook). Solche Typen können sich auch in Minor-Versionen ändern. EF meldet ihre
 Verwendung mit der Warnung \textbf{EF1001}.
 
 \begin{datatable}{H{0.80}H{1.20}}
@@ -443,7 +442,7 @@ Target-Framework ließe sich nicht einmal wiederherstellen.
 \begin{datatable}{H{0.24}H{1.27}H{1.76}H{0.73}}
   \textbf{Nr.} & \textbf{Schritt} & \textbf{Vorgehen} & \textbf{Im Beispiel} \\
   \tablehead
-  1 & Pakete aktualisieren & Wie oben, dazu Begleitpakete, die mit EF erscheinen
+  1 & Pakete aktualisieren & Versionen aus Schritt~1, dazu Begleitpakete, die mit EF erscheinen
   (\code{Microsoft.\allowbreak{}Extensions.\allowbreak{}*}); fest gepinnte Begleitpakete
   blockieren schon den Restore & \code{EFCore\allowbreak{}Version} \\
   \tablerule
@@ -454,7 +453,7 @@ Target-Framework ließe sich nicht einmal wiederherstellen.
   3 & Interne API untersuchen & Das EF1001-Inventar (unten) gegen die Quellen beider
   Versionen vergleichen; jede Stelle einzeln, auch die, die noch kompilieren;
   mit den volatilen Kapiteln beginnen (Seite~\pageref{sec:version-dependency}) &
-  Kern: 0, PostgreSQL: 10, SQL Server: 2 interne Typen (Funktionen-Beispiel: 5) \\
+  Kern: 0, PostgreSQL: 10, SQL Server: 2, Cosmos DB: 1 interne Typen (Funktionen-Beispiel: 5) \\
   \tablerule
   4 & Registrierungen und Lebensdauern vergleichen & EFs Service-Tabellen beider Versionen
   vergleichen; die eigenen \code{Replace}-Aufrufe legen Lebensdauern fest &
@@ -692,7 +691,7 @@ Package Management):
 <PropertyGroup>
   <PackageLicenseExpression>MIT</PackageLicenseExpression>
   <PackageReadmeFile>README.md</PackageReadmeFile>
-  <VersionPrefix>1.1.0</VersionPrefix>       <!-- = Buchausgabe -->
+  <VersionPrefix>1.2.0</VersionPrefix>       <!-- = Buchausgabe -->
   <IncludeSymbols>true</IncludeSymbols>
   <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   <PublishRepositoryUrl>true</PublishRepositoryUrl>      <!-- SourceLink -->
@@ -746,8 +745,7 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
   \item Stufe festlegen: Hilfsmethoden, Modell-Helfer, echtes Plugin oder Provider?
   \item Kern- und Provider-Paket trennen; Typen für Entitäts-Assemblies in den Kern.
   \item Für jeden Erweiterungspunkt zuerst ein Plugin-Interface suchen, erst dann ersetzen.
-  \item Jeden Mechanismus mit der Entscheidungshilfe
-    (Kapitel~\ref{ch:choosing-the-right-extension-point}) gegen die einfachere Alternative
+  \item Jeden Mechanismus mit der Entscheidungshilfe gegen die einfachere Alternative
     prüfen.
 \end{checklist}
 
@@ -770,11 +768,10 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
 
 \begin{checklist}
   \item Registrierung über den ServicesBuilder (Lebensdauern aus EFs Tabelle).
-  \item Einzeldienste dekorieren, wo das öffentliche Interface genügt
-    (Kapitel~\ref{ch:registering-services}).
+  \item Einzeldienste dekorieren, wo das öffentliche Interface genügt.
   \item Sonst Replace, und die Logik öffentlich und virtuell anbieten.
   \item ISingletonOptions für Singleton-Dienste, doppelt registriert.
-  \item Jeden Zustand nach Kapitel~\ref{ch:state-lifetimes-and-thread-safety} einordnen: Anfragedaten nie in
+  \item Jeden Zustand einordnen: Anfragedaten nie in
     Options, Hash, Modell, Singleton oder übersetzte Abfrage.
   \item Scoped-Dienste mit Zustand für Pooling zurücksetzen (IResettableService).
   \item App-Abhängigkeiten über AddInterceptors, Pooling-Verhalten dokumentieren.
@@ -809,7 +806,7 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
 
 \section{Abfragen}
 
-\noindent Details: Kapitel~\ref{ch:the-query-pipeline}, \ref{ch:translating-methods-and-members}.
+\noindent Details: Kapitel~\ref{ch:the-query-pipeline}, \ref{ch:translating-methods-and-members}, \ref{ch:preventing-client-side-evaluation}.
 
 \begin{checklist}
   \item EF.Functions-Methoden im Kern, Übersetzung im Provider-Paket.
@@ -826,17 +823,17 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
   \item Interceptors synchron und asynchron implementieren.
   \item Tracking-Markierung von tatsächlicher Wertänderung unterscheiden
     (Seite~\pageref{sec:tracking-flag-versus-value}).
-  \item Singleton-Interceptors zustandslos und thread-sicher.
+  \item Singleton-Interceptors zustandslos und threadsicher.
   \item Singleton-Interceptors in ApplyServices registrieren oder als eine geteilte Instanz
     übergeben, nie pro Context neu; Anfragedaten pro Aufruf über den Context holen.
   \item Eigene Event-IDs in eigenem Bereich, EventDefinitions gecacht.
   \item Sicherheitsrelevantes als Warnung, eskalierbar per ConfigureWarnings.
-  \item Wo Hooks nicht laufen, eine explizite API anbieten (z. B. ApplyTenantSession).
+  \item Wo Interceptors nicht greifen, eine explizite API anbieten (z. B. ApplyTenantSession).
 \end{checklist}
 
 \section{Migrations \& Design-Time}
 
-\noindent Details: Kapitel~\ref{ch:how-migrations-work}, \ref{ch:design-time-services}.
+\noindent Details: Kapitel~\ref{ch:how-migrations-work}, \ref{ch:declarative-sql-from-annotations}, \ref{ch:custom-migration-operations}, \ref{ch:design-time-services}, \ref{ch:compiled-models-trimming-and-nativeaot}.
 
 \begin{checklist}
   \item Deklarativ über Annotation-Provider (nur Design-Time) und SQL-Generator.
@@ -844,7 +841,7 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
   \item Eigene Operationen idempotent, Extensions im Migrations-Namespace.
   \item Schemagebundene Objekte bei Umbenennungen vor der Änderung entfernen und danach mit
     den endgültigen Namen neu anlegen (Seite~\pageref{sec:sqlserver-schema-bound-changes}).
-  \item DesignTimeServicesReference mit forProvider; Code-Generator entfernt Annotations.
+  \item DesignTimeServicesReference mit forProvider im Startprojekt der Anwendung (nicht im Plugin); Code-Generator entfernt Annotations.
   \item Compiled Models prüfen: Default, Instance, Laufzeit-Annotations.
 \end{checklist}
 
@@ -855,8 +852,8 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
 \begin{checklist}
   \item Modell-, SQL-, Snapshot-Roundtrip- und Integrationstests.
   \item Caching-Test mit verschiedenen Optionen; Test auf keine Phantom-Migration.
-  \item Versionsbereich je EF-Major, CI gegen neueste Patches und Previews, EF1001 bewusst;
-    Upgrades nach dem Playbook (Kapitel~\ref{ch:versioning-and-compatibility}).
+  \item Versionsbereich je EF-Major, EF1001 bewusst; CI mit Patch-Kanal, Preview-Kanal nur als
+    Frühwarnung; Upgrades nach dem Playbook.
   \item XML-Doku, SourceLink, Symbole, README, CHANGELOG, Einschränkungen dokumentiert.
   \item Die Pakete als Verbraucher prüfen: Tooling, Compiled Model, NativeAOT
     (Seite~\pageref{sec:consumer-test}).
@@ -868,7 +865,7 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
 
 \section{Fortgeschrittene Erweiterungspunkte (Teil~\ref{part:advanced})}
 
-\noindent Details: Kapitel~\ref{ch:bulk-operations-and-the-limits}, \ref{ch:value-generation}, \ref{ch:advanced-migrations}.
+\noindent Details: Kapitel~\ref{ch:bulk-operations-and-the-limits}, \ref{ch:value-generation}, \ref{ch:complex-types-and-json}, \ref{ch:advanced-migrations}.
 
 \begin{checklist}
   \item Wege dokumentieren, die Interceptors umgehen (ExecuteUpdate, rohes SQL).
@@ -880,7 +877,7 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
 
 \section{Betrieb und Integration (Teil~\ref{part:operations})}
 
-\noindent Details: Kapitel~\ref{ch:row-level-security-in-production}, \ref{ch:tenant-safe-relationships}, \ref{ch:retrofitting-and-operating}.
+\noindent Details: Kapitel~\ref{ch:row-level-security-in-production}, \ref{ch:tenant-safe-relationships}, \ref{ch:retrofitting-and-operating}, \ref{ch:plugin-performance}, \ref{ch:using-the-plugin-in-asp}, \ref{ch:ci-and-api-stability}.
 
 \begin{checklist}
   \item Betriebsannahmen dokumentieren (Rollen, Pooling, Transaction-Pooling).
@@ -892,13 +889,12 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
   \item Bestehende Tabellen in zwei Migrationen mit Wächter nachrüsten.
   \item Heiße Pfade (Interceptors) messen, nicht vermuten.
   \item Second-Level-Caches: der Mandant in jedem Cache-Schlüssel, ohne Mandant kein Cache.
-  \item CI mit Patch-Kanal, Preview-Kanal nur als Frühwarnung, Public-API-Analyzer als
-    Fehler.
+  \item Public-API-Analyzer als Fehler, nicht als Warnung.
 \end{checklist}
 
 \section{Tiefe Erweiterungen (Teil~\ref{part:deep-extensions})}
 
-\noindent Details: Kapitel~\ref{ch:custom-sql-expression-nodes}, \ref{ch:scaffolding-in-practice}.
+\noindent Details: Kapitel~\ref{ch:custom-sql-expression-nodes}, \ref{ch:aggregate-translators}, \ref{ch:property-level-fluent-api-and}, \ref{ch:scaffolding-in-practice}.
 
 \begin{checklist}
   \item Eigene SQL-Knoten: VisitChildren, Update, Quote, Print, Equals/GetHashCode.

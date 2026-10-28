@@ -60,6 +60,10 @@ jede in einem eigenen Paket:
   \code{Database.\allowbreak{}Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})} &
   Relational & Nutzt den Session-Interceptor des Providers \\
   \tablerule
+  \code{Tenant\allowbreak{}Activity\allowbreak{}Enrichment\allowbreak{}Interceptor} &
+  Relational & Command-Interceptor; braucht nur \code{Db\allowbreak{}Command}, keinen
+  SQL-Dialekt \\
+  \tablerule
   Type Mapping, Translators, Migrations, RLS-Conventions & Provider & Store-Typen,
   SQL-Syntax, Schema-Objekte \\
   \tablerule
@@ -73,7 +77,7 @@ referenziert nur \code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allow
 das Paket
 \code{Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Relational}
 ergänzt \code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Relational},
-und beide Provider-Pakete bauen darauf auf. \code{Package\allowbreak{}Layer\allowbreak{}Tests}
+und die beiden relationalen Provider-Pakete bauen darauf auf. \code{Package\allowbreak{}Layer\allowbreak{}Tests}
 stellt sicher, dass kein relationaler Typ in den Kern zurückwandert. Dass sich das lohnt, zeigt
 Kapitel~\ref{ch:without-sql-what-carries-over}: Das Cosmos-Paket baut allein auf dem Kern auf.
 
@@ -93,7 +97,7 @@ Kapitel~\ref{ch:without-sql-what-carries-over}: Das Cosmos-Paket baut allein auf
   \code{Use\allowbreak{}Acme\allowbreak{}Tenancy} auf
   \code{Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder} definieren, sind
   nicht gleichzeitig referenzierbar: Der Aufruf wäre mehrdeutig. Das PostgreSQL-Paket nutzt
-  den Builder von EF, das SQL-Server-Paket den Builder des Providers
+  den Builder von EF, das SQL-Server- und das Cosmos-Paket den Builder des Providers
   (\code{Use\allowbreak{}Sql\allowbreak{}Server(\allowbreak{}cs,\allowbreak{} x =>
   x.\allowbreak{}Use\allowbreak{}Acme\allowbreak{}Tenancy(\allowbreak{}))}). Wer mehrere
   Provider-Pakete plant, sollte von Anfang an konsequent den Provider-Builder verwenden, wie
@@ -132,7 +136,8 @@ Plugin pro Datenbank tatsächlich neu lösen muss:
   Tabelleneigentümer & Nur mit \code{FORCE} gebunden & Kein FORCE; Prädikate sind Teil der
   Abfrage \\
   \tablerule
-  \code{DROP TABLE}, Umbenennen & Policies verschwinden mit bzw. folgen & Policy muss vorher weg und danach neu angelegt werden (SCHEMABINDING) \\
+  \code{DROP TABLE}, Umbenennen & Policies verschwinden mit bzw. folgen & Policy muss vorher weg und
+  danach neu angelegt werden (SCHEMABINDING) \\
   \tablerule
   DDL in Batches & Transaktional, beliebig kombinierbar & \code{CREATE
   FUNCTION/\allowbreak{}SCHEMA} allein im Batch:
@@ -153,6 +158,7 @@ services.AddAcmeTenancy<HttpTenantProvider>();                    // Kernpaket
 services.AddDbContext<ShopContext>((sp, o) => o
     .UseSqlServer(connectionString, sql => sql.UseAcmeTenancy(sp)));
 
+// Überladung ohne IServiceProvider; die mit sp (oben) ergänzt die Interceptors
 public static SqlServerDbContextOptionsBuilder UseAcmeTenancy(
     this SqlServerDbContextOptionsBuilder sqlServerOptionsBuilder,
     string sessionKey = "TenantId",
@@ -307,7 +313,7 @@ Schlimmer noch: Eine alte Migration hätte beim erneuten Ausführen, etwa für e
 Testdatenbank, Objekte mit den neuen Werten erzeugt.
 
 Seit 1.1 trennt das Paket die beiden Rollen. Die Convention schreibt Schlüssel und Schema als
-Modell-Annotationen \code{Acme:\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Rls:\allowbreak{}Session\allowbreak{}Key}
+Modell-Annotations \code{Acme:\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Rls:\allowbreak{}Session\allowbreak{}Key}
 und \code{Acme:\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Rls:\allowbreak{}Policy\allowbreak{}Schema}
 ins Modell und damit in den Snapshot. Der Annotation-Provider gibt sie an das relationale Modell
 weiter, und der Differ erzeugt bei einer Änderung eine
@@ -349,7 +355,7 @@ neuem Schlüssel, bevor die Migration eingespielt ist, setzt der Interceptor ein
 die Funktion nicht liest. Die Folge ist kein Datenleck, sondern \emph{fail closed}: keine Zeilen,
 und Schreibversuche scheitern am BLOCK-Prädikat. Die Migration gehört deshalb vor die neue
 App-Version. \code{Sql\allowbreak{}Server\allowbreak{}Session\allowbreak{}Settings\allowbreak{}Tests}
-prüft ohne Datenbank die Annotationen, den Snapshot, den leeren Diff, die erkannte Änderung und
+prüft ohne Datenbank die Annotations, den Snapshot, den leeren Diff, die erkannte Änderung und
 die historische Migration. Gegen einen echten SQL Server prüft es den Wechsel von Schlüssel und
 Schema mit Up und Down, das Upgrade einer 1.0-Installation und den zweiten Context.
 
@@ -383,8 +389,9 @@ public class SqlServerTenantSessionInterceptor : TenantSessionInterceptor
 \section{Bewusst nicht portiert}
 
 Das SQL-Server-Paket ist ein eigenständiger, aber schlankerer Provider. Fluent-API-Policies,
-der optionale Query-Filter, Snapshot-Code-Generator und Scaffolding fehlen dort, und der
-eigene SQL-Knoten und das Aggregat des Funktionen-Beispielpakets gibt es nur für PostgreSQL. Das ist eine Produktentscheidung, kein technisches Hindernis: Jedes
+der optionale Query-Filter, Snapshot-Code-Generator und Scaffolding fehlen dort; den
+eigenen SQL-Knoten und das Aggregat des Funktionen-Beispielpakets gibt es nur für
+PostgreSQL. Das ist eine Produktentscheidung, kein technisches Hindernis: Jedes
 dieser Kapitel lässt sich mit denselben Mustern auf SQL Server übertragen. Die Liste gehört
 in die Dokumentation des Pakets, damit Nutzer wissen, was sie erwarten können.
 
@@ -562,7 +569,7 @@ Assert.Contains(tenant.Value.ToString("D"), partition);
   Mandant in der Anfrage & Session-Setting & \code{SESSION\_\allowbreak{}CONTEXT} &
   Abfrageparameter, Partition Key \\
   \tablerule
-  Schema-Objekte & Policies über Migrations & Prädikatfunktion, Security Policy & Keine \\
+  Schema-Objekte & Policies über Migrations & Predicate-Funktion, Security Policy & Keine \\
   \tablerule
   Rohe Abfragen & Weiter durch RLS gefiltert & Weiter durch die Policy gefiltert &
   \code{From\allowbreak{}Sql} gefiltert, aber partitionsübergreifend; SDK ungefiltert \\

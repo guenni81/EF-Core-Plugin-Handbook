@@ -102,7 +102,7 @@ ORDER BY c.Id ASC
 
 \textbf{Postprocessing und Kompilierung.} Der \code{Select\allowbreak{}Expression} wird
 abgeschlossen und zusammen mit dem Shaper, der später die Objekte baut, zu einem Delegaten
-kompiliert. Bis hierher läuft alles einmal pro Abfrageform.
+kompiliert. Vom Preprocessing bis hierher läuft alles einmal pro Abfrageform.
 
 \textbf{Parameterabhängige Verarbeitung.} Erst bei der Ausführung kennt EF die Werte der
 Parameter. Der \code{Relational\allowbreak{}Parameter\allowbreak{}Based\allowbreak{}Sql\allowbreak{}Processor}
@@ -660,7 +660,7 @@ Punkte zurück; hier ein Überblick mit Einordnung:
   \tablerule
   \code{IMaterialization\allowbreak{}Interceptor} & Objekte bei der Materialisierung
   erzeugen, initialisieren oder prüfen & Singleton-Interceptor; muss zustandslos und
-  thread-sicher sein; umgesetzt in Kapitel~\ref{ch:materialization-from-rows-to-objects} \\
+  threadsicher sein; umgesetzt in Kapitel~\ref{ch:materialization-from-rows-to-objects} \\
   \tablerule
   \code{IMethod\allowbreak{}Call\allowbreak{}Translator\allowbreak{}Provider} u. a. &
   Translator-Infrastruktur ersetzen & Einzeldienste des Providers; nur in Ausnahmefällen \\
@@ -887,12 +887,10 @@ rufen deshalb nicht die Haken auf, sondern die Logik dahinter (siehe unten).
   \code{materialization\allowbreak{}Data.\allowbreak{}Context}.
 
   Singleton-Interceptor-Instanzen gehören außerdem zum Cache-Schlüssel des internen
-  Providers. Wer pro Context eine neue Instanz über
-  \code{Add\allowbreak{}Interceptors} übergibt, bekommt pro Context einen neuen internen
-  Provider samt Modell; ab dem 21. bricht EF standardmäßig mit
-  \code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}
-  ab. Ein Plugin registriert ihn in \code{Apply\allowbreak{}Services}; eine Anwendung
-  übergibt stets dieselbe Instanz.
+  Providers: Eine neue Instanz pro Context über \code{Add\allowbreak{}Interceptors} erzeugt
+  pro Context einen neuen internen Provider samt Modell (Folgen in
+  Kapitel~\ref{ch:the-options-extension}). Ein Plugin registriert ihn deshalb in
+  \code{Apply\allowbreak{}Services}; eine Anwendung übergibt stets dieselbe Instanz.
 \end{important}
 
 \section{Beispiel: Mandanten beim Laden prüfen}

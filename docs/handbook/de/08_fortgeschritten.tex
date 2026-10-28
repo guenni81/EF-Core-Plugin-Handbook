@@ -1,7 +1,7 @@
 % ============================================================
 \setpartpreamble{\partintro
   {Grenzen der Laufzeit-Haken und weitere Erweiterungspunkte: Massenoperationen, Value
-  Generation, Update-Pipeline, Complex Types, Modelle pro Kontext und Migrations für
+  Generation, Update-Pipeline, Complex Types, Modelle pro Laufzeitkontext und Migrations für
   Fortgeschrittene.}
   {
     \item Kapitel~\ref{ch:bulk-operations-and-the-limits}: Massenoperationen und die Grenzen
@@ -123,16 +123,16 @@ private void Check(LambdaExpression selector)
 
 Ist die gesetzte Property die Mandanten-Property laut Laufzeit-Annotation, wirft der
 Interceptor eine \code{Tenancy\allowbreak{}Exception}, noch bevor eine Verbindung geöffnet wird.
-Er läuft einmal pro Abfrageform, vor Übersetzung und Query-Cache; spätere Ausführungen kosten
-nichts. Andere Spalten und gewöhnliche Abfragen passieren unverändert. RLS bleibt die
+Er läuft nur beim Kompilieren, also einmal pro Abfrageform vor der Übersetzung; Ausführungen
+aus dem Query-Cache kosten nichts. Andere Spalten und gewöhnliche Abfragen passieren unverändert. RLS bleibt die
 eigentliche Grenze: Der Interceptor verhindert nur das Umhängen von Zeilen früh und mit klarer
 Meldung, \code{Execute\allowbreak{}Delete} und rohes SQL prüft er nicht.
 
 Eine Falle steckt in der Registrierung. \code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor}
 erbt wie \code{IMaterialization\allowbreak{}Interceptor} von
 \code{ISingleton\allowbreak{}Interceptor}. Im internen Provider unter diesem Typ registriert,
-ruft EF ihn aber nie auf: Query-Expression-Interceptoren holt EF aus den
-\code{IInterceptor}-Registrierungen und den Options, Materialisierungs-Interceptoren auch aus
+ruft EF ihn aber nie auf: Query-Expression-Interceptors holt EF aus den
+\code{IInterceptor}-Registrierungen und den Options, Materialisierungs-Interceptors auch aus
 den \code{ISingleton\allowbreak{}Interceptor}-Registrierungen. Das Plugin registriert ihn deshalb
 als \code{IInterceptor}; zustandslos, wie er ist, schadet die Instanz pro Context nicht.
 \code{Bulk\allowbreak{}Operation\allowbreak{}Tests} hält beide Registrierungen fest, die
@@ -212,7 +212,7 @@ dass die Factory im erzeugten Code auftaucht.
 \versionrisk{medium}
 
 Kapitel~\ref{ch:the-query-pipeline} beschreibt den Weg von LINQ zu SQL. Für das Schreiben
-gibt es eine eigene Pipeline, die Plugins für Bulk-Operationen, datenbankseitige
+gibt es eine eigene Pipeline, die Plugins für Massenoperationen, datenbankseitige
 Soft-Deletes oder zurückgelieferte Werte erweitern:
 
 \begin{flowdiagram}
@@ -280,9 +280,12 @@ Wertgenerierung betreffen nur Entitäten.
 
 Owned Types und (seit EF Core 10) Complex Types lassen sich mit
 \code{To\allowbreak{}Json(\allowbreak{})} als eine JSON-Spalte speichern. Werte darin liest
-und schreibt EF nicht über Konverter, sondern über den
+und schreibt EF über den
 \code{Json\allowbreak{}Value\allowbreak{}Reader\allowbreak{}Writer} des Type Mappings
-(Kapitel~\ref{ch:type-mappings-and-value-converters}). Fehlt er, scheitert der Modellbau.
+(Kapitel~\ref{ch:type-mappings-and-value-converters}). Ein Value Converter allein genügt nur,
+wenn EF den Reader/Writer des Providertyps darum legen kann
+(\code{Json\allowbreak{}Converted\allowbreak{}Value\allowbreak{}Reader\allowbreak{}Writer});
+ein eigenes Mapping ohne beides lässt den Modellbau scheitern.
 Unit- und Integrationstest des Beispiels prüfen beide Seiten:
 
 % source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/JsonTests.cs
@@ -319,7 +322,7 @@ System.Text.Json unabhängig voneinander serialisieren
 \chapter{Modelle pro Laufzeitkontext}\label{ch:models-per-runtime-context}
 \versionrisk{stable}
 
-EF baut das Modell einmal pro Context-Typ und cached es
+EF baut das Modell einmal pro internem Service Provider und Context-Typ und cached es
 (Kapitel~\ref{ch:ef-core-s-architecture-from}). Soll das Modell von Laufzeitdaten abhängen,
 etwa einem Schema pro Mandant, muss der Cache-Schlüssel diese Daten enthalten. Dafür gibt es
 \code{IModel\allowbreak{}Cache\allowbreak{}Key\allowbreak{}Factory}:
@@ -387,7 +390,7 @@ Generierte und handgeschriebene Operationen laufen in der Reihenfolge, in der si
 EF erzeugt sie direkt nach \code{CREATE TABLE}. Wird die Rolle erst am Ende von
 \code{Up(\allowbreak{})} angelegt, scheitert die Migration.
 
-\begin{sourcecode}[Migrations/\allowbreak{}20261021\_\allowbreak{}Initial.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Migrations/\allowbreak{}20261021\_\allowbreak{}Initial.\allowbreak{}cs (\allowbreak{}handergänzt, vereinfacht)]{csharp}
 protected override void Up(MigrationBuilder migrationBuilder)
 {
     // 1. Was Policies referenzieren: VOR den generierten Operationen

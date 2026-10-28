@@ -99,7 +99,7 @@ ORDER BY c.Id ASC
 
 \textbf{Postprocessing and compilation.} The \code{Select\allowbreak{}Expression} is
 finalized and compiled into a delegate together with the shaper that will later build the
-objects. Up to here, everything runs once per query shape.
+objects. From preprocessing up to here, everything runs once per query shape.
 
 \textbf{Parameter-based processing.} Only at execution time does EF know the parameter
 values. The
@@ -870,13 +870,11 @@ do not call the hooks but the logic behind them (see below).
   stateless and thread-safe. It gets the data of a request on every call through
   \code{materialization\allowbreak{}Data.\allowbreak{}Context}.
 
-  Singleton interceptor instances are also part of the internal provider's cache key.
-  Passing a new instance per context through \code{Add\allowbreak{}Interceptors} creates a
-  new internal provider including model for every context; from the 21st on, EF throws by
-  default with
-  \code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}.
-  A plugin registers it in \code{Apply\allowbreak{}Services}; an application always passes
-  the same instance.
+  Singleton interceptor instances are also part of the internal provider's cache key: a new
+  instance per context through \code{Add\allowbreak{}Interceptors} creates a new internal
+  provider including model for every context (consequences in
+  chapter~\ref{ch:the-options-extension}). A plugin therefore registers it in
+  \code{Apply\allowbreak{}Services}; an application always passes the same instance.
 \end{important}
 
 \section{Example: checking tenants while loading}

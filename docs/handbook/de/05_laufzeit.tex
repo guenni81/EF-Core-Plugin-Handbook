@@ -42,7 +42,7 @@ unterdrücken oder Ergebnisse ersetzen.
 
 Die beiden Singleton-Interceptors implementieren \code{ISingleton\allowbreak{}Interceptor}.
 Sie werden einmal pro internem Provider verwendet, nicht pro Context, und müssen deshalb
-zustandslos und thread-sicher sein. Im internen Provider registriert, findet EF aber nur den
+zustandslos und threadsicher sein. Im internen Provider registriert, findet EF aber nur den
 Materialisierungs-Interceptor unter \code{ISingleton\allowbreak{}Interceptor}; einen
 Query-Expression-Interceptor ruft es nur auf, wenn er als \code{IInterceptor} registriert ist
 (Kapitel~\ref{ch:bulk-operations-and-the-limits}).
@@ -70,8 +70,8 @@ Interceptors den Mandanten der Anwendung brauchen
 
 Er setzt die \code{Tenant\allowbreak{}Id} neuer Entitäten und verhindert, dass Daten eines
 anderen Mandanten geschrieben oder umgehängt werden. Das ergänzt RLS (Defense in Depth) und
-liefert verständlichere Fehler als die Datenbank.
-Kapitel~\ref{ch:bulk-operations-and-the-limits} zeigt, welche Wege an ihm vorbeiführen:
+liefert verständlichere Fehler als die Datenbank. Welche Wege an ihm vorbeiführen, zeigt
+Kapitel~\ref{ch:bulk-operations-and-the-limits}.
 
 % source: src/Acme.EntityFrameworkCore.Tenancy/Interceptors/TenantSaveChangesInterceptor.cs
 \begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Save\allowbreak{}Changes\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}1/\allowbreak{}2)]{csharp}
@@ -358,8 +358,8 @@ public virtual async Task<bool> ApplyToOpenConnectionAsync(
 }
 \end{sourcecode}
 
-Die Erweiterungsmethode \code{Apply\allowbreak{}Tenant\allowbreak{}Session} im relationalen Paket
-sucht den Interceptor unter den Interceptoren des Contexts und bricht mit einer klaren
+Die Extension-Method \code{Apply\allowbreak{}Tenant\allowbreak{}Session} im relationalen Paket
+sucht den Interceptor unter den Interceptors des Contexts und bricht mit einer klaren
 Meldung ab, wenn keiner registriert ist. Zwei Details sind wichtig: Die Methode braucht den
 Context, nicht nur die Verbindung, weil der Provider seine Einstellungen aus dem internen
 Service Provider liest; deshalb erhält \code{Create\allowbreak{}Session\allowbreak{}Command}
@@ -414,12 +414,12 @@ Verbindung öffnet:
   geschlossen hat & Kein Session-Wert: Die Policies treffen keine Zeile (fail closed), bis
   \code{Apply\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Async(\allowbreak{})} ihn setzt \\
   \tablerule
-  Mit Transaction Pooling (\code{Use\allowbreak{}Transaction\allowbreak{}Pooling}) & Der Mandant
+  Mit Transaction-Pooling (\code{Use\allowbreak{}Transaction\allowbreak{}Pooling}) & Der Mandant
   existiert nur in der Transaktion von EF; Dapper muss darin laufen \\
 \end{datatable}
 
-Die zweite Zeile ist die Falle: EF öffnet und schließt die Verbindung für jede Abfrage, eine
-Verbindung, die eben noch den Mandanten trug, ist danach also wieder geschlossen. Dapper öffnet
+Die zweite Zeile ist die Falle: Weil EF die Verbindung nach jeder Abfrage wieder schließt, ist
+eine Verbindung, die eben noch den Mandanten trug, danach wieder geschlossen. Dapper öffnet
 eine geschlossene Verbindung selbst, und der Interceptor läuft nicht. Das sichere Muster öffnet
 die Verbindung für den ganzen Block über EF:
 
@@ -591,8 +591,8 @@ options.UseNpgsql(cs).UseAcmeTenancy(sp, t => t.EnrichOpenTelemetry());
 \end{sourcecode}
 
 Ein Command-Interceptor taggt vor jedem Befehl \code{Activity.\allowbreak{}Current}. Er ist im
-internen Service Provider registriert, eine Instanz für alle Contexts, und liest den Mandanten
-aus dem Context des Befehls:
+internen Service Provider als \code{IInterceptor} registriert, also Scoped mit einer Instanz pro
+Context, braucht keine App-Dienste und liest den Mandanten aus dem Context des Befehls:
 
 % source: src/Acme.EntityFrameworkCore.Tenancy.Relational/Interceptors/TenantActivityEnrichmentInterceptor.cs
 \begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Activity\allowbreak{}Enrichment\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}

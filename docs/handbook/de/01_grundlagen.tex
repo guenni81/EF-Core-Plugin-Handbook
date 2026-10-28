@@ -8,7 +8,8 @@
   \mbox{Microsoft.EntityFrameworkCore.SqlServer} 10, .NET 10 \\
   Beispiel & Vollständige Solution unter
   \textbf{github.com/guenni81/EF-Core-Plugin-Handbook}: Kernpaket, relationales Paket,
-  zwei Provider-Pakete, zwei Beispiel-Apps, Unit- und Integrationstests \\
+  Provider-Pakete für PostgreSQL, SQL Server und Cosmos DB, ein Beispielpaket für eigene
+  SQL-Funktionen, zwei Beispiel-Apps, Unit- und Integrationstests \\
   Geprüft & Der Beispielcode wird gegen EF Core 10 und Npgsql 10 gebaut; Unit- und
   Integrationstests laufen gegen echtes PostgreSQL und SQL Server. \\
   Aufbau & \handbookparts\ Teile, \handbookchapters\ Kapitel, \handbookappendices\ Anhänge
@@ -191,8 +192,8 @@ Container zusätzliche Dienste registriert oder vorhandene ersetzt.
   einen}
   \flowstep{ApplyServices()}{Jede Extension registriert ihre Dienste im neuen Provider}
   \flowstep{Interner Service Provider}{Gecacht und von allen passenden Contexts geteilt}
-  \flowstep{Model (gecacht)}{Einmal pro Provider gebaut: Conventions, Type Mappings,
-  Validierung}
+  \flowstep{Model (gecacht)}{Einmal pro Provider und Context-Typ gebaut: Conventions, Type
+  Mappings, Validierung}
   \flowstep{Query, SaveChanges, Migrations}{Laufen mit den Diensten dieses Providers}
 \end{flowdiagram}
 
@@ -200,6 +201,25 @@ Zwei Caches sind dabei entscheidend. Der \textbf{Service Provider} wird anhand d
 gecacht: Contexts mit gleicher Konfiguration teilen sich einen Provider. Das \textbf{Modell}
 wird pro Provider (und Context-Typ) gecacht. Beides macht EF Core schnell, hat aber direkte
 Folgen für Plugins, die Kapitel~\ref{ch:the-options-extension} ausführlich behandelt.
+
+\section{Der Weg durch das Buch}
+
+Das Modell gibt es in zwei Formen. Das \textbf{Design-Time-Modell} enthält alle
+Annotations und ist die Grundlage für Migrations und Snapshots. Zur Laufzeit liefert
+\code{context.\allowbreak{}Model} ein schlankes, schreibgeschütztes \textbf{Laufzeitmodell},
+in dem nur Annotations bleiben, die zur Laufzeit gebraucht werden. Welche das sind und wie
+ein Plugin sie steuert, zeigen Kapitel~\ref{ch:declarative-sql-from-annotations} und
+\ref{ch:property-level-fluent-api-and}; schon in Teil~\ref{part:model} gilt aber: Plugin-Code,
+der zur Laufzeit liest, sieht nur das Laufzeitmodell.
+
+Die Teile des Buchs folgen dem Weg einer Anfrage durch diese Architektur: Options und
+interner Service Provider (Teil~\ref{part:infrastructure}), Modell (Teil~\ref{part:model}),
+Query und Materialisierung (Teil~\ref{part:queries}), Interceptors und Diagnose
+(Teil~\ref{part:runtime}), Migrations und Design-Time (Teil~\ref{part:migrations}). Die
+Update-Pipeline von \code{Save\allowbreak{}Changes} gehört in dieser Reihenfolge hinter die
+Interceptors; weil Plugins sie selten direkt erweitern, steht sie bei den fortgeschrittenen
+Erweiterungspunkten (Kapitel~\ref{ch:the-update-pipeline}). Der Betrieb gegen die Datenbank
+folgt in Teil~\ref{part:operations}.
 
 \section{Lebensdauern}
 
@@ -444,19 +464,20 @@ Damit das funktioniert, nutzt das Plugin jeden Erweiterungspunkt dieses Buchs:
 
 \section{Paketarchitektur}
 
-Das Plugin besteht aus vier NuGet-Paketen. Das \textbf{Kernpaket} enthält alles, was
+Das Plugin besteht im Kern aus vier NuGet-Paketen. Das \textbf{Kernpaket} enthält alles, was
 unabhängig von der Datenbank ist und was auch Assemblies mit Entitätsklassen referenzieren
 dürfen, ohne einen Provider mitzuziehen; es funktioniert mit jedem EF-Core-Provider. Das
 \textbf{relationale Paket} ergänzt, was jede SQL-Datenbank braucht: den Session-Interceptor
 auf der Verbindung und die Prüfung der Tabellenabbildungen. Das \textbf{PostgreSQL-Paket} ist die vollständige
 Implementierung, an der dieses Buch alles erklärt. Das \textbf{SQL-Server-Paket} nutzt
 denselben Kern und dieselbe relationale Schicht und zeigt in Kapitel~\ref{ch:a-second-provider-sql-server}, was ein zweiter
-Provider selbst umsetzen muss. Ein fünftes, kleines Paket, \code{Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Functions.\allowbreak{}Postgre\allowbreak{}SQL}, enthält die
-Beispiele für eigene SQL-Knoten und Aggregate; sie haben nichts mit Mandantenfähigkeit zu tun
-(Kapitel~\ref{ch:custom-sql-expression-nodes}). Ein sechstes,
+Provider selbst umsetzen muss. Ein fünftes Paket,
 \code{Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Cosmos},
 baut allein auf dem Kern auf und zeigt, was bei einer Datenbank ohne SQL trägt
-(Kapitel~\ref{ch:without-sql-what-carries-over}).
+(Kapitel~\ref{ch:without-sql-what-carries-over}). Daneben enthält das kleine Paket
+\code{Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Functions.\allowbreak{}Postgre\allowbreak{}SQL}
+die Beispiele für eigene SQL-Knoten und Aggregate; sie haben nichts mit Mandantenfähigkeit zu
+tun (Kapitel~\ref{ch:custom-sql-expression-nodes}).
 
 \begin{sourcecode}[Struktur der vier Pakete]{text}
 Acme.EntityFrameworkCore.Tenancy               Kern (nur EF Core, jeder Provider)
@@ -465,13 +486,15 @@ Acme.EntityFrameworkCore.Tenancy               Kern (nur EF Core, jeder Provider
 ├─ EF.Functions.CurrentTenant(), TenancyDbFunctionsAttribute
 ├─ Metadata/         Laufzeit-Annotation, IsTenantProperty(), Kandidatensuche
 ├─ Conventions/      Value Generation für TenantId-Schlüssel
+├─ ValueGeneration/  TenantIdValueGenerator und Factory
 ├─ Query/            Evaluatable-Expression-Filter (für alle Pakete)
 ├─ Interceptors/     SaveChanges-, Materialization- und Bulk-Update-Interceptor
 ├─ Diagnostics/      Event-IDs, Logging-Definitionen, Logger-Extensions
+├─ Testing/          Testmodus für SQLite und InMemory
 └─ DependencyInjection/  AddAcmeTenancy<T>()
 
 Acme.EntityFrameworkCore.Tenancy.Relational    relationale Schicht (EF Core relational)
-├─ Interceptors/     abstrakter Session-Interceptor (DbConnection)
+├─ Interceptors/     abstrakter Session-Interceptor (DbConnection), Tracing
 ├─ Metadata/         TenantTableMappingValidator (TPT, TPC, Entity Splitting)
 └─ Database.ApplyTenantSession()
 
@@ -485,7 +508,7 @@ Acme.EntityFrameworkCore.Tenancy.PostgreSQL    vollständige Implementierung
 ├─ Migrations/       SQL-Generator, eigene Operationen
 ├─ Design/           Code-Generatoren, Design-Time-Services
 ├─ Scaffolding/      RLS und Policies aus der Datenbank lesen
-└─ Runtime/          TenantConnectionInterceptor
+└─ Runtime/          Session-Interceptors (Verbindung, Transaction-Pooling)
 
 Acme.EntityFrameworkCore.Tenancy.SqlServer     zweiter Provider
                                                (Kapitel „Ein zweiter Provider: SQL Server“)
@@ -694,8 +717,10 @@ Rangfolge aus „Erweitern oder ersetzen?“ (Kapitel~\ref{ch:ef-core-s-architec
 
 \section{Modell, Typen und Werte}\phantomsection\label{sec:decide-model}
 
-Alles in diesem Bereich läuft beim Modellbau, also einmal pro internem Provider, und landet
-im gecachten Modell. Laufzeitwerte haben hier deshalb nichts zu suchen.
+Alles in diesem Bereich wird beim Modellbau festgelegt, also einmal pro internem Provider und
+Context-Typ, und landet im gecachten Modell. Value Converter und Value Generators laufen
+zwar bei jedem Lesen, Schreiben oder Hinzufügen, aber so, wie das Modell sie konfiguriert hat.
+Laufzeitwerte haben in dieser Konfiguration deshalb nichts zu suchen.
 
 \begin{datatable}{H{1.35}H{1.05}H{1.25}H{0.35}}
   \textbf{Problem und Mechanismus} & \textbf{Zuerst prüfen} & \textbf{Typische
@@ -766,8 +791,9 @@ im gecachten Modell. Laufzeitwerte haben hier deshalb nichts zu suchen.
   \code{Configure\allowbreak{}Conventions} setzen? &
   \code{IRelational\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source} ersetzen
   (einzeln, Provider-Basis); \code{Clone} oder die statische \code{Default}-Property
-  vergessen. &
-  \ref{ch:type-mappings-and-value-converters} \\
+  vergessen; den \code{Json\allowbreak{}Value\allowbreak{}Reader\allowbreak{}Writer}
+  vergessen, ohne den JSON-Spalten beim Modellbau scheitern. &
+  \ref{ch:type-mappings-and-value-converters}, \ref{ch:complex-types-and-json} \\
   \tablerule
   \textbf{Werte sollen beim Lesen und Schreiben umgewandelt werden.}
   \code{Value\allowbreak{}Converter}
@@ -897,7 +923,7 @@ steht deshalb vor ihm:
   Lässt es sich vorher erledigen, mit Query-Interceptor oder Translator? &
   Den Dienst ersetzen, ohne von der Provider-Implementierung zu erben; dann fehlen deren
   Nachbearbeitungen. &
-  \ref{ch:further-query-extension-points} \\
+  \ref{ch:the-query-pipeline}, \ref{ch:further-query-extension-points} \\
   \tablerule
   \textbf{Geladene Objekte sollen erzeugt, initialisiert oder geprüft werden
   (Materialisierung).} \code{IMaterialization\allowbreak{}Interceptor}
@@ -945,7 +971,7 @@ Werkzeuge gelten soll, gehört in die Datenbank, nicht in einen Interceptor.
   der Abfrage ändern soll. &
   \code{Command\allowbreak{}Text} per Textersetzung umbauen; das bricht bei jeder Änderung
   der SQL-Form. &
-  \ref{ch:interceptors}, \ref{ch:the-update-pipeline} \\
+  \ref{ch:interceptors}, \ref{ch:diagnostics-and-logging}, \ref{ch:the-update-pipeline} \\
   \tablerule
   \textbf{Zustand soll an eine Transaktion gebunden sein.}
   \code{IDb\allowbreak{}Transaction\allowbreak{}Interceptor}
@@ -1000,7 +1026,8 @@ in einem eigenen Service Provider. Dienste für diesen Provider registriert ein 
   \textbf{Der Differ soll eigene Operationen selbst erzeugen.}
   \code{IMigrations\allowbreak{}Model\allowbreak{}Differ} und
   \code{ICSharp\allowbreak{}Migration\allowbreak{}Operation\allowbreak{}Generator}
-  \cellmeta{pubternal · einzeln · Scoped bzw. Singleton (Design-Time)} &
+  \cellmeta{Differ pubternal, Generator öffentlich · einzeln · Scoped bzw. Singleton
+  (Design-Time)} &
   Der deklarative Weg über Annotations, fast immer die bessere Wahl. &
   Den Differ ersetzen, nur weil eine geänderte Annotation SQL braucht; das leistet der
   SQL-Generator. &

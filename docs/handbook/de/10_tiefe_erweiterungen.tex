@@ -41,7 +41,7 @@ Npgsql bietet den Vergleich nicht als Funktion an; er erfüllt alle drei Gründe
 
 \begin{note}[Ein Lehrbeispiel, bewusst ohne Mandantenbezug]
   Der Vergleich hat nichts mit Mandantenfähigkeit zu tun. Er liegt in einem eigenen
-  Beispielpaket, weil ein eigener Knoten ein Plugin zwingt, zwei exklusive Provider-Dienste zu
+  Beispielpaket, weil ein eigener Knoten ein Plugin zwingt, zwei Einzeldienste des Providers zu
   ersetzen: den SQL-Generator und den Nullability-Prozessor. Bis Ausgabe~1.1 tat das
   Mandanten-Plugin das allein für dieses Beispiel und ließ sich dadurch schwerer mit anderen
   Plugins kombinieren. Ein Mandanten-Plugin braucht keinen eigenen Knoten; Funktionskomposition
@@ -482,7 +482,7 @@ GROUP BY o."TenantId"
 
 Datenbanken ohne \code{FILTER}-Klausel (etwa SQL Server) emulieren Prädikate mit \code{CASE
 WHEN prädikat THEN wert END}. Ein provider-neutraler Aggregat-Translator muss beides kennen;
-deshalb liegt dieser im PostgreSQL-Paket.
+dieser nutzt die Npgsql-Factory und liegt deshalb im PostgreSQL-spezifischen Beispielpaket.
 
 % ------------------------------------------------------------
 \chapter{Fluent API auf Property-Ebene und Laufzeit-Annotations}\label{ch:property-level-fluent-api-and}
@@ -529,7 +529,7 @@ public static IConventionPropertyBuilder? IsTenantProperty(
         : builder;
 \end{sourcecode}
 
-Die Methode liegt im Kernpaket, weil sie nur Metadaten setzt. Die Conventions beider
+Die Methode liegt im Kernpaket, weil sie nur Metadaten setzt. Die Conventions aller
 Provider-Pakete suchen die Mandanten-Property über dieselbe Kernfunktion:
 
 \begin{sourcecode}[Metadata/\allowbreak{}Tenancy\allowbreak{}Entity\allowbreak{}Type\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}Kernpaket,\allowbreak{} gekürzt, vereinfacht)]{csharp}
@@ -590,7 +590,7 @@ Design-Time-Annotations und übernimmt alle anderen. Landet sie im Compiled Mode
 Einfache Werte schreibt EF automatisch
 (Kapitel~\ref{ch:compiled-models-trimming-and-nativeaot}). Der eigene
 \code{ICSharp\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator}
-hat deshalb die umgekehrte Aufgabe: Er entfernt die RLS-Annotations, die nur Migrations
+des PostgreSQL-Pakets hat deshalb die umgekehrte Aufgabe: Er entfernt die RLS-Annotations, die nur Migrations
 brauchen:
 
 \begin{sourcecode}[Design/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}CSharp\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}gekürzt, vereinfacht)]{csharp}
@@ -659,9 +659,9 @@ einer Überschreibung von \code{Generate(\allowbreak{}ITable,\allowbreak{}
 \chapter{Scaffolding in der Praxis}\label{ch:scaffolding-in-practice}
 \versionrisk{volatile}
 
-Beim Scaffolding (\code{dotnet ef dbcontext scaffold}) liest EF das Schema und erzeugt
-Entitäten und Context. Ein Plugin, das eigene Schema-Objekte verwaltet, sollte sie dabei
-erkennen. Der Weg führt über drei Stationen, von denen das Plugin zwei bereits kennt:
+Kapitel~\ref{ch:scaffolding-reverse-engineering} nennt die beiden Design-Time-Dienste, über
+die ein Plugin seine Schema-Objekte beim Scaffolding erkennt. Dieses Kapitel zeigt die
+Umsetzung. Der Weg führt über drei Stationen, von denen das Plugin zwei bereits kennt:
 
 \begin{flowdiagram}
   \flowstep{IDatabaseModelFactory}{Liest das Schema in ein DatabaseModel; das Plugin hängt
@@ -712,9 +712,9 @@ public class TenancyDatabaseModelFactory : NpgsqlDatabaseModelFactory
 
 Registriert wird die Factory wie der Code-Generator in den Design-Time-Services mit
 \code{Remove\allowbreak{}All}, aber mit \code{Add\allowbreak{}Scoped}: EF und Npgsql
-registrieren die Database-Model-Factory als Scoped, und sie hängt vom ebenfalls Scoped
-Scaffolding-Logger ab. Das Datenformat ist dasselbe wie bei der Fluent API; deshalb funktionieren Snapshot, Migrations und
-Code-Generator ohne weitere Anpassung.
+registrieren die Database-Model-Factory als Scoped, und sie hängt vom ebenfalls als Scoped registrierten
+Scaffolding-Logger ab. Das Datenformat ist dasselbe wie bei der Fluent API; deshalb
+funktionieren Snapshot, Migrations und Code-Generator ohne weitere Anpassung.
 
 \begin{note}[Normalisierte Ausdrücke]
   PostgreSQL speichert Policy-Ausdrücke in normalisierter Form, etwa
