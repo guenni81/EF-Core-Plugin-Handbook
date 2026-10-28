@@ -299,15 +299,8 @@ internen Provider. Sie sind fast immer der erste Weg:
   \code{Interceptors/\allowbreak{}Tenant\allowbreak{}Save\allowbreak{}Changes\allowbreak{}Interceptor.\allowbreak{}cs}
   & SaveChanges-Logik & \ref{ch:interceptors} \\
   \tablerule
-  \code{Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs}
-  & Abstrakte Basis für Session-Befehle & \ref{ch:interceptors}, \ref{ch:what-belongs-in-the-core} \\
-  \tablerule
   \code{Interceptors/\allowbreak{}Tenant\allowbreak{}Materialization\allowbreak{}Interceptor.\allowbreak{}cs}
   & Prüfung beim Laden (optional) & \ref{ch:materialization-from-rows-to-objects} \\
-  \tablerule
-  \code{Tenancy\allowbreak{}Database\allowbreak{}Facade\allowbreak{}Extensions.\allowbreak{}cs}
-  & \code{Database.\allowbreak{}Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})}
-  & \ref{ch:interceptors} \\
   \tablerule
   \code{Metadata/\allowbreak{}*} (Kern) & Laufzeit-Annotation, IsTenantProperty,
   Kandidatensuche & \ref{ch:property-level-fluent-api-and} \\
@@ -322,6 +315,18 @@ internen Provider. Sie sind fast immer der erste Weg:
   \tablerule
   \code{Conventions/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Key\allowbreak{}Value\allowbreak{}Generation\allowbreak{}Convention.\allowbreak{}cs}
   & Generator für Schlüssel & \ref{ch:value-generation} \\
+  \tablerule
+  \textbf{Relationales Paket} &  &  \\
+  \tablerule
+  \code{Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs}
+  & Abstrakte Basis für Session-Befehle & \ref{ch:interceptors}, \ref{ch:what-belongs-in-the-core} \\
+  \tablerule
+  \code{Metadata/\allowbreak{}Tenant\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Validator.\allowbreak{}cs}
+  & Unterstützte Tabellenabbildungen (TPT, TPC, Entity Splitting) & \ref{ch:conventions}, \ref{ch:what-belongs-in-the-core} \\
+  \tablerule
+  \code{Tenancy\allowbreak{}Database\allowbreak{}Facade\allowbreak{}Extensions.\allowbreak{}cs}
+  & \code{Database.\allowbreak{}Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})}
+  & \ref{ch:interceptors} \\
   \tablerule
   \textbf{PostgreSQL-Paket} &  &  \\
   \tablerule

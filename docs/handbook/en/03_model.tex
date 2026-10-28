@@ -410,7 +410,7 @@ RLS protects tables, not entities. The policy compares the tenant column of the 
 with the session setting. A table that holds tenant data but lacks this column cannot be
 protected by this policy. One entity can occupy several tables, and several entities can share
 one table. That is why \code{Tenant\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Validator}
-from the core package checks, before any annotation, that every table with tenant data contains
+from the relational package checks, before any annotation, that every table with tenant data contains
 the tenant column. Both provider packages call it, so the contract is the same for PostgreSQL and
 SQL Server:
 

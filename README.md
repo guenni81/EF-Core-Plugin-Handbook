@@ -38,7 +38,7 @@ for how to build them.
 
 There is no NuGet package to install: copy the projects from `src/` into your solution as a
 starting point for your own plugin, or reference them with `<ProjectReference>`. Then
-reference `Acme.EntityFrameworkCore.Tenancy.PostgreSQL` (it brings the core project along)
+reference `Acme.EntityFrameworkCore.Tenancy.PostgreSQL` (it brings the core and relational projects along)
 and provide an `ITenantProvider` that tells the plugin the current tenant; the sample
 [`HttpTenantProvider`](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/samples/ShopApi/HttpTenantProvider.cs) reads it from a claim.
 
@@ -128,14 +128,16 @@ per table (FILTER and BLOCK predicates) and `SESSION_CONTEXT`.
 | Aggregates | `EF.Functions.Every` (`bool_and`) with FILTER/DISTINCT support | 43 |
 | Runtime annotations | Tenant property in the compiled model, design-time annotations filtered | 44 |
 | Scaffolding | RLS and policies are read back from the database | 45 |
-| Second provider | SQL Server: security policies and `SESSION_CONTEXT` on the same core | 46–47 |
+| Package layers | Core for any EF Core provider, relational layer (session interceptor, table mappings), provider packages | 46 |
+| Second provider | SQL Server: security policies and `SESSION_CONTEXT` on the same core | 47 |
 | Debugging | Model debug view, resolved services, convention set, query trees, logging | App. D |
 
 ## Repository layout
 
 ```
 src/
-  Acme.EntityFrameworkCore.Tenancy              Core package (provider-independent)
+  Acme.EntityFrameworkCore.Tenancy              Core package (any EF Core provider)
+  Acme.EntityFrameworkCore.Tenancy.Relational   Relational layer (session interceptor, table mappings)
   Acme.EntityFrameworkCore.Tenancy.PostgreSQL   PostgreSQL implementation (complete)
   Acme.EntityFrameworkCore.Tenancy.SqlServer    SQL Server implementation (second provider)
 samples/

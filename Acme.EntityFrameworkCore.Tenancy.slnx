@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Acme.EntityFrameworkCore.Tenancy/Acme.EntityFrameworkCore.Tenancy.csproj" />
+    <Project Path="src/Acme.EntityFrameworkCore.Tenancy.Relational/Acme.EntityFrameworkCore.Tenancy.Relational.csproj" />
     <Project Path="src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Acme.EntityFrameworkCore.Tenancy.PostgreSQL.csproj" />
     <Project Path="src/Acme.EntityFrameworkCore.Tenancy.SqlServer/Acme.EntityFrameworkCore.Tenancy.SqlServer.csproj" />
   </Folder>

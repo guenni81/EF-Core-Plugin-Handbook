@@ -219,14 +219,14 @@ eine Datenbank zu brauchen (Kapitel~\ref{ch:test-strategy}).
 Er setzt bei jedem Öffnen der Verbindung das Session-Setting, das die Policies und
 \code{Current\allowbreak{}Tenant(\allowbreak{})} auswerten. Der Ablauf (Öffnen abfangen,
 sync und async, Mandant holen) ist für jede Datenbank gleich und liegt deshalb in einer
-abstrakten Basis im Kernpaket (Kapitel~\ref{ch:what-belongs-in-the-core}). Das
+abstrakten Basis im relationalen Paket (Kapitel~\ref{ch:what-belongs-in-the-core}). Das
 PostgreSQL-Paket liefert nur den Befehl. Den Setting-Namen holt es über den Context aus den
 Event-Daten
 (\code{context.\allowbreak{}Get\allowbreak{}Service<\allowbreak{}T>(\allowbreak{})}) aus dem
 \emph{internen} Provider, den Mandanten aus dem \emph{App}-Container:
 
-\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}Kern),\allowbreak{} Runtime/\allowbreak{}Tenant\allowbreak{}Connection\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}vereinfacht)]{csharp}
-// Kernpaket
+\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}relational),\allowbreak{} Runtime/\allowbreak{}Tenant\allowbreak{}Connection\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}vereinfacht)]{csharp}
+// Relationales Paket
 public abstract class TenantSessionInterceptor : DbConnectionInterceptor
 {
     protected TenantSessionInterceptor(ITenantProvider tenants)
@@ -340,7 +340,7 @@ await db.Database.ApplyTenantSessionAsync();                  // Session jetzt: 
 var orders = await db.Orders.ToListAsync();                   // die Zeilen von Mandant A
 \end{sourcecode}
 
-% source: src/Acme.EntityFrameworkCore.Tenancy/Interceptors/TenantSessionInterceptor.cs
+% source: src/Acme.EntityFrameworkCore.Tenancy.Relational/Interceptors/TenantSessionInterceptor.cs
 \begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 public virtual async Task<bool> ApplyToOpenConnectionAsync(
     DbContext context, CancellationToken cancellationToken = default)
@@ -358,7 +358,7 @@ public virtual async Task<bool> ApplyToOpenConnectionAsync(
 }
 \end{sourcecode}
 
-Die Erweiterungsmethode \code{Apply\allowbreak{}Tenant\allowbreak{}Session} im Kernpaket
+Die Erweiterungsmethode \code{Apply\allowbreak{}Tenant\allowbreak{}Session} im relationalen Paket
 sucht den Interceptor unter den Interceptoren des Contexts und bricht mit einer klaren
 Meldung ab, wenn keiner registriert ist. Zwei Details sind wichtig: Die Methode braucht den
 Context, nicht nur die Verbindung, weil der Provider seine Einstellungen aus dem internen

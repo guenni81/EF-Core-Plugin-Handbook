@@ -13,13 +13,16 @@
 \versionrisk{stable}
 
 A second provider is the acid test for the package architecture. It shows which parts are
-truly provider-independent. The rule of thumb: \textbf{whatever knows no SQL syntax and no
-provider type belongs in the core.} For the sample this yields:
+truly provider-independent, and the first impression is misleading: a building block can know
+no SQL syntax and no provider type and still need a relational database, because it works
+with ADO.NET connections or with tables. The sample therefore has three layers, each in a
+package of its own:
 
 \begin{datatable}{H{1.21}H{0.45}H{1.34}}
-  \textbf{Building block} & \textbf{Location} & \textbf{Reason} \\
+  \textbf{Building block} & \textbf{Layer} & \textbf{Reason} \\
   \tablehead
-  \code{Tenant\allowbreak{}Id}, converter, JSON reader/writer & Core & Pure .NET types \\
+  \code{Tenant\allowbreak{}Id}, converter, JSON reader/writer & Core & Pure .NET types and
+  EF value converters \\
   \tablerule
   \code{ITenant\allowbreak{}Owned}, \code{ITenant\allowbreak{}Provider}, attributes & Core &
   For entity assemblies without a provider dependency \\
@@ -28,29 +31,55 @@ provider type belongs in the core.} For the sample this yields:
   & Metadata only \\
   \tablerule
   Runtime annotation, \code{Get\allowbreak{}Tenant\allowbreak{}Property\allowbreak{}Name} &
-  Core & Read by the provider-neutral interceptor \\
+  Core & Read by the provider-neutral interceptors \\
   \tablerule
   SaveChanges interceptor & Core & Works only with the change tracker \\
   \tablerule
-  \code{Tenant\allowbreak{}Session\allowbreak{}Interceptor} (abstract) & Core & Same flow,
-  only the SQL command differs \\
+  Protection of bulk updates (query expression interceptor) & Core & Only inspects the LINQ
+  expression tree \\
   \tablerule
   Evaluatable filter with attribute & Core & Recognizes function classes of all packages \\
   \tablerule
   Check while loading (materialization interceptor) & Core & Only reads the model, the
   context and the row's values \\
   \tablerule
-  Value generation, logging, \code{Add\allowbreak{}Acme\allowbreak{}Tenancy} & Core & No SQL
-  involved \\
+  Value generation, logging, \code{Add\allowbreak{}Acme\allowbreak{}Tenancy} & Core & No
+  database involved \\
+  \tablerule
+  \code{Tenant\allowbreak{}Session\allowbreak{}Interceptor} (abstract) & Relational & Works
+  on the \code{Db\allowbreak{}Connection}; only the SQL command differs per provider \\
+  \tablerule
+  \code{Tenant\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Validator} & Relational &
+  Tables and columns: TPT, TPC, entity splitting \\
   \tablerule
   \code{Database.\allowbreak{}Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})} &
-  Core & Uses the provider's interceptor \\
+  Relational & Uses the session interceptor of the provider \\
   \tablerule
   Type mapping, translators, migrations, RLS conventions & Provider & Store types, SQL
   syntax, schema objects \\
   \tablerule
   Custom SQL nodes, aggregates & Provider & Depend on syntax and provider factory \\
 \end{datatable}
+
+The rule of thumb therefore has three stages: \textbf{whatever needs no database belongs in
+the core; whatever needs a relational database but no SQL dialect belongs in the relational
+layer; SQL syntax and store types belong in the provider.} The core package references only
+\code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core}, the package
+\code{Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Relational}
+adds \code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Relational},
+and both provider packages build on it. \code{Package\allowbreak{}Layer\allowbreak{}Tests}
+makes sure that no relational type creeps back into the core.
+
+\begin{note}[Separate the relational layer from the start]
+  If you might support a non-relational provider such as Cosmos DB later, put the relational
+  layer into a package of its own from the beginning. Moving types into another assembly
+  afterwards breaks binary compatibility, and entity assemblies that only referenced the core
+  lose the transitive dependency on
+  \code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Relational}
+  they may have relied on for \code{To\allowbreak{}Table} or
+  \code{Has\allowbreak{}Column\allowbreak{}Type}. The sample made exactly this move in
+  edition~1.2.
+\end{note}
 
 \begin{important}[Name collisions between provider packages]
   Two provider packages that both define an extension method
@@ -102,7 +131,7 @@ has to solve anew per database:
   \code{EXEC(\allowbreak{}N'.\allowbreak{}.\allowbreak{}.\allowbreak{}')} \\
   \tablerule
   Table mappings & \multicolumn{2}{>{\RaggedRight\arraybackslash}p{0.6\linewidth}}{Same
-  contract from the core package (chapter~\ref{ch:conventions}, page~\pageref{sec:supported-table-mappings})} \\
+  contract from the relational package (chapter~\ref{ch:conventions}, page~\pageref{sec:supported-table-mappings})} \\
   \tablerule
   Deliberate exception & Attribute or
   \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})}

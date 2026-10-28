@@ -13,7 +13,7 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Acme.EntityFrameworkCore.Tenancy\Acme.EntityFrameworkCore.Tenancy.csproj" />
+    <ProjectReference Include="..\Acme.EntityFrameworkCore.Tenancy.Relational\Acme.EntityFrameworkCore.Tenancy.Relational.csproj" />
   </ItemGroup>
   <!-- Public API analyzer: reports every change to the public API
        (chapter "CI and API stability") -->

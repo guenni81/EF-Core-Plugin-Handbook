@@ -7,8 +7,8 @@
   Versionen & EF Core 10, \mbox{Npgsql.EntityFrameworkCore.PostgreSQL} 10,
   \mbox{Microsoft.EntityFrameworkCore.SqlServer} 10, .NET 10 \\
   Beispiel & Vollständige Solution unter
-  \textbf{github.com/guenni81/EF-Core-Plugin-Handbook}: Kernpaket, zwei Provider-Pakete,
-  zwei Beispiel-Apps, Unit- und Integrationstests \\
+  \textbf{github.com/guenni81/EF-Core-Plugin-Handbook}: Kernpaket, relationales Paket,
+  zwei Provider-Pakete, zwei Beispiel-Apps, Unit- und Integrationstests \\
   Geprüft & Der Beispielcode wird gegen EF Core 10 und Npgsql 10 gebaut; Unit- und
   Integrationstests laufen gegen echtes PostgreSQL und SQL Server. \\
   Aufbau & \handbookparts\ Teile, \handbookchapters\ Kapitel, \handbookappendices\ Anhänge
@@ -443,24 +443,31 @@ Damit das funktioniert, nutzt das Plugin jeden Erweiterungspunkt dieses Buchs:
 
 \section{Paketarchitektur}
 
-Das Plugin besteht aus drei NuGet-Paketen. Das \textbf{Kernpaket} enthält alles, was
+Das Plugin besteht aus vier NuGet-Paketen. Das \textbf{Kernpaket} enthält alles, was
 unabhängig von der Datenbank ist und was auch Assemblies mit Entitätsklassen referenzieren
-dürfen, ohne einen Provider mitzuziehen. Das \textbf{PostgreSQL-Paket} ist die vollständige
+dürfen, ohne einen Provider mitzuziehen; es funktioniert mit jedem EF-Core-Provider. Das
+\textbf{relationale Paket} ergänzt, was jede SQL-Datenbank braucht: den Session-Interceptor
+auf der Verbindung und die Prüfung der Tabellenabbildungen. Das \textbf{PostgreSQL-Paket} ist die vollständige
 Implementierung, an der dieses Buch alles erklärt. Das \textbf{SQL-Server-Paket} nutzt
-denselben Kern und zeigt in Kapitel~\ref{ch:a-second-provider-sql-server}, was ein zweiter
+denselben Kern und dieselbe relationale Schicht und zeigt in Kapitel~\ref{ch:a-second-provider-sql-server}, was ein zweiter
 Provider selbst umsetzen muss.
 
-\begin{sourcecode}[Struktur der drei Pakete]{text}
-Acme.EntityFrameworkCore.Tenancy               Kern (EF Core relational, ohne Provider)
+\begin{sourcecode}[Struktur der vier Pakete]{text}
+Acme.EntityFrameworkCore.Tenancy               Kern (nur EF Core, jeder Provider)
 ├─ TenantId, TenantIdConverter, TenantIdJsonReaderWriter, TenancyException
 ├─ ITenantOwned, ITenantProvider, NoTenantIsolationAttribute
 ├─ EF.Functions.CurrentTenant(), TenancyDbFunctionsAttribute
 ├─ Metadata/         Laufzeit-Annotation, IsTenantProperty(), Kandidatensuche
 ├─ Conventions/      Value Generation für TenantId-Schlüssel
 ├─ Query/            Evaluatable-Expression-Filter (für alle Pakete)
-├─ Interceptors/     SaveChanges-Interceptor, abstrakter Session-Interceptor
+├─ Interceptors/     SaveChanges-, Materialization- und Bulk-Update-Interceptor
 ├─ Diagnostics/      Event-IDs, Logging-Definitionen, Logger-Extensions
 └─ DependencyInjection/  AddAcmeTenancy<T>()
+
+Acme.EntityFrameworkCore.Tenancy.Relational    relationale Schicht (EF Core relational)
+├─ Interceptors/     abstrakter Session-Interceptor (DbConnection)
+├─ Metadata/         TenantTableMappingValidator (TPT, TPC, Entity Splitting)
+└─ Database.ApplyTenantSession()
 
 Acme.EntityFrameworkCore.Tenancy.PostgreSQL    vollständige Implementierung
 ├─ Infrastructure/   Options-Extension, Builder, Singleton-Options

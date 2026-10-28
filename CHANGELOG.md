@@ -7,8 +7,23 @@ version is given by the dependency range and the compatibility table in the READ
 
 ## [Unreleased]
 
+**Breaking change** (binary; the packages are not published on NuGet, so the version stays
+1.2): the core package no longer depends on `Microsoft.EntityFrameworkCore.Relational`. The
+relational building blocks moved into the new package
+`Acme.EntityFrameworkCore.Tenancy.Relational`, with unchanged namespaces:
+`TenantSessionInterceptor`, `TenantTableMappingValidator` and `Database.ApplyTenantSession()`.
+Users of the PostgreSQL or SQL Server package need no change, both reference the new package.
+Assemblies that reference only the core package and use relational APIs (`ToTable`,
+`HasColumnType`, ...) must now reference `Microsoft.EntityFrameworkCore.Relational` themselves.
+
 ### Added
 
+- Package `Acme.EntityFrameworkCore.Tenancy.Relational` (see above); `PackageLayerTests` make
+  sure the core stays free of relational types; the consumer test packs four packages.
+- Handbook (both editions): chapter 46 "What belongs in the core" distinguishes three layers
+  (core, relational, provider) with a three-stage rule of thumb and a note to separate the
+  relational layer from the start; the package architecture in chapter 3, appendix B and the
+  chapters on the session interceptor and table mappings follow the new package.
 - Handbook (both editions): every chapter shows its version dependency (stable, medium,
   volatile) at its start; the upgrade playbook in chapter 27 lists the chapters per rating and
   says to check the volatile ones (internal API, EF1001) first in a major upgrade.

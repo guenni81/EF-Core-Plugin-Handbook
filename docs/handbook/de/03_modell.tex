@@ -413,7 +413,7 @@ RLS schützt Tabellen, keine Entitäten. Die Policy vergleicht die Mandantenspal
 Tabelle mit dem Session-Setting. Eine Tabelle mit Mandantendaten, aber ohne diese Spalte, lässt
 sich mit dieser Policy nicht schützen. Eine Entität kann mehrere Tabellen belegen, und mehrere
 Entitäten können sich eine Tabelle teilen. Deshalb prüft
-\code{Tenant\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Validator} aus dem Kernpaket
+\code{Tenant\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Validator} aus dem relationalen Paket
 vor jeder Annotation, ob jede Tabelle mit Mandantendaten die Mandantenspalte enthält. Beide
 Provider-Pakete rufen ihn auf, der Vertrag ist also für PostgreSQL und SQL Server gleich:
 

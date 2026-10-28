@@ -1,17 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
     Provider-independent core package: types that entity assemblies reference as well
-    (TenantId, ITenantOwned, attributes), EF.Functions API, diagnostics and SaveChanges logic.
-    No dependency on a database provider.
+    (TenantId, ITenantOwned, attributes), EF.Functions API, diagnostics, SaveChanges and
+    materialization checks. Depends on EF Core only, not on Microsoft.EntityFrameworkCore.Relational:
+    everything that needs ADO.NET or tables lives in Acme.EntityFrameworkCore.Tenancy.Relational.
   -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <IsAotCompatible>true</IsAotCompatible>
-    <Description>Multi-tenancy for EF Core: core abstractions (provider-independent).</Description>
+    <Description>Multi-tenancy for EF Core: core abstractions for any EF Core provider.</Description>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
   </ItemGroup>
   <!-- Public API analyzer: reports every change to the public API
        (chapter "CI and API stability") -->

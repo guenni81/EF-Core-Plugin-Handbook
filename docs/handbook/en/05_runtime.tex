@@ -216,15 +216,15 @@ database (chapter~\ref{ch:test-strategy}).
 It sets the session setting that the policies and
 \code{Current\allowbreak{}Tenant(\allowbreak{})} evaluate every time a connection is opened.
 The flow (intercept opening, sync and async, fetch the tenant) is the same for every
-database and therefore lives in an abstract base in the core package
+database and therefore lives in an abstract base in the relational package
 (chapter~\ref{ch:what-belongs-in-the-core}). The PostgreSQL package only supplies the
 command. It gets the setting name from the \emph{internal} provider via the context from the
 event data
 (\code{context.\allowbreak{}Get\allowbreak{}Service<\allowbreak{}T>(\allowbreak{})}), and
 the tenant from the \emph{app} container:
 
-\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}core),\allowbreak{} Runtime/\allowbreak{}Tenant\allowbreak{}Connection\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}simplified)]{csharp}
-// Core package
+\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}relational),\allowbreak{} Runtime/\allowbreak{}Tenant\allowbreak{}Connection\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}simplified)]{csharp}
+// Relational package
 public abstract class TenantSessionInterceptor : DbConnectionInterceptor
 {
     protected TenantSessionInterceptor(ITenantProvider tenants)
@@ -336,7 +336,7 @@ await db.Database.ApplyTenantSessionAsync();                  // session now: te
 var orders = await db.Orders.ToListAsync();                   // the rows of tenant A
 \end{sourcecode}
 
-% source: src/Acme.EntityFrameworkCore.Tenancy/Interceptors/TenantSessionInterceptor.cs
+% source: src/Acme.EntityFrameworkCore.Tenancy.Relational/Interceptors/TenantSessionInterceptor.cs
 \begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 public virtual async Task<bool> ApplyToOpenConnectionAsync(
     DbContext context, CancellationToken cancellationToken = default)
@@ -354,7 +354,7 @@ public virtual async Task<bool> ApplyToOpenConnectionAsync(
 }
 \end{sourcecode}
 
-The extension method \code{Apply\allowbreak{}Tenant\allowbreak{}Session} in the core package
+The extension method \code{Apply\allowbreak{}Tenant\allowbreak{}Session} in the relational package
 finds the interceptor among the context's interceptors and fails with a clear message if
 there is none. Two details matter: the method needs the context, not just the connection,
 because the provider reads its settings from the internal service provider; that is why

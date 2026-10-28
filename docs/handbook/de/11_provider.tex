@@ -13,13 +13,16 @@
 \versionrisk{stable}
 
 Ein zweiter Provider ist der Härtetest für die Paketarchitektur. Er zeigt, welche Teile
-wirklich provider-unabhängig sind. Die Faustregel: \textbf{Was keine SQL-Syntax und keinen
-Provider-Typ kennt, gehört in den Kern.} Für das Beispiel ergibt sich:
+wirklich provider-unabhängig sind, und der erste Eindruck täuscht: Ein Baustein kann weder
+SQL-Syntax noch Provider-Typen kennen und trotzdem eine relationale Datenbank brauchen, weil er
+mit ADO.NET-Verbindungen oder mit Tabellen arbeitet. Das Beispiel hat deshalb drei Schichten,
+jede in einem eigenen Paket:
 
 \begin{datatable}{H{1.21}H{0.45}H{1.34}}
-  \textbf{Baustein} & \textbf{Ort} & \textbf{Begründung} \\
+  \textbf{Baustein} & \textbf{Schicht} & \textbf{Begründung} \\
   \tablehead
-  \code{Tenant\allowbreak{}Id}, Konverter, JSON-Reader/Writer & Kern & Reine .NET-Typen \\
+  \code{Tenant\allowbreak{}Id}, Konverter, JSON-Reader/Writer & Kern & Reine .NET-Typen und
+  EF-Value-Converter \\
   \tablerule
   \code{ITenant\allowbreak{}Owned}, \code{ITenant\allowbreak{}Provider}, Attribute & Kern &
   Für Entitäts-Assemblies ohne Provider-Abhängigkeit \\
@@ -28,12 +31,12 @@ Provider-Typ kennt, gehört in den Kern.} Für das Beispiel ergibt sich:
   Nur Metadaten \\
   \tablerule
   Laufzeit-Annotation, \code{Get\allowbreak{}Tenant\allowbreak{}Property\allowbreak{}Name} &
-  Kern & Vom provider-neutralen Interceptor gelesen \\
+  Kern & Von den provider-neutralen Interceptors gelesen \\
   \tablerule
   SaveChanges-Interceptor & Kern & Arbeitet nur mit dem Change Tracker \\
   \tablerule
-  \code{Tenant\allowbreak{}Session\allowbreak{}Interceptor} (abstrakt) & Kern & Ablauf
-  gleich, nur der SQL-Befehl unterscheidet sich \\
+  Schutz von Massen-Updates (Query-Expression-Interceptor) & Kern & Prüft nur den
+  LINQ-Ausdrucksbaum \\
   \tablerule
   Evaluatable-Filter mit Attribut & Kern & Erkennt Funktionsklassen aller Pakete \\
   \tablerule
@@ -41,16 +44,44 @@ Provider-Typ kennt, gehört in den Kern.} Für das Beispiel ergibt sich:
   Werte der Zeile \\
   \tablerule
   Value Generation, Logging, \code{Add\allowbreak{}Acme\allowbreak{}Tenancy} & Kern & Ohne
-  SQL-Bezug \\
+  Datenbankbezug \\
+  \tablerule
+  \code{Tenant\allowbreak{}Session\allowbreak{}Interceptor} (abstrakt) & Relational &
+  Arbeitet auf der \code{Db\allowbreak{}Connection}; nur der SQL-Befehl unterscheidet sich je
+  Provider \\
+  \tablerule
+  \code{Tenant\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Validator} & Relational &
+  Tabellen und Spalten: TPT, TPC, Entity Splitting \\
   \tablerule
   \code{Database.\allowbreak{}Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})} &
-  Kern & Nutzt den Interceptor des Providers \\
+  Relational & Nutzt den Session-Interceptor des Providers \\
   \tablerule
   Type Mapping, Translators, Migrations, RLS-Conventions & Provider & Store-Typen,
   SQL-Syntax, Schema-Objekte \\
   \tablerule
   Eigene SQL-Knoten, Aggregate & Provider & Abhängig von Syntax und Provider-Factory \\
 \end{datatable}
+
+Die Faustregel hat deshalb drei Stufen: \textbf{Was keine Datenbank braucht, gehört in den
+Kern. Was eine relationale Datenbank, aber keinen SQL-Dialekt braucht, gehört in die
+relationale Schicht. SQL-Syntax und Store-Typen gehören in den Provider.} Das Kernpaket
+referenziert nur \code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core},
+das Paket
+\code{Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Relational}
+ergänzt \code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Relational},
+und beide Provider-Pakete bauen darauf auf. \code{Package\allowbreak{}Layer\allowbreak{}Tests}
+stellt sicher, dass kein relationaler Typ in den Kern zurückwandert.
+
+\begin{note}[Die relationale Schicht von Anfang an trennen]
+  Wer später einen nicht-relationalen Provider wie Cosmos DB unterstützen könnte, legt die
+  relationale Schicht von Anfang an in ein eigenes Paket. Typen nachträglich in eine andere
+  Assembly zu verschieben bricht die Binärkompatibilität, und Entitäts-Assemblies, die nur
+  den Kern referenziert haben, verlieren die transitive Abhängigkeit auf
+  \code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Relational},
+  auf die sie sich vielleicht für \code{To\allowbreak{}Table} oder
+  \code{Has\allowbreak{}Column\allowbreak{}Type} verlassen haben. Das Beispiel hat genau diesen
+  Schritt in Ausgabe~1.2 gemacht.
+\end{note}
 
 \begin{important}[Namenskonflikte zwischen Provider-Paketen]
   Zwei Provider-Pakete, die beide eine Extension-Method
@@ -103,7 +134,7 @@ Plugin pro Datenbank tatsächlich neu lösen muss:
   \code{EXEC(\allowbreak{}N'.\allowbreak{}.\allowbreak{}.\allowbreak{}')} \\
   \tablerule
   Tabellenabbildungen & \multicolumn{2}{>{\RaggedRight\arraybackslash}p{0.6\linewidth}}{Gleicher
-  Vertrag aus dem Kernpaket (Kapitel~\ref{ch:conventions}, Seite~\pageref{sec:supported-table-mappings})} \\
+  Vertrag aus dem relationalen Paket (Kapitel~\ref{ch:conventions}, Seite~\pageref{sec:supported-table-mappings})} \\
   \tablerule
   Bewusste Ausnahme & Attribut oder
   \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})}

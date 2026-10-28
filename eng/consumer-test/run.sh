@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Consumer test: packs the three libraries, builds a fresh application against the packages (not
+# Consumer test: packs the four libraries, builds a fresh application against the packages (not
 # the projects) and runs the real dotnet-ef tooling on it. Everything happens in a temporary
 # directory with its own NuGet cache, which is removed at the end.
 #
@@ -30,8 +30,8 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 contains() { grep -qF -- "$2" "$1" || fail "'$2' not found in $(basename "$1")"; }
 
 step "Pack the libraries"
-for project in Acme.EntityFrameworkCore.Tenancy Acme.EntityFrameworkCore.Tenancy.PostgreSQL \
-               Acme.EntityFrameworkCore.Tenancy.SqlServer; do
+for project in Acme.EntityFrameworkCore.Tenancy Acme.EntityFrameworkCore.Tenancy.Relational \
+               Acme.EntityFrameworkCore.Tenancy.PostgreSQL Acme.EntityFrameworkCore.Tenancy.SqlServer; do
     dotnet pack "$ROOT/src/$project" -c Release -o "$FEED" --nologo -v quiet \
         -p:ContinuousIntegrationBuild=true
 done
