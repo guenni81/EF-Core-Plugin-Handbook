@@ -79,8 +79,54 @@ public static IReadOnlyList<string> MigrationSql(DbContext? source, DbContext ta
   Translators und Migrationen laufen also nie; SQLite hat einen anderen SQL-Dialekt, andere
   Type Mappings und keine Row Level Security. Ein provider-spezifisches Plugin wird mit
   seinem eigenen Provider getestet: ohne Datenbank (nur Connection-String) für alles bis zum
-  SQL-Text, gegen die echte Datenbank für das Verhalten.
+  SQL-Text, gegen die echte Datenbank für das Verhalten. Für Anwendungen, die das Plugin
+  nutzen, sieht es anders aus (nächster Abschnitt).
 \end{note}
+
+\section{Testmodus für Anwendungen}
+
+Anwendungen haben oft hunderte Tests ihrer Geschäftslogik auf SQLite oder InMemory. Sie prüfen
+nicht die Isolation, sondern die eigene Logik, und sie dürfen nicht schon deshalb scheitern,
+weil die Entitäten \code{ITenant\allowbreak{}Owned} implementieren. Das PostgreSQL-Paket
+lehnt SQLite bewusst ab, und diese Prüfung abzuschalten hilft nicht: Das Paket ersetzt
+Provider-Dienste durch Npgsql-Ableitungen, bildet \code{Tenant\allowbreak{}Id} auf
+\code{uuid} ab und filtert mit \code{current\_\allowbreak{}setting(\allowbreak{})}. Der Kern
+hat deshalb einen eigenen Testmodus, der nur die anwendungsseitige Hälfte des Plugins enthält:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/TestingModeTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Testing\allowbreak{}Mode\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+private sealed class AppContext : DbContext
+{
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+        => modelBuilder.HasTenantQueryFilters(this);
+}
+
+new DbContextOptionsBuilder<AppContext>()
+    .UseSqlite(connection)
+    .UseAcmeTenancyForTesting(Services(tenants))
+    .Options
+
+ctx.Orders.Add(new Order { Total = 1 });      // TenantId bewusst leer
+await ctx.SaveChangesAsync();
+\end{sourcecode}
+
+\code{Use\allowbreak{}Acme\allowbreak{}Tenancy\allowbreak{}For\allowbreak{}Testing(\allowbreak{}sp)}
+bildet \code{Tenant\allowbreak{}Id} für jeden Provider als \code{Guid} ab (über einen
+Value-Converter-Selector, wie EF es für Enums macht), ergänzt den SaveChanges-Interceptor des
+Kerns und hinterlegt dafür die Mandanten-Property.
+\code{Has\allowbreak{}Tenant\allowbreak{}Query\allowbreak{}Filters(\allowbreak{}this)} filtert
+mit dem Mandanten als Abfrageparameter, derselbe Filter wie für Cosmos DB
+(Kapitel~\ref{ch:without-sql-what-carries-over}). Row Level Security, Migrations-SQL, Session
+und Translators fehlen. \code{Testing\allowbreak{}Mode\allowbreak{}Tests} betreibt den Modus
+auf SQLite und InMemory.
+
+\begin{important}[Ein Testmodus, kein Produktivmodus]
+  \code{Use\allowbreak{}Acme\allowbreak{}Tenancy\allowbreak{}For\allowbreak{}Testing} lehnt
+  PostgreSQL, SQL Server und Cosmos DB ab, damit er die echte Isolation nicht versehentlich
+  ersetzt. Ob die Isolation hält, zeigen die Integrationstests des Plugins und die
+  Integrationstests der Anwendung gegen die echte Datenbank (Testcontainers); der Testmodus
+  hält nur die Tests der Geschäftslogik am Laufen.
+\end{important}
 
 \section{Was getestet wird}
 

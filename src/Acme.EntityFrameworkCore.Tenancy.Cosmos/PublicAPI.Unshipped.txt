@@ -13,13 +13,9 @@ Acme.EntityFrameworkCore.Tenancy.Cosmos.Storage.CosmosTenantIdTypeMappingSourceP
 Acme.EntityFrameworkCore.Tenancy.Cosmos.Storage.CosmosTenantIdTypeMappingSourcePlugin.CosmosTenantIdTypeMappingSourcePlugin() -> void
 Acme.EntityFrameworkCore.Tenancy.Cosmos.Storage.TenantIdStringConverter
 Acme.EntityFrameworkCore.Tenancy.Cosmos.Storage.TenantIdStringConverter.TenantIdStringConverter() -> void
-const Microsoft.EntityFrameworkCore.CosmosTenancyModelBuilderExtensions.QueryFilterKey = "Acme.Tenancy" -> string!
-Microsoft.EntityFrameworkCore.CosmosTenancyModelBuilderExtensions
 Microsoft.EntityFrameworkCore.CosmosTenancyOptionsBuilderExtensions
 static Acme.EntityFrameworkCore.Tenancy.Cosmos.Infrastructure.CosmosTenancySettings.Default.get -> Acme.EntityFrameworkCore.Tenancy.Cosmos.Infrastructure.CosmosTenancySettings!
 static Acme.EntityFrameworkCore.Tenancy.Cosmos.Storage.TenantIdStringConverter.Instance.get -> Acme.EntityFrameworkCore.Tenancy.Cosmos.Storage.TenantIdStringConverter!
-static Microsoft.EntityFrameworkCore.CosmosTenancyModelBuilderExtensions.CurrentTenant(Microsoft.EntityFrameworkCore.DbContext! context) -> Acme.EntityFrameworkCore.Tenancy.TenantId?
-static Microsoft.EntityFrameworkCore.CosmosTenancyModelBuilderExtensions.HasTenantQueryFilters(this Microsoft.EntityFrameworkCore.ModelBuilder! modelBuilder, Microsoft.EntityFrameworkCore.DbContext! context) -> Microsoft.EntityFrameworkCore.ModelBuilder!
 static Microsoft.EntityFrameworkCore.CosmosTenancyOptionsBuilderExtensions.UseAcmeTenancy(this Microsoft.EntityFrameworkCore.Infrastructure.CosmosDbContextOptionsBuilder! cosmosOptionsBuilder, System.IServiceProvider! applicationServices, bool verifyMaterializedTenants = false) -> Microsoft.EntityFrameworkCore.Infrastructure.CosmosDbContextOptionsBuilder!
 virtual Acme.EntityFrameworkCore.Tenancy.Cosmos.Conventions.CosmosTenancyConventionSetPlugin.ModifyConventions(Microsoft.EntityFrameworkCore.Metadata.Conventions.ConventionSet! conventionSet) -> Microsoft.EntityFrameworkCore.Metadata.Conventions.ConventionSet!
 virtual Acme.EntityFrameworkCore.Tenancy.Cosmos.Conventions.CosmosTenantPartitionKeyConvention.ProcessModelFinalizing(Microsoft.EntityFrameworkCore.Metadata.Builders.IConventionModelBuilder! modelBuilder, Microsoft.EntityFrameworkCore.Metadata.Conventions.IConventionContext<Microsoft.EntityFrameworkCore.Metadata.Builders.IConventionModelBuilder!>! context) -> void

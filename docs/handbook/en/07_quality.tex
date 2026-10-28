@@ -80,8 +80,54 @@ public static IReadOnlyList<string> MigrationSql(DbContext? source, DbContext ta
   and migrations never run; SQLite has a different SQL dialect, other type mappings and no
   Row Level Security. A provider-specific plugin is tested with its own provider: without a
   database (connection string only) for everything up to the SQL text, and against the real
-  database for behavior.
+  database for behavior. Applications that use the plugin are a different matter (next
+  section).
 \end{note}
+
+\section{Test mode for applications}
+
+Applications often have hundreds of business logic tests on SQLite or InMemory. They are not
+about isolation but about their own logic, and they must not break just because the entities
+implement \code{ITenant\allowbreak{}Owned}. The PostgreSQL package refuses SQLite on purpose,
+and switching that check off would not help: the package replaces provider services with
+Npgsql subclasses, maps \code{Tenant\allowbreak{}Id} to \code{uuid} and filters with
+\code{current\_\allowbreak{}setting(\allowbreak{})}. The core therefore has a test mode of its
+own that contains only the application-side half of the plugin:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/TestingModeTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Testing\allowbreak{}Mode\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+private sealed class AppContext : DbContext
+{
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+        => modelBuilder.HasTenantQueryFilters(this);
+}
+
+new DbContextOptionsBuilder<AppContext>()
+    .UseSqlite(connection)
+    .UseAcmeTenancyForTesting(Services(tenants))
+    .Options
+
+ctx.Orders.Add(new Order { Total = 1 });      // TenantId left empty on purpose
+await ctx.SaveChangesAsync();
+\end{sourcecode}
+
+\code{Use\allowbreak{}Acme\allowbreak{}Tenancy\allowbreak{}For\allowbreak{}Testing(\allowbreak{}sp)}
+maps \code{Tenant\allowbreak{}Id} as a \code{Guid} for every provider (through a value
+converter selector, as EF does for enums), adds the SaveChanges interceptor of the core and
+records the tenant property for it.
+\code{Has\allowbreak{}Tenant\allowbreak{}Query\allowbreak{}Filters(\allowbreak{}this)} filters
+with the tenant as a query parameter, the same filter as for Cosmos DB
+(chapter~\ref{ch:without-sql-what-carries-over}). Row level security, migration SQL, the
+session and the translators are missing. \code{Testing\allowbreak{}Mode\allowbreak{}Tests}
+runs the mode on SQLite and InMemory.
+
+\begin{important}[A test mode, not a production mode]
+  \code{Use\allowbreak{}Acme\allowbreak{}Tenancy\allowbreak{}For\allowbreak{}Testing} refuses
+  PostgreSQL, SQL Server and Cosmos DB, so that it cannot replace the real isolation by
+  accident. Whether the isolation holds is shown by the plugin's own integration tests and by
+  the application's integration tests against the real database (Testcontainers); the test
+  mode only keeps the business logic tests running.
+\end{important}
 
 \section{What is tested}
 

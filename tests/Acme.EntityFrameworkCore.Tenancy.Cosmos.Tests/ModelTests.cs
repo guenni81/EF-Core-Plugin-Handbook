@@ -36,7 +36,7 @@ public class ModelTests
         using var ctx = Contexts.Offline();
         var order = ctx.Model.FindEntityType(typeof(Order))!;
 
-        Assert.NotNull(order.FindDeclaredQueryFilter(CosmosTenancyModelBuilderExtensions.QueryFilterKey));
+        Assert.NotNull(order.FindDeclaredQueryFilter(TenancyModelBuilderExtensions.QueryFilterKey));
     }
 
     [Fact]

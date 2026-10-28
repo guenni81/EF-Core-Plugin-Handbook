@@ -9,16 +9,17 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 namespace Microsoft.EntityFrameworkCore;
 
 /// <summary>
-/// Query filter on the current tenant for Cosmos DB, called in <c>OnModelCreating</c>:
-/// <c>modelBuilder.HasTenantQueryFilters(this)</c>.
+/// Query filter on the current tenant as a query parameter, called in <c>OnModelCreating</c>:
+/// <c>modelBuilder.HasTenantQueryFilters(this)</c>. For databases without a session that knows
+/// the tenant: Cosmos DB, and SQLite or InMemory in application tests.
 /// </summary>
 /// <remarks>
-/// Unlike the relational providers, there is no database session that knows the tenant. The
-/// filter therefore references the context, which EF replaces by the current context for every
-/// query; the tenant becomes a query parameter. Because the filter compares the partition key
-/// with that parameter, EF Core sends the query to a single partition.
+/// The filter references the context, which EF replaces by the current context for every query;
+/// the tenant becomes a query parameter, and the compiled query stays in the cache for all
+/// tenants. On Cosmos DB the comparison with the partition key makes the query single-partition
+/// (chapter "Without SQL: what carries over to Cosmos DB").
 /// </remarks>
-public static class CosmosTenancyModelBuilderExtensions
+public static class TenancyModelBuilderExtensions
 {
     /// <summary>The name of the filter, for <c>IgnoreQueryFilters(["Acme.Tenancy"])</c>.</summary>
     public const string QueryFilterKey = "Acme.Tenancy";
@@ -40,7 +41,7 @@ public static class CosmosTenancyModelBuilderExtensions
         ArgumentNullException.ThrowIfNull(context);
 
         var currentTenant = Expression.Call(
-            typeof(CosmosTenancyModelBuilderExtensions).GetMethod(nameof(CurrentTenant))!,
+            typeof(TenancyModelBuilderExtensions).GetMethod(nameof(CurrentTenant))!,
             Expression.Constant(context));
 
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
@@ -86,5 +87,6 @@ public static class CosmosTenancyModelBuilderExtensions
                .OfType<TenantSaveChangesInterceptor>().FirstOrDefault()?.Tenants
            ?? throw new TenancyException(
                "The tenant query filter needs the tenant provider of the context. Activate the "
-               + "plugin with UseCosmos(..., cosmos => cosmos.UseAcmeTenancy(applicationServices)).");
+               + "plugin with UseAcmeTenancy(applicationServices) of its provider package, or "
+               + "with UseAcmeTenancyForTesting(applicationServices) in tests.");
 }

@@ -313,6 +313,12 @@ internen Provider. Sie sind fast immer der erste Weg:
   \code{Value\allowbreak{}Generation/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Value\allowbreak{}Generator.\allowbreak{}cs},
   \code{…Factory.\allowbreak{}cs} & Wertgenerierung & \ref{ch:value-generation} \\
   \tablerule
+  \code{Metadata/\allowbreak{}Tenancy\allowbreak{}Model\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs}
+  & Query-Filter mit dem Mandanten als Parameter & \ref{ch:without-sql-what-carries-over}, \ref{ch:test-strategy} \\
+  \tablerule
+  \code{Testing/\allowbreak{}*}
+  & Testmodus für Anwendungen (SQLite, InMemory) & \ref{ch:test-strategy} \\
+  \tablerule
   \code{Conventions/\allowbreak{}Tenant\allowbreak{}Id\allowbreak{}Key\allowbreak{}Value\allowbreak{}Generation\allowbreak{}Convention.\allowbreak{}cs}
   & Generator für Schlüssel & \ref{ch:value-generation} \\
   \tablerule
@@ -391,9 +397,6 @@ internen Provider. Sie sind fast immer der erste Weg:
   \tablerule
   \code{Conventions/\allowbreak{}Cosmos\allowbreak{}Tenant\allowbreak{}Partition\allowbreak{}Key\allowbreak{}Convention.\allowbreak{}cs}
   & Mandant als Partition Key & \ref{ch:without-sql-what-carries-over} \\
-  \tablerule
-  \code{Metadata/\allowbreak{}Cosmos\allowbreak{}Tenancy\allowbreak{}Model\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs}
-  & Query-Filter auf den aktuellen Mandanten & \ref{ch:without-sql-what-carries-over} \\
   \tablerule
   \code{Storage/\allowbreak{}*}
   & TenantId als String, Type-Mapping-Plugin & \ref{ch:without-sql-what-carries-over} \\

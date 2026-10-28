@@ -27,6 +27,13 @@ its internal API surface shrinks from 13 to 10 Npgsql types.
 
 ### Added
 
+- Test mode for applications in the core package: `UseAcmeTenancyForTesting(sp)` lets business
+  logic tests run on SQLite or InMemory with the application-side behavior of the plugin
+  (TenantId mapped as a Guid, SaveChanges interceptor, `modelBuilder.HasTenantQueryFilters(this)`)
+  and refuses PostgreSQL, SQL Server and Cosmos DB. The PostgreSQL and SQL Server packages keep
+  refusing other providers. Handbook (both editions): new section in chapter 26.
+- `HasTenantQueryFilters` moved from the Cosmos package into the core
+  (`TenancyModelBuilderExtensions`), since it needs neither SQL nor Cosmos.
 - Handbook (both editions), chapter 10: the tenant filter combined with an application's soft
   delete filter through EF Core 10 named query filters, with an important box on switching off
   filters by name only; a unit test checks all three combinations.

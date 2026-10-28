@@ -9,3 +9,21 @@ Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantQueryExpressionInterceptor
 Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantQueryExpressionInterceptor.TenantQueryExpressionInterceptor() -> void
 virtual Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantQueryExpressionInterceptor.QueryCompilationStarting(System.Linq.Expressions.Expression! queryExpression, Microsoft.EntityFrameworkCore.Diagnostics.QueryExpressionEventData! eventData) -> System.Linq.Expressions.Expression!
 Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantSaveChangesInterceptor.Tenants.get -> Acme.EntityFrameworkCore.Tenancy.ITenantProvider!
+const Microsoft.EntityFrameworkCore.TenancyModelBuilderExtensions.QueryFilterKey = "Acme.Tenancy" -> string!
+Microsoft.EntityFrameworkCore.TenancyModelBuilderExtensions
+static Microsoft.EntityFrameworkCore.TenancyModelBuilderExtensions.CurrentTenant(Microsoft.EntityFrameworkCore.DbContext! context) -> Acme.EntityFrameworkCore.Tenancy.TenantId?
+static Microsoft.EntityFrameworkCore.TenancyModelBuilderExtensions.HasTenantQueryFilters(this Microsoft.EntityFrameworkCore.ModelBuilder! modelBuilder, Microsoft.EntityFrameworkCore.DbContext! context) -> Microsoft.EntityFrameworkCore.ModelBuilder!
+Acme.EntityFrameworkCore.Tenancy.Testing.TenancyTestingOptionsExtension
+Acme.EntityFrameworkCore.Tenancy.Testing.TenancyTestingOptionsExtension.TenancyTestingOptionsExtension() -> void
+virtual Acme.EntityFrameworkCore.Tenancy.Testing.TenancyTestingOptionsExtension.ApplyServices(Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> void
+virtual Acme.EntityFrameworkCore.Tenancy.Testing.TenancyTestingOptionsExtension.Info.get -> Microsoft.EntityFrameworkCore.Infrastructure.DbContextOptionsExtensionInfo!
+virtual Acme.EntityFrameworkCore.Tenancy.Testing.TenancyTestingOptionsExtension.Validate(Microsoft.EntityFrameworkCore.Infrastructure.IDbContextOptions! options) -> void
+Acme.EntityFrameworkCore.Tenancy.Testing.TenancyValueConverterSelector
+Acme.EntityFrameworkCore.Tenancy.Testing.TenancyValueConverterSelector.TenancyValueConverterSelector(Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverterSelectorDependencies! dependencies) -> void
+override Acme.EntityFrameworkCore.Tenancy.Testing.TenancyValueConverterSelector.Select(System.Type! modelClrType, System.Type? providerClrType = null) -> System.Collections.Generic.IEnumerable<Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverterInfo>!
+Acme.EntityFrameworkCore.Tenancy.Testing.TenantPropertyAnnotationConvention
+Acme.EntityFrameworkCore.Tenancy.Testing.TenantPropertyAnnotationConvention.TenantPropertyAnnotationConvention() -> void
+virtual Acme.EntityFrameworkCore.Tenancy.Testing.TenantPropertyAnnotationConvention.ProcessModelFinalizing(Microsoft.EntityFrameworkCore.Metadata.Builders.IConventionModelBuilder! modelBuilder, Microsoft.EntityFrameworkCore.Metadata.Conventions.IConventionContext<Microsoft.EntityFrameworkCore.Metadata.Builders.IConventionModelBuilder!>! context) -> void
+Microsoft.EntityFrameworkCore.TenancyTestingDbContextOptionsBuilderExtensions
+static Microsoft.EntityFrameworkCore.TenancyTestingDbContextOptionsBuilderExtensions.UseAcmeTenancyForTesting(this Microsoft.EntityFrameworkCore.DbContextOptionsBuilder! optionsBuilder, System.IServiceProvider! applicationServices) -> Microsoft.EntityFrameworkCore.DbContextOptionsBuilder!
+static Microsoft.EntityFrameworkCore.TenancyTestingDbContextOptionsBuilderExtensions.UseAcmeTenancyForTesting<TContext>(this Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<TContext!>! optionsBuilder, System.IServiceProvider! applicationServices) -> Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<TContext!>!

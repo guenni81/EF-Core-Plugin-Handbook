@@ -48,6 +48,9 @@ package of its own:
   Value generation, logging, \code{Add\allowbreak{}Acme\allowbreak{}Tenancy} & Core & No
   database involved \\
   \tablerule
+  Query filter with the tenant as a parameter, test mode & Core & Need no session; used by
+  Cosmos DB and by application tests \\
+  \tablerule
   \code{Tenant\allowbreak{}Session\allowbreak{}Interceptor} (abstract) & Relational & Works
   on the \code{Db\allowbreak{}Connection}; only the SQL command differs per provider \\
   \tablerule
@@ -425,7 +428,7 @@ chapter~\ref{ch:what-belongs-in-the-core}, without the relational layer.
   \tablerule
   Partition key convention & New & Replaces the RLS convention \\
   \tablerule
-  Query filter & New & Tenant as a query parameter instead of a session value \\
+  Query filter & From the core & Tenant as a query parameter instead of a session value \\
   \tablerule
   Session interceptor, migrations, SQL nodes & Not ported & There is no session and no
   schema \\
@@ -475,14 +478,16 @@ The relational filter compares with \code{EF.\allowbreak{}Functions.\allowbreak{
 which becomes \code{current\_\allowbreak{}setting(\allowbreak{})} in SQL: the database knows the
 tenant from the session. Cosmos knows nothing; the tenant has to travel with every query. A
 convention cannot do that, because it has no access to the context. The filter is therefore
-added in \code{On\allowbreak{}Model\allowbreak{}Creating}, with the context itself:
+added in \code{On\allowbreak{}Model\allowbreak{}Creating}, with the context itself. The
+extension needs neither SQL nor Cosmos and lives in the core package; the test mode for
+applications (chapter~\ref{ch:test-strategy}) uses it as well:
 
-% source: src/Acme.EntityFrameworkCore.Tenancy.Cosmos/Metadata/CosmosTenancyModelBuilderExtensions.cs
-\begin{sourcecode}[Usage and Metadata/\allowbreak{}Cosmos\allowbreak{}Tenancy\allowbreak{}Model\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+% source: src/Acme.EntityFrameworkCore.Tenancy/Metadata/TenancyModelBuilderExtensions.cs
+\begin{sourcecode}[Usage and Metadata/\allowbreak{}Tenancy\allowbreak{}Model\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 // OnModelCreating: modelBuilder.HasTenantQueryFilters(this);
 
 var currentTenant = Expression.Call(
-    typeof(CosmosTenancyModelBuilderExtensions).GetMethod(nameof(CurrentTenant))!,
+    typeof(TenancyModelBuilderExtensions).GetMethod(nameof(CurrentTenant))!,
     Expression.Constant(context));
 
 // e => (TenantId?)EF.Property<TenantId>(e, "TenantId") == CurrentTenant(context)
