@@ -5,10 +5,11 @@
     \item Kapitel~\ref{ch:interceptors}: Interceptors
     \item Kapitel~\ref{ch:diagnostics-and-logging}: Diagnose und Logging
   }}
-\part{Laufzeit}\label{part:V}
+\part{Laufzeit}\label{part:runtime}
 
 % ------------------------------------------------------------
 \chapter{Interceptors}\label{ch:interceptors}
+\versionrisk{stable}
 
 Interceptors sind Haken in EFs Laufzeit: vor und nach Befehlen, Verbindungen, Transaktionen,
 SaveChanges und der Materialisierung. Sie können beobachten, Werte ändern, Operationen
@@ -41,7 +42,7 @@ unterdrücken oder Ergebnisse ersetzen.
 
 Die beiden Singleton-Interceptors implementieren \code{ISingleton\allowbreak{}Interceptor}.
 Sie werden einmal pro internem Provider verwendet, nicht pro Context, und müssen deshalb
-zustandslos und thread-sicher sein. Im internen Provider registriert, findet EF aber nur den
+zustandslos und threadsicher sein. Im internen Provider registriert, findet EF aber nur den
 Materialisierungs-Interceptor unter \code{ISingleton\allowbreak{}Interceptor}; einen
 Query-Expression-Interceptor ruft es nur auf, wenn er als \code{IInterceptor} registriert ist
 (Kapitel~\ref{ch:bulk-operations-and-the-limits}).
@@ -55,22 +56,23 @@ Query-Expression-Interceptor ruft es nur auf, wenn er als \code{IInterceptor} re
   & Instanzen aus der Anwendung; können App-Dienste nutzen; pro Context verschieden &
   Interceptors mit App-Abhängigkeiten (Mandant, Benutzer, Uhr) \\
   \tablerule
-  \code{services.\allowbreak{}Add\allowbreak{}Scoped<\allowbreak{}IInterceptor,\allowbreak{}
+  \code{Entity\allowbreak{}Framework\allowbreak{}Services\allowbreak{}Builder.\allowbreak{}Try\allowbreak{}Add<\allowbreak{}IInterceptor,\allowbreak{}
   X>(\allowbreak{})} in \code{Apply\allowbreak{}Services} & Im internen Provider aufgelöst
   („injected interceptors“); haben Zugriff auf EF-Dienste, nicht auf App-Dienste & Rein
   technische Interceptors ohne App-Abhängigkeit \\
 \end{datatable}
 
-Beide Wege kombiniert EF zu einer Liste. Das Beispiel nutzt den ersten, weil beide
-Interceptors den Mandanten der Anwendung brauchen
-(Kapitel~\ref{ch:public-api-and-integration-into}).
+Beide Wege kombiniert EF zu einer Liste. Der SaveChanges- und der Connection-Interceptor
+brauchen den Mandanten der Anwendung und kommen deshalb über den ersten Weg
+(Kapitel~\ref{ch:public-api-and-integration-into}). Die optionalen Interceptors für
+Materialisierung, Massenoperationen und Tracing registriert das Plugin im internen Provider.
 
 \section{Der SaveChanges-Interceptor}
 
 Er setzt die \code{Tenant\allowbreak{}Id} neuer Entitäten und verhindert, dass Daten eines
 anderen Mandanten geschrieben oder umgehängt werden. Das ergänzt RLS (Defense in Depth) und
-liefert verständlichere Fehler als die Datenbank.
-Kapitel~\ref{ch:bulk-operations-and-the-limits} zeigt, welche Wege an ihm vorbeiführen:
+liefert verständlichere Fehler als die Datenbank. Welche Wege an ihm vorbeiführen, zeigt
+Kapitel~\ref{ch:bulk-operations-and-the-limits}.
 
 % source: src/Acme.EntityFrameworkCore.Tenancy/Interceptors/TenantSaveChangesInterceptor.cs
 \begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Save\allowbreak{}Changes\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}1/\allowbreak{}2)]{csharp}
@@ -218,14 +220,14 @@ eine Datenbank zu brauchen (Kapitel~\ref{ch:test-strategy}).
 Er setzt bei jedem Öffnen der Verbindung das Session-Setting, das die Policies und
 \code{Current\allowbreak{}Tenant(\allowbreak{})} auswerten. Der Ablauf (Öffnen abfangen,
 sync und async, Mandant holen) ist für jede Datenbank gleich und liegt deshalb in einer
-abstrakten Basis im Kernpaket (Kapitel~\ref{ch:what-belongs-in-the-core}). Das
+abstrakten Basis im relationalen Paket (Kapitel~\ref{ch:what-belongs-in-the-core}). Das
 PostgreSQL-Paket liefert nur den Befehl. Den Setting-Namen holt es über den Context aus den
 Event-Daten
 (\code{context.\allowbreak{}Get\allowbreak{}Service<\allowbreak{}T>(\allowbreak{})}) aus dem
 \emph{internen} Provider, den Mandanten aus dem \emph{App}-Container:
 
-\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}Kern),\allowbreak{} Runtime/\allowbreak{}Tenant\allowbreak{}Connection\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}vereinfacht)]{csharp}
-// Kernpaket
+\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}relational),\allowbreak{} Runtime/\allowbreak{}Tenant\allowbreak{}Connection\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}vereinfacht)]{csharp}
+// Relationales Paket
 public abstract class TenantSessionInterceptor : DbConnectionInterceptor
 {
     protected TenantSessionInterceptor(ITenantProvider tenants)
@@ -246,7 +248,8 @@ public abstract class TenantSessionInterceptor : DbConnectionInterceptor
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    // ConnectionOpened (synchron) analog
+    // ConnectionOpened (synchron) analog; scheitert der Befehl, schließen beide
+    // die Verbindung wieder (Abschnitt „Wenn der Session-Befehl scheitert“)
 
     protected abstract DbCommand CreateSessionCommand(
         DbConnection connection, DbContext? context, TenantId? tenant);
@@ -339,7 +342,7 @@ await db.Database.ApplyTenantSessionAsync();                  // Session jetzt: 
 var orders = await db.Orders.ToListAsync();                   // die Zeilen von Mandant A
 \end{sourcecode}
 
-% source: src/Acme.EntityFrameworkCore.Tenancy/Interceptors/TenantSessionInterceptor.cs
+% source: src/Acme.EntityFrameworkCore.Tenancy.Relational/Interceptors/TenantSessionInterceptor.cs
 \begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 public virtual async Task<bool> ApplyToOpenConnectionAsync(
     DbContext context, CancellationToken cancellationToken = default)
@@ -357,8 +360,8 @@ public virtual async Task<bool> ApplyToOpenConnectionAsync(
 }
 \end{sourcecode}
 
-Die Erweiterungsmethode \code{Apply\allowbreak{}Tenant\allowbreak{}Session} im Kernpaket
-sucht den Interceptor unter den Interceptoren des Contexts und bricht mit einer klaren
+Die Extension-Method \code{Apply\allowbreak{}Tenant\allowbreak{}Session} im relationalen Paket
+sucht den Interceptor unter den Interceptors des Contexts und bricht mit einer klaren
 Meldung ab, wenn keiner registriert ist. Zwei Details sind wichtig: Die Methode braucht den
 Context, nicht nur die Verbindung, weil der Provider seine Einstellungen aus dem internen
 Service Provider liest; deshalb erhält \code{Create\allowbreak{}Session\allowbreak{}Command}
@@ -394,8 +397,143 @@ Erkennen lässt sich die Lücke zusätzlich beim Laden: Mit
 geladene Entität gegen den Mandanten des Contexts und wirft, statt fremde Zeilen
 zurückzugeben (Kapitel~\ref{ch:materialization-from-rows-to-objects}).
 
+\section{Wenn der Session-Befehl scheitert}
+
+Der Befehl, der den Mandanten setzt, ist ein gewöhnlicher Datenbankaufruf: Er kann scheitern,
+in sein \code{Command\allowbreak{}Timeout} laufen oder abgebrochen werden. Entscheidend ist,
+was danach mit der Verbindung geschieht. EF zählt eine Öffnung erst, wenn
+\code{Connection\allowbreak{}Opened} zurückkehrt. Wirft der Interceptor, ist die
+\code{Db\allowbreak{}Connection} offen, EF hält sie aber für geschlossen. Die nächste
+Operation findet sie offen vor, behandelt sie wie eine von außen geöffnete Verbindung und
+läuft ohne Interceptor, also mit dem Session-Wert, den die Verbindung gerade hat. Gegen
+PostgreSQL ließ sich das vor der Korrektur nachweisen: Mit dem Standard-Pool las der Context
+danach stillschweigend nichts. Mit \code{No Reset On Close=true}, einer verbreiteten
+Performance-Einstellung, las der Context für Mandant~B die Zeilen von Mandant~A, der die
+physische Verbindung zuvor benutzt hatte.
+
+Der Interceptor schließt die Verbindung deshalb wieder, bevor er die Exception weitergibt:
+
+% source: src/Acme.EntityFrameworkCore.Tenancy.Relational/Interceptors/TenantSessionInterceptor.cs
+\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+public override void ConnectionOpened(
+    DbConnection connection, ConnectionEndEventData eventData)
+{
+    ArgumentNullException.ThrowIfNull(connection);
+    ArgumentNullException.ThrowIfNull(eventData);
+
+    try
+    {
+        using var command =
+            CreateSessionCommand(connection, eventData.Context, Tenants.CurrentTenantId);
+        command.ExecuteNonQuery();
+    }
+    catch
+    {
+        connection.Close();
+        throw;
+    }
+}
+\end{sourcecode}
+
+Die asynchrone Variante schließt mit \code{Close\allowbreak{}Async(\allowbreak{})} ohne
+Cancellation-Token: Nach einem abgebrochenen Befehl darf die Verbindung erst recht nicht offen
+bleiben. Der Context bleibt danach benutzbar; die nächste Operation öffnet neu, und der
+Interceptor setzt den Mandanten. Die Tests erzeugen die Fehler kontrolliert, über eine
+Unterklasse des Interceptors, deren nächster Befehl scheitert (\code{1 / 0}), in ein
+\code{Command\allowbreak{}Timeout} von einer Sekunde läuft oder vorher abgebrochen wird:
+
+\begin{datatable}{H{0.95}H{1.05}H{1.00}}
+  \textbf{Fall} & \textbf{Verhalten} & \textbf{Test} \\
+  \tablehead
+  Befehl scheitert, Timeout, Cancellation beim Öffnen durch EF & Exception (Timeout: von EF als
+  transienter Fehler gemeldet), Verbindung geschlossen; die nächste Operation setzt den
+  Mandanten neu, mit und ohne \code{No Reset On Close} &
+  \code{Session\allowbreak{}Failure\allowbreak{}Tests}, auch für SQL Server \\
+  \tablerule
+  Dasselbe bei \code{Open\allowbreak{}Connection\allowbreak{}Async} & Verbindung geschlossen; ein
+  zweites Öffnen gilt danach für alle Abfragen & ebenda \\
+  \tablerule
+  \code{Apply\allowbreak{}Tenant\allowbreak{}Session} auf einer offenen Verbindung scheitert &
+  Die Verbindung gehört dem Aufrufer und bleibt offen, mit dem \emph{bisherigen} Mandanten. Die
+  Exception darf nicht verschluckt werden; ein zweiter Aufruf setzt den neuen & ebenda \\
+  \tablerule
+  \code{Use\allowbreak{}Transaction\allowbreak{}Pooling(\allowbreak{})}: \code{set\_config} in der
+  neuen Transaktion scheitert & Die Transaktion wird zurückgerollt und verworfen; die nächste
+  Transaktion bekommt den Mandanten. Vorher blieb sie offen und blockierte jedes weitere
+  \code{Begin\allowbreak{}Transaction} des Contexts & \code{Transaction\allowbreak{}Session\allowbreak{}Failure\allowbreak{}Tests} \\
+\end{datatable}
+
+Im Session-Modus ist ein liegen gebliebener Wert gefährlich, weil er die Verbindung überdauert.
+Mit Transaction-Pooling endet der Wert ohnehin mit der Transaktion, und ein gescheiterter
+\code{set\_config} bricht sie in PostgreSQL ab; der Fehler dort war ein unbenutzbarer Context,
+kein fremder Mandant. Retries einer Execution Strategy öffnen ohnehin eine neue Verbindung und
+setzen den Mandanten neu (\code{Retry\allowbreak{}\_after\allowbreak{}\_a\allowbreak{}\_lost\allowbreak{}\_connection\allowbreak{}\_…},
+Kapitel~\ref{ch:retrofitting-and-operating}).
+
+\section{Dapper und rohes ADO.NET}
+
+Reports und Massenexporte laufen oft über Dapper oder rohes ADO.NET auf der Verbindung des
+Contexts (\code{Database.\allowbreak{}Get\allowbreak{}Db\allowbreak{}Connection(\allowbreak{})}).
+Row Level Security gilt auch für diese Befehle, weil sie in der Datenbank liegt und nicht in EF.
+Es kommt nur darauf an, ob der Session-Wert gesetzt ist, und das hängt davon ab, wer die
+Verbindung öffnet:
+
+\begin{datatable}{H{0.95}H{1.05}}
+  \textbf{Wer die Verbindung öffnet} & \textbf{Ergebnis} \\
+  \tablehead
+  EF, etwa \code{Open\allowbreak{}Connection\allowbreak{}Async(\allowbreak{})} oder eine offene
+  Transaktion & Der Interceptor hat die Session gesetzt; Dapper sieht die Zeilen des aktuellen
+  Mandanten \\
+  \tablerule
+  Dapper oder ADO.NET selbst, auch nachdem EF die Verbindung nach einer Abfrage wieder
+  geschlossen hat & Kein Session-Wert: Die Policies treffen keine Zeile (fail closed), bis
+  \code{Apply\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Async(\allowbreak{})} ihn setzt \\
+  \tablerule
+  Mit Transaction-Pooling (\code{Use\allowbreak{}Transaction\allowbreak{}Pooling}) & Der Mandant
+  existiert nur in der Transaktion von EF; Dapper muss darin laufen \\
+\end{datatable}
+
+Die zweite Zeile ist die Falle: Weil EF die Verbindung nach jeder Abfrage wieder schließt, ist
+eine Verbindung, die eben noch den Mandanten trug, danach wieder geschlossen. Dapper öffnet
+eine geschlossene Verbindung selbst, und der Interceptor läuft nicht. Das sichere Muster öffnet
+die Verbindung für den ganzen Block über EF:
+
+\begin{sourcecode}[Aufruf (\allowbreak{}Dapper)]{csharp}
+await db.Database.OpenConnectionAsync();                // EF öffnet: Session gesetzt
+var connection = db.Database.GetDbConnection();
+var orders = await connection.QueryAsync<OrderDto>(
+    "SELECT \"Id\", \"Total\" FROM \"Orders\"");             // RLS: nur der Mandant
+await db.Database.CloseConnectionAsync();
+
+// PgBouncer im Transaktionsmodus: Mandant nur in der Transaktion von EF
+await using var tx = await db.Database.BeginTransactionAsync();
+var rows = await connection.QueryAsync<OrderDto>(sql, transaction: tx.GetDbTransaction());
+\end{sourcecode}
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests/RawAdoNetTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Raw\allowbreak{}Ado\allowbreak{}Net\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+var tenant = await CreateTenantWithOrdersAsync(2);
+await using var db = _fixture.CreateAppContext(
+    new MutableTenantProvider { CurrentTenantId = tenant });
+await db.Orders.CountAsync();                 // EF hat geöffnet und wieder geschlossen
+
+// Direkt geöffnet, wie Dapper es bei geschlossener Verbindung tut: ohne EF
+var connection = db.Database.GetDbConnection();
+await connection.OpenAsync();
+Assert.Equal(0, await CountOrdersAsync(connection));      // fail closed
+
+await db.Database.ApplyTenantSessionAsync();
+Assert.Equal(2, await CountOrdersAsync(connection));
+\end{sourcecode}
+
+\code{Raw\allowbreak{}Ado\allowbreak{}Net\allowbreak{}Tests} prüft alle drei Zeilen gegen
+PostgreSQL mit einem einfachen Befehl, mehr schickt Dapper auch nicht. Das Ergebnis ist nie ein
+Leck: Ohne Session-Wert sieht die Abfrage nichts. Es ist ein falsches leeres Ergebnis, und
+deshalb gehört das Muster in die Richtlinien der Anwendung.
+
 % ------------------------------------------------------------
 \chapter{Diagnose und Logging}\label{ch:diagnostics-and-logging}
+\versionrisk{stable}
 
 Ein professionelles Plugin meldet Ereignisse über EFs Logging-System. Dann landen die
 Meldungen in denselben Kanälen, die Nutzer ohnehin konfigurieren (\code{ILogger},
@@ -436,7 +574,7 @@ nach Präfix funktionieren.
 \section{Event-Definitionen}
 
 Eine \code{Event\allowbreak{}Definition<\allowbreak{}T>} bündelt Event-ID, Log-Level,
-Meldungsvorlage und das Warnverhalten aus den Options. EF cached seine Definitionen pro
+Meldungsvorlage und das Warnverhalten aus den Options. EF cacht seine Definitionen pro
 internem Provider; das Plugin macht es genauso mit einer eigenen Klasse, die als Singleton
 registriert ist (Kapitel~\ref{ch:registering-services}):
 
@@ -510,3 +648,69 @@ options.UseNpgsql(cs)
   \code{Configure\allowbreak{}Warnings} zu Fehlern; andere sehen sie zumindest beim Start.
   Das Plugin muss diese Entscheidung nicht für alle treffen.
 \end{tip}
+
+\section{OpenTelemetry: der Mandant im Trace}
+
+Verteiltes Tracing mit OpenTelemetry baut auf
+\code{System.\allowbreak{}Diagnostics.\allowbreak{}Activity} auf. EF Core startet selbst keine
+Activities. Die Spans der Datenbankbefehle kommen entweder von der OpenTelemetry-Instrumentierung
+für EF Core, die auf die \code{Diagnostic\allowbreak{}Source}-Ereignisse von EF hört, oder vom
+Datenbanktreiber: Npgsql und SqlClient haben eigene Activity-Quellen. Beiden fehlt meist der
+Mandant, die erste Frage, wenn eine Abfrage im Betrieb langsam ist oder scheitert. Mit
+\code{Enrich\allowbreak{}Open\allowbreak{}Telemetry(\allowbreak{})} ergänzt das Plugin ihn als
+Tag \code{tenant.\allowbreak{}id} (Standard: aus):
+
+\begin{sourcecode}[Aufruf]{csharp}
+options.UseNpgsql(cs).UseAcmeTenancy(sp, t => t.EnrichOpenTelemetry());
+// SQL Server: UseSqlServer(cs, sql => sql.UseAcmeTenancy(sp).EnrichOpenTelemetry())
+\end{sourcecode}
+
+Ein Command-Interceptor taggt vor jedem Befehl \code{Activity.\allowbreak{}Current}. Er ist im
+internen Service Provider als \code{IInterceptor} registriert, also Scoped mit einer Instanz pro
+Context, braucht keine App-Dienste und liest den Mandanten aus dem Context des Befehls:
+
+% source: src/Acme.EntityFrameworkCore.Tenancy.Relational/Interceptors/TenantActivityEnrichmentInterceptor.cs
+\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Activity\allowbreak{}Enrichment\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+protected virtual void Enrich(CommandEventData eventData)
+{
+    // Billige Prüfungen zuerst: Ohne aufgezeichnete Activity gibt es nichts zu tun
+    if (Activity.Current is not { IsAllDataRequested: true } activity
+        || eventData.Context is not { } context)
+        return;
+
+    // Der Tenant-Provider dieses Contexts reist mit seinem SaveChanges-Interceptor
+    var tenant = context.GetService<IDbContextOptions>()
+        .FindExtension<CoreOptionsExtension>()?.Interceptors?
+        .OfType<TenantSaveChangesInterceptor>().FirstOrDefault()?.Tenants.CurrentTenantId;
+
+    // Ohne Mandant kein Tag: Ein leerer oder Platzhalterwert wäre irreführend
+    if (tenant is { } id)
+        activity.SetTag(TagName, id.Value.ToString("D"));
+}
+\end{sourcecode}
+
+Welche Activity das Tag erhält, hängt von der Instrumentierung ab:
+
+\begin{datatable}{H{0.85}H{1.15}}
+  \textbf{Instrumentierung} & \textbf{Getaggte Activity} \\
+  \tablehead
+  OpenTelemetry-Instrumentierung für EF Core & Der Span des Befehls selbst: EF~10 löst sein
+  \code{Command\allowbreak{}Executing}-Ereignis, das den Span startet, vor den Interceptors
+  aus \\
+  \tablerule
+  Nur der Treiber (Npgsql, SqlClient) & Der umgebende Span, meist der HTTP-Request: Der Treiber
+  startet seinen Span erst in \code{Execute\allowbreak{}Reader}, nach dem Interceptor \\
+  \tablerule
+  Kein Listener & Keine; der Interceptor kehrt nach einer Prüfung zurück, ohne Allokationen \\
+\end{datatable}
+
+\code{Activity\allowbreak{}Enrichment\allowbreak{}Tests} prüft das Tag gegen PostgreSQL mit einem
+\code{Activity\allowbreak{}Listener}: gesetzt, wenn eingeschaltet, fehlend, wenn
+ausgeschaltet, und fehlend ohne Mandant.
+
+\begin{note}[Mandanten-IDs in der Telemetrie]
+  Eine Mandanten-ID ist ein Bezeichner und kein Geheimnis, aber Traces verlassen oft die
+  Anwendung: zu einem Monitoring-Dienst, manchmal zu einem anderen Unternehmen. Ob
+  Mandanten-IDs dorthin dürfen, entscheidet der Betreiber nach Datenschutzgesichtspunkten,
+  deshalb ist die Option standardmäßig aus.
+\end{note}

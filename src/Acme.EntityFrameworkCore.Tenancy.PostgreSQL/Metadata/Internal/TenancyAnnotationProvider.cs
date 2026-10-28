@@ -49,9 +49,11 @@ public class TenancyAnnotationProvider : NpgsqlAnnotationProvider
             if (!annotation.Name.StartsWith(RlsAnnotationNames.Prefix, StringComparison.Ordinal))
                 continue;
 
-            // Do not pass on the opt-out marker: otherwise "missing" and "false" would differ
-            // for the differ and produce empty AlterTable migrations
-            if (annotation.Name == RlsAnnotationNames.Enabled && annotation.Value is false)
+            // Do not pass on the opt-out marker and an explicit force: false: otherwise
+            // "missing" and "false" would differ for the differ and produce empty AlterTable
+            // migrations. The model keeps them, so that they still beat the conventions.
+            if (annotation.Name is RlsAnnotationNames.Enabled or RlsAnnotationNames.Forced
+                && annotation.Value is false)
                 continue;
 
             yield return annotation;

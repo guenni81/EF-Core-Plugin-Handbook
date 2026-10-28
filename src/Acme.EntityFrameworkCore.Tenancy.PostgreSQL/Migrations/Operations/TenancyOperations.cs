@@ -19,7 +19,10 @@ public class DropApplicationRoleOperation : MigrationOperation
     public required string Name { get; init; }
 }
 
-/// <summary>Grants a role DML privileges on all (including future) tables of a schema.</summary>
+/// <summary>
+/// Grants a role DML privileges on all tables and usage of all sequences of a schema, including
+/// those that the migrating role creates later.
+/// </summary>
 public class GrantTablePrivilegesOperation : MigrationOperation
 {
     /// <summary>The role that receives the privileges.</summary>

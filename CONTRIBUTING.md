@@ -11,6 +11,7 @@ and for the handbook.
    dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Tests
    dotnet test tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests   # requires Docker
    dotnet test tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests     # requires Docker
+   dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Cosmos.Tests        # requires Docker (emulator)
    ```
 2. Code, comments and messages are written in English.
 3. The packages use `Microsoft.CodeAnalysis.PublicApiAnalyzers`: changes to the public API

@@ -34,6 +34,28 @@ jobs:
       - name: SQL Server tests (unit + SQL Server via Testcontainers)
         run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests -c Release --no-build
 
+      # Required: everything in the Cosmos test project that does not carry the trait
+      # Category=Emulator. Needs neither the emulator nor Docker.
+      - name: Cosmos DB model tests (no database)
+        run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Cosmos.Tests -c Release --no-build --filter "Category!=Emulator"
+
+  # Cosmos DB package against the Linux emulator (vNext preview, pinned tag in CosmosFixture).
+  # Only the tests with the trait Category=Emulator; the model tests run in the build job and
+  # are required. Does not block the build yet: the preview emulator is known to hang
+  # occasionally (chapter "Without SQL: what carries over to Cosmos DB")
+  cosmos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Cosmos DB emulator tests (via Testcontainers)
+        timeout-minutes: 15
+        run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Cosmos.Tests -c Release --filter "Category=Emulator"
+
   # The packages as a customer gets them: pack, fresh application, dotnet-ef (migrations, no
   # phantom changes, compiled model) and a NativeAOT application against PostgreSQL in Docker.
   # Uses the newest stable EF Core 10.0.x patch for the tooling; the script prints the versions.
@@ -47,6 +69,20 @@ jobs:
           global-json-file: global.json
       - name: Consumer test (packages, tooling, compiled model, NativeAOT)
         run: eng/consumer-test/run.sh --nativeaot
+
+  # Runs the listings of the handbook marked with "% run:" (docs/handbook/check_examples.py):
+  # the exercise's test command, which must execute at least one test, and the ShopApi session
+  # against PostgreSQL in Docker. Debug build, as a reader would run the commands.
+  handbook-examples:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Executable examples of the handbook
+        run: python3 docs/handbook/check_examples.py
 
   # Builds both editions of the handbook with LuaLaTeX. Fails if a code excerpt exceeds
   # the maximum line length, a reference is undefined or the LaTeX sources are broken.

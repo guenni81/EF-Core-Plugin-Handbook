@@ -1,0 +1,759 @@
+% ============================================================
+\setpartpreamble{\partintro
+  {Eigene SQL-Ausdrücke, Aggregate, Laufzeit-Metadaten und Scaffolding: die Werkzeuge für
+  sehr komplexe Plugins.}
+  {
+    \item Kapitel~\ref{ch:custom-sql-expression-nodes}: Eigene SQL-Ausdrucksknoten
+    \item Kapitel~\ref{ch:aggregate-translators}: Aggregat-Translators
+    \item Kapitel~\ref{ch:property-level-fluent-api-and}: Fluent API auf Property-Ebene und
+    Laufzeit-Annotations
+    \item Kapitel~\ref{ch:scaffolding-in-practice}: Scaffolding in der Praxis
+  }}
+\part{Tiefe Erweiterungen}\label{part:deep-extensions}
+
+% ------------------------------------------------------------
+\chapter{Eigene SQL-Ausdrucksknoten}\label{ch:custom-sql-expression-nodes}
+\versionrisk{volatile}
+
+Kapitel~\ref{ch:translating-methods-and-members} baut SQL aus vorhandenen Bausteinen:
+Funktionen, Konstanten, Casts. Das reicht für die meisten Plugins. Ein \textbf{eigener
+Ausdrucksknoten} (eine Ableitung von \code{Sql\allowbreak{}Expression}) wird nötig, wenn
+mindestens eins davon zutrifft:
+
+\begin{datatable}{H{0.80}H{1.20}}
+  \textbf{Grund} & \textbf{Beispiel} \\
+  \tablehead
+  Die Syntax ist kein Funktionsaufruf & Operatoren wie \code{@@}, \code{<->},
+  \code{IS DISTINCT FROM}, Schlüsselwörter wie \code{AT TIME ZONE} \\
+  \tablerule
+  Die Nullability-Semantik weicht ab & \code{IS DISTINCT FROM} ist nie NULL, auch wenn ein
+  Operand NULL ist \\
+  \tablerule
+  Andere Teile sollen den Knoten wiedererkennen & Optimierungen, die nur für diesen Ausdruck
+  gelten \\
+\end{datatable}
+
+Das Beispiel implementiert den null-sicheren Vergleich
+\code{EF.\allowbreak{}Functions.\allowbreak{}Is\allowbreak{}Not\allowbreak{}Distinct\allowbreak{}From(\allowbreak{}a,\allowbreak{}
+b)} und \code{Is\allowbreak{}Distinct\allowbreak{}From(\allowbreak{}a,\allowbreak{} b)}
+in einem eigenen kleinen Paket, \code{Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Functions.\allowbreak{}Postgre\allowbreak{}SQL}, aktiviert mit \code{Use\allowbreak{}Npgsql(\allowbreak{}cs,\allowbreak{} o => o.\allowbreak{}Use\allowbreak{}Acme\allowbreak{}Functions(\allowbreak{}))}.
+Npgsql bietet den Vergleich nicht als Funktion an; er erfüllt alle drei Gründe.
+
+\begin{note}[Ein Lehrbeispiel, bewusst ohne Mandantenbezug]
+  Der Vergleich hat nichts mit Mandantenfähigkeit zu tun. Er liegt in einem eigenen
+  Beispielpaket, weil ein eigener Knoten ein Plugin zwingt, zwei Einzeldienste des Providers zu
+  ersetzen: den SQL-Generator und den Nullability-Prozessor. Bis Ausgabe~1.1 tat das
+  Mandanten-Plugin das allein für dieses Beispiel und ließ sich dadurch schwerer mit anderen
+  Plugins kombinieren. Ein Mandanten-Plugin braucht keinen eigenen Knoten; Funktionskomposition
+  (Kapitel~\ref{ch:translating-methods-and-members}) reicht. Die Tests betreiben beide Plugins
+  nebeneinander, und das pgvector-Beispiel am Ende dieses Kapitels ergänzt ein drittes, das vom
+  Generator des Funktionen-Plugins ableitet.
+\end{note}
+
+\section{Anatomie eines Knotens}
+
+\begin{datatable}{H{0.78}H{1.26}H{0.96}}
+  \textbf{Mitglied} & \textbf{Zweck} & \textbf{Folge, wenn es fehlt} \\
+  \tablehead
+  \code{Visit\allowbreak{}Children} / \code{Update} & Visitors können Kinder ersetzen;
+  unveränderte Kinder ergeben dieselbe Instanz & EF wirft beim ersten Visitor \\
+  \tablerule
+  \code{Equals} / \code{Get\allowbreak{}Hash\allowbreak{}Code} & Strukturvergleich für den
+  Query-Cache und Optimierungen & Cache-Fehltreffer, falsche Deduplizierung \\
+  \tablerule
+  \code{Print} & Lesbare Darstellung in DebugView und Fehlermeldungen & Unklare Fehler \\
+  \tablerule
+  \code{Quote} & C\#-Code für vorkompilierte Abfragen und NativeAOT & Kein AOT-Support \\
+  \tablerule
+  SQL-Generator & Schreibt den Knoten als SQL & \textbf{Stillschweigend} fehlendes SQL \\
+  \tablerule
+  Nullability-Prozessor & Kennt die NULL-Semantik & Exception beim Übersetzen \\
+\end{datatable}
+
+Die beiden letzten Zeilen betreffen auch die Kombination mit anderen Plugins: Ersetzt ein
+zweites Plugin den Generator oder den Prozessor, fehlt das SQL des Knotens still oder die
+Abfrage wirft. \code{Composition\allowbreak{}Matrix\allowbreak{}Tests} zeigt beides
+(Kapitel~\ref{ch:registering-services}).
+
+% source: src/Acme.EntityFrameworkCore.Functions.PostgreSQL/Query/Expressions/DistinctFromExpression.cs
+\begin{sourcecode}[Query/\allowbreak{}Expressions/\allowbreak{}Distinct\allowbreak{}From\allowbreak{}Expression.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+public class DistinctFromExpression : SqlExpression
+{
+    private static ConstructorInfo? _quotingConstructor;
+
+    public DistinctFromExpression(SqlExpression left, SqlExpression right, bool negated,
+        RelationalTypeMapping? typeMapping)
+        : base(typeof(bool), typeMapping)
+    {
+        // ... ThrowIfNull ...
+        Left = left;
+        Right = right;
+        IsNegated = negated;
+    }
+
+    public virtual SqlExpression Left { get; }
+    public virtual SqlExpression Right { get; }
+    public virtual bool IsNegated { get; }
+
+    protected override Expression VisitChildren(ExpressionVisitor visitor)
+        => Update((SqlExpression)visitor.Visit(Left), (SqlExpression)visitor.Visit(Right));
+
+    public virtual DistinctFromExpression Update(SqlExpression left, SqlExpression right)
+        => left == Left && right == Right
+            ? this
+            : new DistinctFromExpression(left, right, IsNegated, TypeMapping);
+
+    public override Expression Quote()
+        => New(
+            _quotingConstructor ??= typeof(DistinctFromExpression).GetConstructor(
+                [typeof(SqlExpression), typeof(SqlExpression), typeof(bool),
+                 typeof(RelationalTypeMapping)])!,
+            Left.Quote(), Right.Quote(), Constant(IsNegated),
+            RelationalExpressionQuotingUtilities.QuoteTypeMapping(TypeMapping));
+
+    protected override void Print(ExpressionPrinter expressionPrinter)
+    {
+        expressionPrinter.Visit(Left);
+        expressionPrinter.Append(IsNegated ? " IS DISTINCT FROM " : " IS NOT DISTINCT FROM ");
+        expressionPrinter.Visit(Right);
+    }
+
+    public override bool Equals(object? obj)
+        => obj is DistinctFromExpression other
+           && (ReferenceEquals(this, other)
+               || base.Equals(other) && Left.Equals(other.Left)
+                  && Right.Equals(other.Right) && IsNegated == other.IsNegated);
+
+    public override int GetHashCode()
+        => HashCode.Combine(base.GetHashCode(), Left, Right, IsNegated);
+}
+\end{sourcecode}
+
+Der Translator erzeugt den Knoten und gleicht dabei die Type Mappings beider Seiten an: Hat
+eine Seite ein Mapping (etwa eine Spalte), bekommt die andere dasselbe. So wird aus einer
+Konstante das passende Literal:
+
+% source: src/Acme.EntityFrameworkCore.Functions.PostgreSQL/Query/DistinctFromTranslator.cs
+\begin{sourcecode}[Query/\allowbreak{}Distinct\allowbreak{}From\allowbreak{}Translator.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+var definition = method.GetGenericMethodDefinition();
+if (definition != IsNotDistinctFromMethod && definition != IsDistinctFromMethod)
+    return null;
+
+var left = arguments[1];                        // arguments[0] ist DbFunctions
+var right = arguments[2];
+var typeMapping = ExpressionExtensions.InferTypeMapping(left, right)
+                  ?? _typeMappingSource.FindMapping(left.Type);
+
+return new DistinctFromExpression(
+    _sql.ApplyTypeMapping(left, typeMapping)!,
+    _sql.ApplyTypeMapping(right, typeMapping)!,
+    negated: definition == IsDistinctFromMethod,
+    _typeMappingSource.FindMapping(typeof(bool)));
+\end{sourcecode}
+
+\section{Den SQL-Generator erweitern}
+
+Der \code{Query\allowbreak{}Sql\allowbreak{}Generator} schreibt SQL per Visitor. Unbekannte
+Knoten gibt er an
+\code{Expression\allowbreak{}Visitor.\allowbreak{}Visit\allowbreak{}Extension} weiter, das
+nur die Kinder besucht. Ohne eigenen Override entsteht also kein Fehler, sondern \textbf{SQL
+ohne den Operator}. Das Funktionen-Plugin erbt vom Npgsql-Generator:
+
+% source: src/Acme.EntityFrameworkCore.Functions.PostgreSQL/Query/Internal/FunctionsNpgsqlQuerySqlGenerator.cs
+\begin{sourcecode}[Query/\allowbreak{}Internal/\allowbreak{}Functions\allowbreak{}Npgsql\allowbreak{}Query\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+public class FunctionsNpgsqlQuerySqlGenerator : NpgsqlQuerySqlGenerator
+{
+    public FunctionsNpgsqlQuerySqlGenerator(QuerySqlGeneratorDependencies dependencies,
+        IRelationalTypeMappingSource typeMappingSource,
+        bool reverseNullOrderingEnabled, Version postgresVersion)
+        : base(dependencies, typeMappingSource, reverseNullOrderingEnabled, postgresVersion)
+    {
+    }
+
+    protected override Expression VisitExtension(Expression extensionExpression)
+        => extensionExpression switch
+        {
+            DistinctFromExpression e => VisitDistinctFrom(e),
+            _ => base.VisitExtension(extensionExpression),
+        };
+
+    protected virtual Expression VisitDistinctFrom(DistinctFromExpression expression)
+    {
+        VisitOperand(expression.Left);
+        Sql.Append(expression.IsNegated ? " IS DISTINCT FROM " : " IS NOT DISTINCT FROM ");
+        VisitOperand(expression.Right);
+        return expression;
+    }
+
+    // Der Knoten als Operand anderer Operatoren: immer in Klammern
+    protected override bool RequiresParentheses(SqlExpression outerExpression,
+        SqlExpression innerExpression)
+        => innerExpression is DistinctFromExpression
+           || base.RequiresParentheses(outerExpression, innerExpression);
+}
+\end{sourcecode}
+
+Klammern braucht es in zwei Richtungen. \code{Visit\allowbreak{}Operand} klammert
+zusammengesetzte Operanden \emph{im} Knoten. Für den Knoten \emph{als} Operand fragt EF
+\code{Requires\allowbreak{}Parentheses}, und das kennt nur seine eigenen Knoten. Ohne den
+Override schrieb das Plugin
+\code{a IS DISTINCT FROM 'x' <> a IS DISTINCT FROM 'y'}; PostgreSQL bindet \code{<>} stärker
+als \code{IS} und meldet einen Syntaxfehler. \code{Deep\allowbreak{}Query\allowbreak{}Tests}
+prüft das SQL, \code{Advanced\allowbreak{}Tests} die Abfrage gegen PostgreSQL.
+
+Der Generator wird über
+\code{IQuery\allowbreak{}Sql\allowbreak{}Generator\allowbreak{}Factory} erzeugt, einen
+Singleton-Einzeldienst. Das Plugin ersetzt ihn durch eine eigene Factory mit denselben
+Abhängigkeiten wie die von Npgsql
+(\code{Query\allowbreak{}Sql\allowbreak{}Generator\allowbreak{}Dependencies},
+Type-Mapping-Source, \code{INpgsql\allowbreak{}Singleton\allowbreak{}Options}).
+
+\section{Den Nullability-Prozessor erweitern}
+
+Nach der Übersetzung optimiert EF NULL-Vergleiche. Dafür muss es von jedem Knoten wissen, ob
+er NULL werden kann. Unbekannte Knoten landen in
+\code{Visit\allowbreak{}Custom\allowbreak{}Sql\allowbreak{}Expression}, dessen
+Basisimplementierung eine Exception wirft. Der Prozessor hängt an einer Kette aus drei
+Klassen, die alle ersetzt werden müssen:
+
+% source: src/Acme.EntityFrameworkCore.Functions.PostgreSQL/Query/Internal/FunctionsNpgsqlSqlNullabilityProcessor.cs
+\begin{sourcecode}[Query/\allowbreak{}Internal/\allowbreak{}Functions\allowbreak{}Npgsql\allowbreak{}Sql\allowbreak{}Nullability\allowbreak{}Processor.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+public class FunctionsNpgsqlSqlNullabilityProcessor : NpgsqlSqlNullabilityProcessor
+{
+    // Konstruktor: (…ProcessorDependencies, …ProcessorParameters) : base(...)
+
+    protected override SqlExpression VisitCustomSqlExpression(
+        SqlExpression sqlExpression, bool allowOptimizedExpansion, out bool nullable)
+    {
+        if (sqlExpression is DistinctFromExpression distinctFrom)
+        {
+            // Kinder besuchen (sie können optimiert werden), ihre Nullability ist egal
+            var left = Visit(distinctFrom.Left, out _)!;
+            var right = Visit(distinctFrom.Right, out _)!;
+
+            nullable = false;                   // IS [NOT] DISTINCT FROM ist nie NULL
+            return distinctFrom.Update(left, right);
+        }
+
+        return base.VisitCustomSqlExpression(
+            sqlExpression, allowOptimizedExpansion, out nullable);
+    }
+}
+
+public class FunctionsNpgsqlParameterBasedSqlProcessor : NpgsqlParameterBasedSqlProcessor
+{
+    protected override Expression ProcessSqlNullability(
+        Expression selectExpression, ParametersCacheDecorator parametersDecorator)
+        => new FunctionsNpgsqlSqlNullabilityProcessor(Dependencies, Parameters)
+            .Process(selectExpression, parametersDecorator);
+}
+
+// + FunctionsNpgsqlParameterBasedSqlProcessorFactory
+//   : IRelationalParameterBasedSqlProcessorFactory
+\end{sourcecode}
+
+% source: src/Acme.EntityFrameworkCore.Functions.PostgreSQL/Infrastructure/FunctionsOptionsExtension.cs
+\begin{sourcecode}[Infrastructure/\allowbreak{}Functions\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Apply\allowbreak{}Services (\allowbreak{}Ergänzung)]{csharp}
+// 4) Tiefe Erweiterung: eigener SQL-Ausdrucksknoten
+services.Replace(ServiceDescriptor
+    .Singleton<IQuerySqlGeneratorFactory, FunctionsNpgsqlQuerySqlGeneratorFactory>());
+services.Replace(ServiceDescriptor
+    .Scoped<IRelationalParameterBasedSqlProcessorFactory,
+        FunctionsNpgsqlParameterBasedSqlProcessorFactory>());
+\end{sourcecode}
+
+\begin{important}[Der Preis eigener Knoten]
+  Eigene Knoten verlangen das Ersetzen zweier Einzeldienste und das Erben von internen
+  Npgsql-Klassen. Zwei Plugins, die beide eigene Knoten einführen, lassen sich nur
+  kombinieren, wenn eines vom anderen erbt. Deshalb gilt: Funktionskomposition zuerst;
+  eigene Knoten nur, wenn einer der drei Gründe vorliegt. Und die Ersetzung gehört an
+  prominente Stelle in die Dokumentation.
+\end{important}
+
+\begin{note}[Experimentelle API]
+  \code{Quote} und
+  \code{Relational\allowbreak{}Expression\allowbreak{}Quoting\allowbreak{}Utilities} gehören
+  zur experimentellen API für vorkompilierte Abfragen. Ihre Verwendung meldet der Compiler
+  als EF9100; das Beispiel unterdrückt die Meldung projektweit und dokumentiert das in
+  \code{Directory.\allowbreak{}Build.\allowbreak{}props}.
+\end{note}
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/DeepQueryTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Deep\allowbreak{}Query\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+[Fact]
+public void IsDistinctFrom_in_projection_passes_nullability_processor()
+{
+    // Ohne eigenen Nullability-Prozessor würde EF hier eine Exception werfen
+    using var ctx = Contexts.Create();
+
+    var sql = ctx.Customers
+        .Select(c => EF.Functions.IsDistinctFrom(c.Name, (string?)null))
+        .ToQueryString();
+
+    Assert.Contains("IS DISTINCT FROM", sql);
+}
+\end{sourcecode}
+
+\section{Praxisbeispiel: Operatoren für Vektorsuche und pgvector}
+
+Embeddings und Ähnlichkeitssuche bringen Operatoren in SQL, die keine Funktionen sind: pgvector
+schreibt die L2-Distanz als \code{<->}, die Kosinus-Distanz als
+\code{<=>} und das negative innere Produkt als
+\code{<\#>}; die Volltextsuche verwendet \code{@@}.
+\code{Sql\allowbreak{}Binary\allowbreak{}Expression} hilft hier nicht, denn ihr Operator ist
+ein \code{Expression\allowbreak{}Type}, und für \code{<=>} gibt es
+keinen. \code{Custom\allowbreak{}Operator\allowbreak{}Tests} zeigt deshalb
+\code{EF.\allowbreak{}Functions.\allowbreak{}Cosine\allowbreak{}Distance(\allowbreak{}a,\allowbreak{}
+b)} als eigenen Knoten \code{Vector\allowbreak{}Distance\allowbreak{}Expression} mit dem
+Operator als Zeichenkette, mit Translator, Generator und Nullability-Prozessor. Es ist
+Testcode: Eine Anwendung nimmt \code{Pgvector.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core},
+das den Typ \code{vector}, sein Type Mapping und diese Übersetzungen mitbringt. Npgsql selbst
+hat für solche Fälle \code{Pg\allowbreak{}Unknown\allowbreak{}Binary\allowbreak{}Expression},
+einen Knoten mit beliebigem Operator und propagierender Nullability, der Generator und
+Prozessor nicht ersetzen muss. Er liegt aber in einem \code{Internal}-Namespace (EF1001).
+
+Drei Dinge entscheiden darüber, ob ein solcher Operator richtiges SQL ergibt.
+
+\textbf{Type Mappings.} Der Translator gibt beiden Operanden dasselbe Mapping, abgeleitet von
+der Seite, die eins hat, meist der Spalte. So geht der Parameter mit dem Speichertyp der Spalte
+an die Datenbank:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/CustomOperatorTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Custom\allowbreak{}Operator\allowbreak{}Tests.\allowbreak{}cs ›\allowbreak{} Translator]{csharp}
+if (method != CosineDistanceMethod)
+    return null;
+
+var left = arguments[1];                        // arguments[0] ist DbFunctions
+var right = arguments[2];
+var operandMapping = ExpressionExtensions.InferTypeMapping(left, right)
+                     ?? _typeMappingSource.FindMapping(left.Type);
+
+return new VectorDistanceExpression(
+    _sql.ApplyTypeMapping(left, operandMapping)!,
+    _sql.ApplyTypeMapping(right, operandMapping)!,
+    "<=>",
+    _typeMappingSource.FindMapping(typeof(double)));
+\end{sourcecode}
+
+Im Test ist die Spalte ein \code{float[]}, also \code{real[]}. pgvector definiert seine
+Operatoren aber nur für \code{vector}; gegen eine echte Datenbank braucht es deshalb ein Type
+Mapping mit diesem Speichertyp, wie es das Paket registriert. Das Ergebnis bekommt das Mapping
+von \code{double}, also \code{double precision}.
+
+\textbf{Rangfolge und Klammern.} EF kennt die Rangfolge eines fremden Operators nicht.
+PostgreSQL ordnet selbst definierte Operatoren zwischen die arithmetischen und die
+Vergleichsoperatoren ein: \code{a <=> b * 2} heißt
+\code{a <=> (\allowbreak{}b * 2)}. Ohne Gegenmaßnahme schrieb der
+Generator für \code{Cosine\allowbreak{}Distance(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})
+* 2 + 1} genau das. Die Lösung sind dieselben zwei Richtungen wie oben: Operanden im Knoten
+klammern und den Knoten als Operand über
+\code{Requires\allowbreak{}Parentheses} immer klammern. \code{Print} klammert genauso, damit
+die DebugView zeigt, was die Datenbank liest.
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/CustomOperatorTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Custom\allowbreak{}Operator\allowbreak{}Tests.\allowbreak{}cs ›\allowbreak{} Generator]{csharp}
+public class VectorQuerySqlGenerator : FunctionsNpgsqlQuerySqlGenerator
+{
+    // ... Konstruktor, VisitExtension, VisitOperand
+
+    protected virtual Expression VisitVectorDistance(VectorDistanceExpression expression)
+    {
+        VisitOperand(expression.Left);
+        Sql.Append($" {expression.Operator} ");
+        VisitOperand(expression.Right);
+        return expression;
+    }
+
+    // Ohne Override: "a <=> b * 2.0", gelesen als a <=> (b * 2.0)
+    protected override bool RequiresParentheses(SqlExpression outerExpression,
+        SqlExpression innerExpression)
+        => innerExpression is VectorDistanceExpression
+           || base.RequiresParentheses(outerExpression, innerExpression);
+}
+\end{sourcecode}
+
+Der Generator erbt vom Generator des Plugins, nicht von dem von Npgsql: Beide ersetzen
+denselben Einzeldienst, und nur so bleiben beide Knoten übersetzbar. Das ist der Preis aus
+dem Kasten oben, im Kleinen.
+
+\textbf{Nullability.} Ein gewöhnlicher Operator ist NULL, sobald ein Operand NULL ist. Der
+Prozessor meldet das weiter:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/CustomOperatorTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Custom\allowbreak{}Operator\allowbreak{}Tests.\allowbreak{}cs ›\allowbreak{} Nullability]{csharp}
+if (sqlExpression is VectorDistanceExpression distance)
+{
+    // NULL hinein, NULL heraus
+    var left = Visit(distance.Left, out var leftNullable)!;
+    var right = Visit(distance.Right, out var rightNullable)!;
+
+    nullable = leftNullable || rightNullable;
+    return distance.Update(left, right);
+}
+\end{sourcecode}
+
+Die Meldung hat sichtbare Folgen. Für
+\code{!(\allowbreak{}Cosine\allowbreak{}Distance(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})
+< 0.5)} schreibt EF bei einer Pflichtspalte \code{>= 0.5}, bei einer optionalen Spalte ein
+\code{CASE}, weil \code{NOT (\allowbreak{}NULL < 0.5)} in SQL NULL ist, in C\# aber
+\code{true}. Ohne den Prozessor scheitert die Übersetzung. Die Tests prüfen das SQL aller
+Fälle:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/CustomOperatorTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Custom\allowbreak{}Operator\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+var sql = ctx.Documents
+    .Select(d => EF.Functions.CosineDistance(d.Embedding, query) * 2 + 1)
+    .ToQueryString();
+
+Assert.Contains("SELECT (d.\"Embedding\" <=> @query) * 2.0 + 1.0", sql);
+\end{sourcecode}
+
+% ------------------------------------------------------------
+\chapter{Aggregat-Translators}\label{ch:aggregate-translators}
+\versionrisk{medium}
+
+Aggregate wie \code{Sum} oder \code{string\_\allowbreak{}agg} fassen mehrere Zeilen
+zusammen, typischerweise nach \code{Group\allowbreak{}By}. Ein
+\code{IAggregate\allowbreak{}Method\allowbreak{}Call\allowbreak{}Translator} bekommt statt
+eines einzelnen Arguments eine \code{Enumerable\allowbreak{}Expression}, die beschreibt,
+\emph{was} aggregiert wird:
+
+\begin{datatable}{H{0.70}H{1.09}H{1.21}}
+  \textbf{Eigenschaft} & \textbf{Bedeutung} & \textbf{Herkunft in LINQ} \\
+  \tablehead
+  \code{Selector} & Der aggregierte Ausdruck & \code{g.\allowbreak{}Select(\allowbreak{}o =>
+  o.\allowbreak{}Total > 0)} \\
+  \tablerule
+  \code{Is\allowbreak{}Distinct} & Nur verschiedene Werte &
+  \code{g.\allowbreak{}Select(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}).\allowbreak{}Distinct(\allowbreak{})}
+  \\
+  \tablerule
+  \code{Predicate} & Filter vor dem Aggregat & \code{g.\allowbreak{}Where(\allowbreak{}o =>
+  o.\allowbreak{}Id > 10)} \\
+  \tablerule
+  \code{Orderings} & Reihenfolge (für reihenfolgeabhängige Aggregate) &
+  \code{g.\allowbreak{}Order\allowbreak{}By(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}
+  \\
+\end{datatable}
+
+Das Funktionen-Beispielpaket aus Kapitel~\ref{ch:custom-sql-expression-nodes} ergänzt
+\code{EF.\allowbreak{}Functions.\allowbreak{}Every(\allowbreak{}values)} für PostgreSQLs
+\code{bool\_\allowbreak{}and}; wie der Vergleich ist es ein Lehrbeispiel ohne
+Mandantenbezug:
+
+% source: src/Acme.EntityFrameworkCore.Functions.PostgreSQL/Query/EveryAggregateTranslator.cs
+\begin{sourcecode}[Query/\allowbreak{}Every\allowbreak{}Aggregate\allowbreak{}Translator.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+public virtual SqlExpression? Translate(MethodInfo method, EnumerableExpression source,
+    IReadOnlyList<SqlExpression> arguments,
+    IDiagnosticsLogger<DbLoggerCategory.Query> logger)
+{
+    if (method != EveryMethod || source.Selector is not SqlExpression selector)
+        return null;
+
+    // Npgsqls Factory setzt DISTINCT, FILTER (WHERE ...) und ORDER BY im Aggregat um
+    if (_sql is not NpgsqlSqlExpressionFactory npgsql)
+        return null;
+
+    var boolean = _typeMappingSource.FindMapping(typeof(bool))!;
+
+    // bool_and liefert für eine leere Menge NULL, Enumerable.All liefert true
+    return _sql.Coalesce(
+        npgsql.AggregateFunction("bool_and", [selector], source,
+            nullable: true, argumentsPropagateNullability: [false],
+            typeof(bool), boolean),
+        _sql.Constant(true, boolean),
+        boolean);
+}
+\end{sourcecode}
+
+\begin{sourcecode}[Erzeugtes SQL für g.\allowbreak{}Where(\allowbreak{}o => o.\allowbreak{}Id > 10).\allowbreak{}Select(\allowbreak{}o => o.\allowbreak{}Total > 0)]{sql}
+SELECT COALESCE(bool_and(o."Total" > 0.0) FILTER (WHERE o."Id" > 10), TRUE)
+FROM "Orders" AS o
+GROUP BY o."TenantId"
+\end{sourcecode}
+
+\begin{important}[Semantik vor Syntax]
+  Ein Aggregat-Translator muss die Semantik der .NET-Seite treffen, nicht nur die Syntax der
+  Datenbank. Typische Fallen: leere Mengen (NULL statt 0, true oder Leerstring), NULL-Werte
+  in der Eingabe und Prädikate. Npgsql selbst gleicht etwa \code{string.\allowbreak{}Join}
+  mit \code{COALESCE} an \code{string\_\allowbreak{}agg} an; das Beispiel folgt diesem
+  Muster.
+\end{important}
+
+Datenbanken ohne \code{FILTER}-Klausel (etwa SQL Server) emulieren Prädikate mit \code{CASE
+WHEN prädikat THEN wert END}. Ein provider-neutraler Aggregat-Translator muss beides kennen;
+dieser nutzt die Npgsql-Factory und liegt deshalb im PostgreSQL-spezifischen Beispielpaket.
+
+% ------------------------------------------------------------
+\chapter{Fluent API auf Property-Ebene und Laufzeit-Annotations}\label{ch:property-level-fluent-api-and}
+\versionrisk{volatile}
+
+\section{Property-Builder}
+
+Bisher setzt das Plugin voraus, dass die Mandanten-Property \code{Tenant\allowbreak{}Id}
+heißt und \code{ITenant\allowbreak{}Owned} implementiert ist. Mit einer Fluent-API-Methode
+auf \code{Property\allowbreak{}Builder} geht es ohne beides, etwa bei bestehenden Modellen
+mit einer Property \code{Mandant\allowbreak{}Id} oder einer expliziten
+Interface-Implementierung:
+
+\begin{sourcecode}[Anwendung]{csharp}
+modelBuilder.Entity<Contract>().Property(c => c.Mandant).IsTenantProperty();
+\end{sourcecode}
+
+% source: src/Acme.EntityFrameworkCore.Tenancy/Metadata/TenancyPropertyBuilderExtensions.cs
+\begin{sourcecode}[Metadata/\allowbreak{}Tenancy\allowbreak{}Property\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}Kernpaket)]{csharp}
+public static PropertyBuilder IsTenantProperty(
+    this PropertyBuilder builder, bool isTenant = true)
+{
+    ArgumentNullException.ThrowIfNull(builder);
+
+    if (isTenant)
+        builder.Metadata.SetAnnotation(TenancyAnnotationNames.IsTenantProperty, true);
+    else
+        builder.Metadata.RemoveAnnotation(TenancyAnnotationNames.IsTenantProperty);
+
+    return builder;
+}
+
+public static PropertyBuilder<TProperty> IsTenantProperty<TProperty>(
+    this PropertyBuilder<TProperty> builder, bool isTenant = true)
+    => (PropertyBuilder<TProperty>)IsTenantProperty((PropertyBuilder)builder, isTenant);
+
+public static IConventionPropertyBuilder? IsTenantProperty(
+    this IConventionPropertyBuilder builder,
+    bool isTenant = true,
+    bool fromDataAnnotation = false)
+    => builder.HasAnnotation(TenancyAnnotationNames.IsTenantProperty,
+           isTenant ? true : null, fromDataAnnotation) is null
+        ? null
+        : builder;
+\end{sourcecode}
+
+Die Methode liegt im Kernpaket, weil sie nur Metadaten setzt. Die Conventions aller
+Provider-Pakete suchen die Mandanten-Property über dieselbe Kernfunktion:
+
+\begin{sourcecode}[Metadata/\allowbreak{}Tenancy\allowbreak{}Entity\allowbreak{}Type\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}Kernpaket,\allowbreak{} gekürzt, vereinfacht)]{csharp}
+public static IReadOnlyProperty? FindTenantPropertyCandidate(
+    this IReadOnlyEntityType entityType)
+{
+    var marked = entityType.GetProperties()
+        .Where(p => p[TenancyAnnotationNames.IsTenantProperty] is true)
+        .ToList();
+
+    if (marked.Count > 1)
+        throw new InvalidOperationException("... mehrere Mandanten-Properties ...");
+    if (marked.Count == 1)
+        return marked[0];
+
+    return typeof(ITenantOwned).IsAssignableFrom(entityType.ClrType)
+        ? entityType.FindProperty(nameof(ITenantOwned.TenantId))
+        : null;
+}
+\end{sourcecode}
+
+\begin{datatable}{H{0.92}H{1.10}H{0.98}}
+  \textbf{Builder} & \textbf{Typische Plugin-Methoden} & \textbf{Hinweis} \\
+  \tablehead
+  \code{Property\allowbreak{}Builder} / \code{<\allowbreak{}T>} & Spaltenoptionen, Rollen
+  von Properties & Hier: \code{Is\allowbreak{}Tenant\allowbreak{}Property} \\
+  \tablerule
+  \code{Index\allowbreak{}Builder} / \code{<\allowbreak{}T>} & Index-Methoden,
+  Operator-Klassen, Filter & Annotation an \code{Metadata} (IMutableIndex) \\
+  \tablerule
+  \code{Key\allowbreak{}Builder} & Schlüsseloptionen (Clustering) & Wie oben \\
+  \tablerule
+  \code{Complex\allowbreak{}Type\allowbreak{}Property\allowbreak{}Builder} & Properties in
+  Complex Types & Nur anbieten, wenn die Option dort Sinn ergibt
+  (Kapitel~\ref{ch:complex-types-and-json}) \\
+  \tablerule
+  \code{Model\allowbreak{}Builder} & Modellweite Optionen & Annotation am Modell \\
+\end{datatable}
+
+\section{Laufzeit-Annotations}
+
+Der SaveChanges-Interceptor muss zur Laufzeit wissen, welche Entitäten isoliert sind und wie
+ihre Mandanten-Property heißt. Die Convention schreibt das in eine Annotation am Entity-Typ;
+der Interceptor liest sie aus dem \emph{Laufzeitmodell}:
+
+\begin{sourcecode}[Convention und Kernpaket (\allowbreak{}Auszug)]{csharp}
+// Convention (Design-Time-Modell)
+entityType.Builder.HasAnnotation(TenancyAnnotationNames.TenantProperty, property.Name);
+
+// Interceptor (Laufzeitmodell)
+public static string? GetTenantPropertyName(this IReadOnlyEntityType entityType)
+    => entityType.GetRootType()[TenancyAnnotationNames.TenantProperty] as string;
+\end{sourcecode}
+
+Zwei Fragen entscheiden, ob das funktioniert. Landet die Annotation im Laufzeitmodell? Ja:
+\code{Runtime\allowbreak{}Model\allowbreak{}Convention} entfernt nur EFs eigene
+Design-Time-Annotations und übernimmt alle anderen. Landet sie im Compiled Model? Ja:
+Einfache Werte schreibt EF automatisch
+(Kapitel~\ref{ch:compiled-models-trimming-and-nativeaot}). Der eigene
+\code{ICSharp\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator}
+des PostgreSQL-Pakets hat deshalb die umgekehrte Aufgabe: Er entfernt die RLS-Annotations, die nur Migrations
+brauchen:
+
+\begin{sourcecode}[Design/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}CSharp\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}gekürzt, vereinfacht)]{csharp}
+public class TenancyCSharpRuntimeAnnotationCodeGenerator
+    : NpgsqlCSharpRuntimeAnnotationCodeGenerator
+{
+    // Konstruktor: (CSharpRuntimeAnnotationCodeGeneratorDependencies,
+    //               RelationalCSharpRuntimeAnnotationCodeGeneratorDependencies) : base(...)
+
+    public override void Generate(IEntityType entityType,
+        CSharpRuntimeAnnotationCodeGeneratorParameters parameters)
+    {
+        if (!parameters.IsRuntime)
+        {
+            foreach (var key in parameters.Annotations.Keys
+                         .Where(k => k.StartsWith(RlsAnnotationNames.Prefix,
+                                                  StringComparison.Ordinal))
+                         .ToList())
+            {
+                parameters.Annotations.Remove(key);
+            }
+        }
+
+        base.Generate(entityType, parameters);
+    }
+}
+\end{sourcecode}
+
+Wird das Compiled Model für NativeAOT erzeugt
+(\code{For\allowbreak{}Native\allowbreak{}Aot}), schreibt EF zusätzlich das relationale
+Modell. Der Annotation-Provider hat die RLS-Annotations auf die Tabellen kopiert, sie
+tauchen dort also ein zweites Mal auf. Der Generator wendet deshalb denselben Filter in
+einer Überschreibung von \code{Generate(\allowbreak{}ITable,\allowbreak{}
+.\allowbreak{}.\allowbreak{}.\allowbreak{})} an.
+
+\begin{datatable}{H{1.36}H{0.88}H{0.88}H{0.88}}
+  \textbf{Annotation} & \textbf{Design-Time} & \textbf{Laufzeit} & \textbf{Compiled Model} \\
+  \tablehead
+  \code{Acme:Rls:*} (Policies) & ja (Migrations) & ja, ungenutzt & gefiltert \\
+  \tablerule
+  \code{Acme:Tenancy:Tenant\allowbreak{}Property} & ja & ja (Interceptor) & ja \\
+  \tablerule
+  \code{Acme:Tenancy:Is\allowbreak{}Tenant\allowbreak{}Property} & ja (Convention) & ja,
+  ungenutzt & ja (klein) \\
+\end{datatable}
+
+\begin{note}[Laufzeit-Annotation und Runtime-Annotation]
+  „Laufzeit-Annotation“ heißt in diesem Buch: eine gewöhnliche Annotation, die zur Laufzeit
+  gelesen wird. EF kennt zusätzlich eine eigene Runtime-Annotation-API
+  (\code{Add\allowbreak{}Runtime\allowbreak{}Annotation},
+  \code{Get\allowbreak{}Or\allowbreak{}Add\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Value}
+  auf \code{IAnnotatable}). Sie legt Werte erst am fertigen Modell ab, etwa abgeleitete
+  Daten, die nicht bei jedem Zugriff neu berechnet werden sollen. Solche Werte erscheinen nie
+  in Snapshot oder Migrations. Für Konfiguration, die ein Plugin beim Modellbau festlegt, ist
+  die gewöhnliche Annotation der richtige Weg.
+\end{note}
+
+\begin{tip}
+  Für jede Annotation sollte klar sein, wer sie wann liest. Nur zur Design-Zeit gelesene
+  Annotations gehören nicht ins Compiled Model; zur Laufzeit gelesene müssen hinein und
+  brauchen einen Test gegen das generierte Modell. Der Compiled-Model-Test des Beispiels
+  prüft beides.
+\end{tip}
+
+% ------------------------------------------------------------
+\chapter{Scaffolding in der Praxis}\label{ch:scaffolding-in-practice}
+\versionrisk{volatile}
+
+Kapitel~\ref{ch:scaffolding-reverse-engineering} nennt die beiden Design-Time-Dienste, über
+die ein Plugin seine Schema-Objekte beim Scaffolding erkennt. Dieses Kapitel zeigt die
+Umsetzung. Der Weg führt über drei Stationen, von denen das Plugin zwei bereits kennt:
+
+\begin{flowdiagram}
+  \flowstep{IDatabaseModelFactory}{Liest das Schema in ein DatabaseModel; das Plugin hängt
+  RLS-Daten als Annotations an die Tabellen}
+  \flowstep{Scaffolding-Model-Factory}{EF überträgt Tabellen-Annotations auf die
+  Entity-Typen}
+  \flowstep{IAnnotationCodeGenerator}{Schreibt sie als HasRowLevelSecurity/HasPolicy
+  (Kapitel~\ref{ch:design-time-services})}
+\end{flowdiagram}
+
+% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Scaffolding/TenancyDatabaseModelFactory.cs
+\begin{sourcecode}[Scaffolding/\allowbreak{}Tenancy\allowbreak{}Database\allowbreak{}Model\allowbreak{}Factory.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+public class TenancyDatabaseModelFactory : NpgsqlDatabaseModelFactory
+{
+    public TenancyDatabaseModelFactory(
+        IDiagnosticsLogger<DbLoggerCategory.Scaffolding> logger)
+        : base(logger)
+    {
+    }
+
+    public override DatabaseModel Create(
+        DbConnection dbConnection, DatabaseModelFactoryOptions options)
+    {
+        var model = base.Create(dbConnection, options);
+        // ... Verbindung öffnen, falls nötig ...
+        ReadRowLevelSecurity(dbConnection, model);    // pg_class.relrowsecurity / ...force...
+        ReadPolicies(dbConnection, model);            // pg_policies
+        return model;
+    }
+
+    protected virtual void ReadPolicies(DbConnection connection, DatabaseModel model)
+    {
+        // SELECT schemaname, tablename, policyname, permissive, roles::text[], cmd,
+        //        qual, with_check FROM pg_catalog.pg_policies
+        // ...
+        var policy = new RlsPolicy(
+            Name: reader.GetString(2),
+            Command: Enum.Parse<PolicyCommand>(reader.GetString(5), ignoreCase: true),
+            Permissive: reader.GetString(3) == "PERMISSIVE",
+            Roles: roles is ["public"] ? null : roles,    // "public" = Default ohne TO
+            Using: reader.IsDBNull(6) ? null : reader.GetString(6),
+            WithCheck: reader.IsDBNull(7) ? null : reader.GetString(7));
+
+        table[RlsAnnotationNames.PolicyPrefix + policy.Name] = policy.Serialize();
+    }
+}
+\end{sourcecode}
+
+Registriert wird die Factory wie der Code-Generator in den Design-Time-Services mit
+\code{Remove\allowbreak{}All}, aber mit \code{Add\allowbreak{}Scoped}: EF und Npgsql
+registrieren die Database-Model-Factory als Scoped, und sie hängt vom ebenfalls als Scoped registrierten
+Scaffolding-Logger ab. Das Datenformat entspricht dem der Fluent API (ein fehlendes \code{Forced} gilt wie \code{false};
+der Annotation-Provider gleicht beides an); deshalb
+funktionieren Snapshot, Migrations und Code-Generator ohne weitere Anpassung.
+
+\begin{note}[Normalisierte Ausdrücke]
+  PostgreSQL speichert Policy-Ausdrücke in normalisierter Form, etwa
+  \code{(\allowbreak{}(\allowbreak{}\textquotedbl{}Tenant\allowbreak{}Id\textquotedbl{} =
+  (\allowbreak{}NULLIF(\allowbreak{}current\_\allowbreak{}setting(\allowbreak{}'app.\allowbreak{}tenant\_\allowbreak{}id'::text,\allowbreak{}
+  true),\allowbreak{} ''::text))::uuid))}. Gescaffoldete Policies enthalten genau diesen
+  Text. Das ist korrekt, sieht aber anders aus als die von der Convention erzeugte Form.
+  Teams, die nach dem Scaffolding auf Migrations umsteigen, sollten die Policies einmal
+  vereinheitlichen, sonst erzeugt die erste Migration ein DROP/CREATE mit gleichem Inhalt.
+\end{note}
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests/AdvancedTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Advanced\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+[Fact]
+public void Scaffolding_reads_rls_and_policies()
+{
+    using var ctx = ContextFor(null);
+    var factory = new TenancyDatabaseModelFactory(
+        ctx.GetService<IDiagnosticsLogger<DbLoggerCategory.Scaffolding>>());
+
+    var model = factory.Create(
+        _fixture.OwnerConnectionString, new DatabaseModelFactoryOptions());
+    var orders = model.Tables.Single(t => t.Name == "Orders");
+
+    Assert.Equal(true, orders[RlsAnnotationNames.Enabled]);
+    Assert.Equal(true, orders[RlsAnnotationNames.Forced]);
+}
+\end{sourcecode}
+
+Dieser Test prüft nur das Einlesen. \code{Scaffolding\allowbreak{}Roundtrip\allowbreak{}Tests}
+geht den ganzen Weg wie \code{dotnet ef dbcontext scaffold}: Policies in einer echten Datenbank
+anlegen (ohne Ausdrücke, \code{FOR SELECT TO} einer Rolle ohne Ausdrücke, restrictive ohne
+Ausdrücke und eine mit \code{USING}/\code{WITH CHECK}), über
+\code{IReverse\allowbreak{}Engineer\allowbreak{}Scaffolder} Code erzeugen, ihn mit Roslyn kompilieren,
+das Modell des erzeugten Contexts bauen und mit dem eingelesenen Datenbankmodell vergleichen,
+ohne Phantom-Migration gegen sich selbst, und daraus eine neue Datenbank anlegen. Deren
+\code{pg\_\allowbreak{}policies} müssen der Ausgangsdatenbank gleichen, und als App-Rolle gilt die
+Semantik aus Kapitel~\ref{ch:annotations-and-fluent-api}. Vor der Korrektur brach schon der
+erste Schritt mit einer \code{Argument\allowbreak{}Out\allowbreak{}Of\allowbreak{}Range\allowbreak{}Exception}
+ab: Für \code{CREATE POLICY allow\_all ON t;} blieb die Fluent-Kette leer. Die Ausdrücke werden
+dabei nicht normalisiert; der Context enthält den Text aus \code{pg\_\allowbreak{}policies}.

@@ -1,3 +1,4 @@
+using Acme.EntityFrameworkCore.Functions.PostgreSQL.Infrastructure;
 using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Infrastructure;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
@@ -5,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Acme.EntityFrameworkCore.Tenancy.Tests;
 
 /// <summary>
-/// Upgrade guard: the plugin chooses the lifetime itself wherever it calls Replace. If a new EF
+/// Upgrade guard: the plugins choose the lifetime themselves wherever they call Replace. If a new EF
 /// version changes the lifetime of such a service, this test fails instead of the application
 /// (chapter "Versioning and compatibility", upgrade playbook).
 /// </summary>
@@ -28,6 +29,7 @@ public class ServiceRegistrationTests
         new TenancyOptionsExtension()
             .WithSettings(TenancySettings.Default with { VerifyMaterializedTenants = true })
             .ApplyServices(services);
+        new FunctionsOptionsExtension().ApplyServices(services);
         var table = EfServiceTable();
 
         var checkedServices = 0;

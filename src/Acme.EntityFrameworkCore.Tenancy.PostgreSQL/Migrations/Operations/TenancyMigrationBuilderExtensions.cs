@@ -42,7 +42,14 @@ public static class TenancyMigrationBuilderExtensions
         return new OperationBuilder<DropApplicationRoleOperation>(operation);
     }
 
-    /// <summary>GRANT SELECT, INSERT, UPDATE, DELETE on all tables of a schema.</summary>
+    /// <summary>
+    /// GRANT SELECT, INSERT, UPDATE, DELETE on all tables and USAGE, SELECT on all sequences of a
+    /// schema, plus default privileges for tables and sequences created later.
+    /// </summary>
+    /// <remarks>
+    /// The default privileges apply to objects that the role running the migration creates later;
+    /// tables and sequences created by another role need privileges of their own.
+    /// </remarks>
     /// <param name="migrationBuilder">The migration builder.</param>
     /// <param name="role">The role name (lowercase letters, digits, underscore).</param>
     /// <param name="schema">The schema; delimited when the SQL is generated.</param>

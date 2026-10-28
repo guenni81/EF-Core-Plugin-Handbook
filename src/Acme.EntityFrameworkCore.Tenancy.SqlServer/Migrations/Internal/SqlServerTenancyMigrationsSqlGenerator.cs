@@ -117,6 +117,7 @@ public class SqlServerTenancyMigrationsSqlGenerator : SqlServerMigrationsSqlGene
         var affected = new List<(string? Schema, string Name)>();
         var columns = new Dictionary<(string? Schema, string Name), string?>();
         var created = new HashSet<(string? Schema, string Name)>();
+        var dropped = new List<(string? Schema, string Name)>();
         string? oldPolicySchema = null;
         var settingsChanged = false;
         var verifySettings = false;
@@ -175,6 +176,7 @@ public class SqlServerTenancyMigrationsSqlGenerator : SqlServerMigrationsSqlGene
                     break;
                 case DropTableOperation drop:
                     // Dropped later in the same migration: nothing to restore
+                    dropped.Add(Original(drop.Schema, drop.Name));
                     if (affected.Contains(Original(drop.Schema, drop.Name)))
                         final.Remove(Original(drop.Schema, drop.Name));
                     break;
@@ -194,6 +196,16 @@ public class SqlServerTenancyMigrationsSqlGenerator : SqlServerMigrationsSqlGene
                 if (!affected.Contains(key))
                     affected.Add(key);
                 final.TryAdd(key, (table.Schema, table.Name));
+            }
+
+            // Tables dropped by this migration are no longer in the target model, but their
+            // policies still use the function until DROP TABLE: remove them before it as well
+            // (a table without a plugin policy makes the drop a no-op) and restore none
+            foreach (var table in dropped)
+            {
+                if (!affected.Contains(table))
+                    affected.Add(table);
+                final.Remove(table);
             }
         }
 

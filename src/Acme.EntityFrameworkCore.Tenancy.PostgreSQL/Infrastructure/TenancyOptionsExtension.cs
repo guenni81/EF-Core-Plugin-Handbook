@@ -1,7 +1,6 @@
 using Acme.EntityFrameworkCore.Tenancy.Diagnostics;
 using Acme.EntityFrameworkCore.Tenancy.Interceptors;
 using Acme.EntityFrameworkCore.Tenancy.Query;
-using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal;
 using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Conventions;
 using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.Internal;
 using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Internal;
@@ -39,7 +38,11 @@ public class TenancyOptionsExtension : IDbContextOptionsExtension
     /// <summary>Copy constructor used by <see cref="Clone"/>.</summary>
     /// <param name="copyFrom">The extension to copy.</param>
     protected TenancyOptionsExtension(TenancyOptionsExtension copyFrom)
-        => Settings = copyFrom.Settings;
+    {
+        ArgumentNullException.ThrowIfNull(copyFrom);
+
+        Settings = copyFrom.Settings;
+    }
 
     /// <summary>The model-relevant plugin settings.</summary>
     public virtual TenancySettings Settings { get; private set; } = TenancySettings.Default;
@@ -71,7 +74,6 @@ public class TenancyOptionsExtension : IDbContextOptionsExtension
             .TryAdd<IRelationalTypeMappingSourcePlugin, TenancyTypeMappingSourcePlugin>()
             .TryAdd<IMethodCallTranslatorPlugin, TenancyMethodCallTranslatorPlugin>()
             .TryAdd<IMemberTranslatorPlugin, TenancyMemberTranslatorPlugin>()
-            .TryAdd<IAggregateMethodCallTranslatorPlugin, TenancyAggregateMethodCallTranslatorPlugin>()
             .TryAdd<IEvaluatableExpressionFilterPlugin, TenancyEvaluatableExpressionFilterPlugin>()
             .TryAdd<IConventionSetPlugin, TenancyConventionSetPlugin>()
             .TryAdd<ISingletonOptions, ITenancySingletonOptions>(
@@ -95,20 +97,18 @@ public class TenancyOptionsExtension : IDbContextOptionsExtension
             new EntityFrameworkServicesBuilder(services)
                 .TryAdd<IInterceptor, TenantQueryExpressionInterceptor>();
 
+        // Optional tagging of traces (chapter "Diagnostics and logging"); IInterceptor is scoped,
+        // one instance per context, the tenant comes from the context of each command
+        if (Settings.EnrichOpenTelemetry)
+            new EntityFrameworkServicesBuilder(services)
+                .TryAdd<IInterceptor, TenantActivityEnrichmentInterceptor>();
+
         // 3) Replace single services of the provider. Replace instead of TryAdd: Npgsql registers
         //    via TryAdd, so our service wins regardless of the order.
         services.Replace(ServiceDescriptor
             .Scoped<IMigrationsSqlGenerator, TenancyMigrationsSqlGenerator>());
         services.Replace(ServiceDescriptor
             .Singleton<IRelationalAnnotationProvider, TenancyAnnotationProvider>());
-
-        // 4) Deep extension: custom SQL expression node (chapter "Custom SQL expression nodes").
-        //    It needs a SQL generator that writes it and a nullability processor that knows it.
-        services.Replace(ServiceDescriptor
-            .Singleton<IQuerySqlGeneratorFactory, TenancyNpgsqlQuerySqlGeneratorFactory>());
-        services.Replace(ServiceDescriptor
-            .Scoped<IRelationalParameterBasedSqlProcessorFactory,
-                TenancyNpgsqlParameterBasedSqlProcessorFactory>());
     }
 
     /// <summary>Ensures the plugin is combined with the Npgsql provider.</summary>
@@ -157,6 +157,7 @@ public class TenancyOptionsExtension : IDbContextOptionsExtension
             debugInfo["Acme:Tenancy:VerifyMaterialized"] = s.VerifyMaterializedTenants.ToString();
             debugInfo["Acme:Tenancy:ProtectBulkOperations"] = s.ProtectBulkOperations.ToString();
             debugInfo["Acme:Tenancy:TransactionPooling"] = s.UseTransactionPooling.ToString();
+            debugInfo["Acme:Tenancy:EnrichOpenTelemetry"] = s.EnrichOpenTelemetry.ToString();
         }
     }
 }

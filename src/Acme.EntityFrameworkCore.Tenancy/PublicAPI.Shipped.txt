@@ -1,5 +1,4 @@
 #nullable enable
-abstract Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantSessionInterceptor.CreateSessionCommand(System.Data.Common.DbConnection! connection, Microsoft.EntityFrameworkCore.DbContext? context, Acme.EntityFrameworkCore.Tenancy.TenantId? tenant) -> System.Data.Common.DbCommand!
 Acme.EntityFrameworkCore.Tenancy.Conventions.TenantIdKeyValueGenerationConvention
 Acme.EntityFrameworkCore.Tenancy.Conventions.TenantIdKeyValueGenerationConvention.TenantIdKeyValueGenerationConvention() -> void
 Acme.EntityFrameworkCore.Tenancy.Diagnostics.TenancyEventId
@@ -8,9 +7,6 @@ Acme.EntityFrameworkCore.Tenancy.Diagnostics.TenancyLoggingDefinitions
 Acme.EntityFrameworkCore.Tenancy.Diagnostics.TenancyLoggingDefinitions.TenancyLoggingDefinitions() -> void
 Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantSaveChangesInterceptor
 Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantSaveChangesInterceptor.TenantSaveChangesInterceptor(Acme.EntityFrameworkCore.Tenancy.ITenantProvider! tenants) -> void
-Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantSessionInterceptor
-Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantSessionInterceptor.Tenants.get -> Acme.EntityFrameworkCore.Tenancy.ITenantProvider!
-Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantSessionInterceptor.TenantSessionInterceptor(Acme.EntityFrameworkCore.Tenancy.ITenantProvider! tenants) -> void
 Acme.EntityFrameworkCore.Tenancy.ITenantOwned
 Acme.EntityFrameworkCore.Tenancy.ITenantOwned.TenantId.get -> Acme.EntityFrameworkCore.Tenancy.TenantId
 Acme.EntityFrameworkCore.Tenancy.ITenantOwned.TenantId.set -> void
@@ -43,14 +39,11 @@ const Acme.EntityFrameworkCore.Tenancy.Diagnostics.TenancyEventId.TenancyBaseId 
 const Acme.EntityFrameworkCore.Tenancy.Metadata.TenancyAnnotationNames.IsTenantProperty = "Acme:Tenancy:IsTenantProperty" -> string!
 const Acme.EntityFrameworkCore.Tenancy.Metadata.TenancyAnnotationNames.Prefix = "Acme:Tenancy:" -> string!
 const Acme.EntityFrameworkCore.Tenancy.Metadata.TenancyAnnotationNames.TenantProperty = "Acme:Tenancy:TenantProperty" -> string!
-Microsoft.EntityFrameworkCore.TenancyDatabaseFacadeExtensions
 Microsoft.EntityFrameworkCore.TenancyDbFunctionsExtensions
 Microsoft.EntityFrameworkCore.TenancyPropertyBuilderExtensions
 Microsoft.Extensions.DependencyInjection.TenancyServiceCollectionExtensions
 override Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantSaveChangesInterceptor.SavingChanges(Microsoft.EntityFrameworkCore.Diagnostics.DbContextEventData! eventData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result) -> Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>
 override Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantSaveChangesInterceptor.SavingChangesAsync(Microsoft.EntityFrameworkCore.Diagnostics.DbContextEventData! eventData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>>
-override Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantSessionInterceptor.ConnectionOpened(System.Data.Common.DbConnection! connection, Microsoft.EntityFrameworkCore.Diagnostics.ConnectionEndEventData! eventData) -> void
-override Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantSessionInterceptor.ConnectionOpenedAsync(System.Data.Common.DbConnection! connection, Microsoft.EntityFrameworkCore.Diagnostics.ConnectionEndEventData! eventData, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 override Acme.EntityFrameworkCore.Tenancy.TenantId.ToString() -> string!
 override Acme.EntityFrameworkCore.Tenancy.TenantIdJsonReaderWriter.ConstructorExpression.get -> System.Linq.Expressions.Expression!
 override Acme.EntityFrameworkCore.Tenancy.TenantIdJsonReaderWriter.FromJsonTyped(ref Microsoft.EntityFrameworkCore.Storage.Json.Utf8JsonReaderManager manager, object? existingObject = null) -> Acme.EntityFrameworkCore.Tenancy.TenantId
@@ -61,7 +54,6 @@ override Acme.EntityFrameworkCore.Tenancy.ValueGeneration.TenantIdValueGenerator
 static Acme.EntityFrameworkCore.Tenancy.Diagnostics.TenancyLoggerExtensions.PoliciesWithoutRowLevelSecurity(this Microsoft.EntityFrameworkCore.Diagnostics.IDiagnosticsLogger<Microsoft.EntityFrameworkCore.DbLoggerCategory.Model!>! diagnostics, Acme.EntityFrameworkCore.Tenancy.Diagnostics.TenancyLoggingDefinitions! definitions, Microsoft.EntityFrameworkCore.Metadata.IReadOnlyEntityType! entityType) -> void
 static Acme.EntityFrameworkCore.Tenancy.Diagnostics.TenancyLoggerExtensions.TenantIsolationApplied(this Microsoft.EntityFrameworkCore.Diagnostics.IDiagnosticsLogger<Microsoft.EntityFrameworkCore.DbLoggerCategory.Model!>! diagnostics, Acme.EntityFrameworkCore.Tenancy.Diagnostics.TenancyLoggingDefinitions! definitions, Microsoft.EntityFrameworkCore.Metadata.IReadOnlyEntityType! entityType) -> void
 static Acme.EntityFrameworkCore.Tenancy.Diagnostics.TenancyLoggerExtensions.TenantIsolationOptedOut(this Microsoft.EntityFrameworkCore.Diagnostics.IDiagnosticsLogger<Microsoft.EntityFrameworkCore.DbLoggerCategory.Model!>! diagnostics, Acme.EntityFrameworkCore.Tenancy.Diagnostics.TenancyLoggingDefinitions! definitions, Microsoft.EntityFrameworkCore.Metadata.IReadOnlyEntityType! entityType) -> void
-static Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantSessionInterceptor.AddParameter(System.Data.Common.DbCommand! command, string! name, object? value) -> void
 static Acme.EntityFrameworkCore.Tenancy.Metadata.TenancyEntityTypeExtensions.FindTenantPropertyCandidate(this Microsoft.EntityFrameworkCore.Metadata.IReadOnlyEntityType! entityType) -> Microsoft.EntityFrameworkCore.Metadata.IReadOnlyProperty?
 static Acme.EntityFrameworkCore.Tenancy.Metadata.TenancyEntityTypeExtensions.GetTenantPropertyName(this Microsoft.EntityFrameworkCore.Metadata.IReadOnlyEntityType! entityType) -> string?
 static Acme.EntityFrameworkCore.Tenancy.TenantId.Empty.get -> Acme.EntityFrameworkCore.Tenancy.TenantId
@@ -69,8 +61,6 @@ static Acme.EntityFrameworkCore.Tenancy.TenantId.New() -> Acme.EntityFrameworkCo
 static Acme.EntityFrameworkCore.Tenancy.TenantId.Parse(string! value) -> Acme.EntityFrameworkCore.Tenancy.TenantId
 static Acme.EntityFrameworkCore.Tenancy.TenantIdConverter.Instance.get -> Acme.EntityFrameworkCore.Tenancy.TenantIdConverter!
 static Acme.EntityFrameworkCore.Tenancy.TenantIdJsonReaderWriter.Instance.get -> Acme.EntityFrameworkCore.Tenancy.TenantIdJsonReaderWriter!
-static Microsoft.EntityFrameworkCore.TenancyDatabaseFacadeExtensions.ApplyTenantSession(this Microsoft.EntityFrameworkCore.Infrastructure.DatabaseFacade! database) -> bool
-static Microsoft.EntityFrameworkCore.TenancyDatabaseFacadeExtensions.ApplyTenantSessionAsync(this Microsoft.EntityFrameworkCore.Infrastructure.DatabaseFacade! database, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
 static Microsoft.EntityFrameworkCore.TenancyDbFunctionsExtensions.CurrentTenant(this Microsoft.EntityFrameworkCore.DbFunctions! _) -> Acme.EntityFrameworkCore.Tenancy.TenantId
 static Microsoft.EntityFrameworkCore.TenancyPropertyBuilderExtensions.IsTenantProperty(this Microsoft.EntityFrameworkCore.Metadata.Builders.IConventionPropertyBuilder! builder, bool isTenant = true, bool fromDataAnnotation = false) -> Microsoft.EntityFrameworkCore.Metadata.Builders.IConventionPropertyBuilder?
 static Microsoft.EntityFrameworkCore.TenancyPropertyBuilderExtensions.IsTenantProperty(this Microsoft.EntityFrameworkCore.Metadata.Builders.PropertyBuilder! builder, bool isTenant = true) -> Microsoft.EntityFrameworkCore.Metadata.Builders.PropertyBuilder!
@@ -83,14 +73,10 @@ virtual Acme.EntityFrameworkCore.Tenancy.Conventions.TenantIdKeyValueGenerationC
 virtual Acme.EntityFrameworkCore.Tenancy.Diagnostics.TenancyLoggingDefinitions.LogPoliciesWithoutRowLevelSecurity(Microsoft.EntityFrameworkCore.Diagnostics.IDiagnosticsLogger! logger) -> Microsoft.EntityFrameworkCore.Diagnostics.EventDefinition<string!>!
 virtual Acme.EntityFrameworkCore.Tenancy.Diagnostics.TenancyLoggingDefinitions.LogTenantIsolationApplied(Microsoft.EntityFrameworkCore.Diagnostics.IDiagnosticsLogger! logger) -> Microsoft.EntityFrameworkCore.Diagnostics.EventDefinition<string!>!
 virtual Acme.EntityFrameworkCore.Tenancy.Diagnostics.TenancyLoggingDefinitions.LogTenantIsolationOptedOut(Microsoft.EntityFrameworkCore.Diagnostics.IDiagnosticsLogger! logger) -> Microsoft.EntityFrameworkCore.Diagnostics.EventDefinition<string!>!
-virtual Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantSessionInterceptor.ApplyToOpenConnection(Microsoft.EntityFrameworkCore.DbContext! context) -> bool
-virtual Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantSessionInterceptor.ApplyToOpenConnectionAsync(Microsoft.EntityFrameworkCore.DbContext! context, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
 virtual Acme.EntityFrameworkCore.Tenancy.Query.TenancyEvaluatableExpressionFilterPlugin.IsEvaluatableExpression(System.Linq.Expressions.Expression! expression) -> bool
 Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantMaterializationInterceptor
 Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantMaterializationInterceptor.TenantMaterializationInterceptor() -> void
 virtual Acme.EntityFrameworkCore.Tenancy.Interceptors.TenantMaterializationInterceptor.CreatingInstance(Microsoft.EntityFrameworkCore.Diagnostics.MaterializationInterceptionData materializationData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<object!> result) -> Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<object!>
-Acme.EntityFrameworkCore.Tenancy.Metadata.TenantTableMappingValidator
-static Acme.EntityFrameworkCore.Tenancy.Metadata.TenantTableMappingValidator.Validate(Microsoft.EntityFrameworkCore.Metadata.IReadOnlyModel! model, System.Func<Microsoft.EntityFrameworkCore.Metadata.IReadOnlyEntityType!, bool>! isOptedOut) -> void
 Acme.EntityFrameworkCore.Tenancy.TenantIdValueComparer
 static Acme.EntityFrameworkCore.Tenancy.TenantIdValueComparer.Instance.get -> Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<Acme.EntityFrameworkCore.Tenancy.TenantId>!
 static Acme.EntityFrameworkCore.Tenancy.TenantIdValueComparer.Provider.get -> Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<System.Guid>!

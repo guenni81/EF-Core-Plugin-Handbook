@@ -13,10 +13,11 @@
     \item Chapter~\ref{ch:scaffolding-reverse-engineering}: Scaffolding (reverse
     engineering)
   }}
-\part{Migrations and design time}\label{part:VI}
+\part{Migrations and design time}\label{part:migrations}
 
 % ------------------------------------------------------------
 \chapter{How migrations work}\label{ch:how-migrations-work}
+\versionrisk{stable}
 
 Migrations compare two models and produce operations and SQL from them. A plugin can hook in
 at several points; to choose the right one you need to know the flow:
@@ -49,13 +50,14 @@ model, imperative for everything else.
 
 % ------------------------------------------------------------
 \chapter{Declarative SQL from annotations}\label{ch:declarative-sql-from-annotations}
+\versionrisk{volatile}
 
 \section{The annotation provider}
 
 The differ compares the \emph{relational} model (tables, columns), not the entity types.
 Which annotations a table carries is decided by the
-\code{IRelational\allowbreak{}Annotation\allowbreak{}Provider}. There is one per context,
-and it belongs to the provider; the plugin therefore derives from the Npgsql implementation:
+\code{IRelational\allowbreak{}Annotation\allowbreak{}Provider}. There is only one (a
+singleton per internal service provider), and it belongs to the provider; the plugin therefore derives from the Npgsql implementation:
 
 % source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Metadata/Internal/TenancyAnnotationProvider.cs
 \begin{sourcecode}[Metadata/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Annotation\allowbreak{}Provider.\allowbreak{}cs]{csharp}
@@ -84,8 +86,10 @@ public class TenancyAnnotationProvider : NpgsqlAnnotationProvider
             if (!annotation.Name.StartsWith(RlsAnnotationNames.Prefix,
                                             StringComparison.Ordinal))
                 continue;
-            // Do not pass on the opt-out marker, otherwise empty migrations appear
-            if (annotation.Name == RlsAnnotationNames.Enabled && annotation.Value is false)
+            // Opt-out marker and explicit force: false stay in the model (they beat the
+            // conventions), but "false" and "missing" must be the same table
+            if (annotation.Name is RlsAnnotationNames.Enabled or RlsAnnotationNames.Forced
+                && annotation.Value is false)
                 continue;
             yield return annotation;
         }
@@ -104,8 +108,7 @@ migrationBuilder.AlterTable(name: "Orders")
 \end{sourcecode}
 
 Because the annotation provider only passes the annotations on for \code{design\allowbreak{}Time},
-they are missing from one model: the runtime model that \code{context.\allowbreak{}Model}
-returns.
+they are missing from the runtime model that \code{context.\allowbreak{}Model} returns.
 
 \begin{sourcecode}[Startup check of a plugin (\allowbreak{}WRONG)]{csharp}
 // Does every isolated table have RLS? Read from the runtime model
@@ -156,8 +159,12 @@ protected override void Generate(
     AlterTableOperation operation, IModel? model, MigrationCommandListBuilder builder)
 {
     base.Generate(operation, model, builder);
-    GenerateRowLevelSecurity(operation.Name, operation.Schema, operation.OldTable,
-        operation, builder);
+    if (_moved.Contains(operation))
+        GenerateRowLevelSecurityState(Delimit(operation.Name, operation.Schema),
+            operation.OldTable, operation, builder);
+    else
+        GenerateRowLevelSecurity(operation.Name, operation.Schema, operation.OldTable,
+            operation, builder);
 }
 \end{sourcecode}
 
@@ -211,10 +218,57 @@ protected virtual void Statement(MigrationCommandListBuilder builder, string sql
   \tablerule
   DropTable, RenameTable & Nothing to do: PostgreSQL removes or moves policies together with
   the table. \\
+  \tablerule
+  \code{\_moved} & \code{Alter\allowbreak{}Table\allowbreak{}Operations} whose policy
+  statements were moved into operations of their own (next section); for them the generator
+  only emits ENABLE/DISABLE and FORCE. \\
 \end{datatable}
+
+\subsection*{Policies and column changes of the same table}
+
+A policy depends on the columns it names: \code{CREATE POLICY} needs them, and
+\code{DROP COLUMN} fails while a policy uses them. EF's differ, however, orders a table's
+\code{Alter\allowbreak{}Table\allowbreak{}Operation} before its new columns and after its dropped
+ones. When an existing table gets a tenant column and the isolation in one migration, it yields
+\code{Alter\allowbreak{}Table}, \code{Add\allowbreak{}Column}, \code{Create\allowbreak{}Index};
+the reverse yields \code{Drop\allowbreak{}Index}, \code{Drop\allowbreak{}Column},
+\code{Alter\allowbreak{}Table}. A generator that creates the policy right at the
+\code{Alter\allowbreak{}Table\allowbreak{}Operation} fails in both directions: PostgreSQL reports
+\code{column "TenantId" does not exist} or \code{cannot drop column TenantId \ldots{} because
+other objects depend on it}.
+
+The generator therefore also overrides \code{Generate} for the whole operation list.
+\code{Move\allowbreak{}Policy\allowbreak{}Changes} replaces the policy statements of every changed
+table with internal operations of their own: changed and removed policies are dropped before the
+table's first column change, new and changed ones are created after its last. For the migration
+above this gives:
+
+\begin{sourcecode}[Generated SQL (\allowbreak{}shortened)]{sql}
+ALTER TABLE "Products" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Products" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "Products" ADD "TenantId" uuid NOT NULL DEFAULT '00000000-...';
+CREATE POLICY tenant_isolation ON "Products" AS PERMISSIVE FOR ALL USING (...) ...;
+CREATE INDEX "IX_Products_TenantId" ON "Products" ("TenantId");
+\end{sourcecode}
+
+A renamed table keeps its identity; every statement uses the name that is valid at its position.
+All statements stay in the migration's transaction: if a later step fails, the rollback restores
+policy, RLS and column together, and the table is not left unprotected. The SQL Server package
+solves the same question more coarsely: it drops the policies of all affected tables before the
+first operation and recreates them after the last, because there \code{sp\_rename} and
+\code{ALTER COLUMN} already fail on the schema-bound policy. PostgreSQL moves policies along with
+renames itself; here the smaller window around the column changes is enough.
+
+Two limits remain. A column change that does not change the policy text, for example another
+type for the tenant column, produces no \code{Alter\allowbreak{}Table\allowbreak{}Operation};
+PostgreSQL refuses \code{ALTER COLUMN \ldots{} TYPE} for a column a policy names, and the policy
+has to be replaced by hand in the migration. And a custom operation with
+\code{suppress\allowbreak{}Transaction: true} between the column changes of a table splits the
+transaction; the rollback then only protects up to that operation.
 
 % ------------------------------------------------------------
 \chapter{Custom migration operations}\label{ch:custom-migration-operations}
+\versionrisk{medium}
 
 Some things do not belong in the model but in migrations: roles, grants, extensions, data
 backfills. For these the plugin offers its own operations. They consist of three parts: the
@@ -333,19 +387,23 @@ protected override void Down(MigrationBuilder migrationBuilder)
 
 % ------------------------------------------------------------
 \chapter{Design-time services}\label{ch:design-time-services}
+\versionrisk{volatile}
 
 The \code{dotnet ef} tools (adding migrations, writing snapshots, scaffolding, compiled
 models) use their own service provider with design-time services. A plugin extends it
 through \code{IDesign\allowbreak{}Time\allowbreak{}Services}.
 
-\section{Loaded automatically}
+\section{Loaded through the startup project}
 
-So that users do not need to configure anything, an assembly attribute points to the class.
-The tooling finds it in every assembly the startup project references. The second argument
-restricts loading to contexts with the matching provider:
+An assembly attribute points to the class. The tooling, however, reads it only from the
+startup project and from the migrations assembly, not from referenced packages; an attribute
+in the plugin assembly itself would have no effect. The plugin therefore documents one line
+that the application adds once to its startup project. The second argument restricts loading
+to contexts with the matching provider. The consumer test
+(page~\pageref{sec:consumer-test}) does exactly that:
 
-% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Properties/AssemblyInfo.cs
-\begin{sourcecode}[Properties/\allowbreak{}Assembly\allowbreak{}Info.\allowbreak{}cs]{csharp}
+% source: eng/consumer-test/template/DesignTimeServices.cs
+\begin{sourcecode}[eng/\allowbreak{}consumer-test/\allowbreak{}template/\allowbreak{}Design\allowbreak{}Time\allowbreak{}Services.\allowbreak{}cs]{csharp}
 [assembly: DesignTimeServicesReference(
     "Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Design.TenancyDesignTimeServices, "
         + "Acme.EntityFrameworkCore.Tenancy.PostgreSQL",
@@ -353,7 +411,7 @@ restricts loading to contexts with the matching provider:
 \end{sourcecode}
 
 % source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Design/TenancyDesignTimeServices.cs
-\begin{sourcecode}[Design/\allowbreak{}Tenancy\allowbreak{}Design\allowbreak{}Time\allowbreak{}Services.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Design/\allowbreak{}Tenancy\allowbreak{}Design\allowbreak{}Time\allowbreak{}Services.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 public class TenancyDesignTimeServices : IDesignTimeServices
 {
     public void ConfigureDesignTimeServices(IServiceCollection services)
@@ -362,6 +420,9 @@ public class TenancyDesignTimeServices : IDesignTimeServices
         // independent of the order in which the tooling loads services
         services.RemoveAll<IAnnotationCodeGenerator>();
         services.AddSingleton<IAnnotationCodeGenerator, TenancyAnnotationCodeGenerator>();
+
+        // ... likewise ICSharpRuntimeAnnotationCodeGenerator (compiled models) and
+        // IDatabaseModelFactory (scaffolding)
     }
 }
 \end{sourcecode}
@@ -377,6 +438,7 @@ Fluent API:
 \begin{sourcecode}[Shop\allowbreak{}Context\allowbreak{}Model\allowbreak{}Snapshot.\allowbreak{}cs]{csharp}
 // Before
 b.HasAnnotation("Acme:Rls:Enabled", true);
+b.HasAnnotation("Acme:Rls:Forced", true);
 b.HasAnnotation("Acme:Rls:Policy:tenant_isolation", "{\"Name\":\"tenant_isolation\",...}");
 
 // After
@@ -451,14 +513,20 @@ public override IReadOnlyList<MethodCallCodeFragment> GenerateFluentApiCalls(
   built with
   \code{fragment.\allowbreak{}Chain(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}.
   \\
+  \tablerule
+  Policy with default values only & Without expressions, roles and command the chain would be
+  empty; \code{p => } without a call does not compile. \code{Build\allowbreak{}Policy\allowbreak{}Chain}
+  then writes the default explicitly, \code{p => p.\allowbreak{}For(\allowbreak{}Policy\allowbreak{}Command.\allowbreak{}All)}:
+  the same annotation, so no phantom migration. \\
 \end{datatable}
 
-The generator only affects the snapshot and designer files. The actual migrations keep
+The generator affects the snapshot, the designer files and the scaffolded context. The actual migrations keep
 \code{.\allowbreak{}Annotation(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})} on
 \code{Alter\allowbreak{}Table}; that is the intended mechanism for changes.
 
 % ------------------------------------------------------------
 \chapter{Compiled models, trimming and NativeAOT}\label{ch:compiled-models-trimming-and-nativeaot}
+\versionrisk{medium}
 
 \code{dotnet ef dbcontext optimize} produces a \textbf{compiled model}: C\# code that builds
 the runtime model directly instead of computing it at startup through conventions. This
@@ -489,18 +557,19 @@ must be prepared for it in four places:
   keeps the runtime annotation (chapter~\ref{ch:property-level-fluent-api-and}) \\
 \end{datatable}
 
-The third point is often misunderstood. EF takes annotations with simple values (strings,
+The last point is often misunderstood. EF takes annotations with simple values (strings,
 numbers, bool, enums) into the compiled model \textbf{automatically}; the source of
 \code{CSharp\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator}
 shows this, writing them via \code{Generate\allowbreak{}Simple\allowbreak{}Annotations}. A
 custom generator is therefore not needed to \emph{keep} annotations, but to \emph{filter
 out} pure design-time annotations that nobody reads at run time, and to translate
 annotations with complex values into code. Chapter~\ref{ch:property-level-fluent-api-and}
-shows both in the sample.
+shows the filtering in the sample; the policies are stored there as JSON strings, that is,
+as simple values.
 
 \section{Trimming and AOT}
 
-All three packages set
+All packages of the plugin set
 \code{<\allowbreak{}Is\allowbreak{}Aot\allowbreak{}Compatible>true<\allowbreak{}/\allowbreak{}Is\allowbreak{}Aot\allowbreak{}Compatible>}.
 The compiler then reports code that uses reflection without annotations. The JSON
 serialization of the policies uses a source generator instead of reflection:
@@ -522,8 +591,8 @@ them (upgrade playbook in chapter~\ref{ch:versioning-and-compatibility}).
 \begin{note}
   Conventions, snapshots and migrations only run at design time or during model building;
   with a compiled model and precompiled queries they disappear at run time. For AOT, the
-  critical parts are therefore type mappings, converters, translators (run at build time)
-  and interceptors.
+  critical parts are therefore type mappings, converters and interceptors; with precompiled
+  queries, translators already run at build time.
 \end{note}
 
 \section{What is actually checked as a consumer}\label{sec:consumer-test}
@@ -538,13 +607,14 @@ the end:
 \begin{datatable}{H{0.55}H{1.45}}
   \textbf{Step} & \textbf{Check} \\
   \tablehead
-  Packages & \code{dotnet pack} of the three libraries into a local source; a fresh project
+  Packages & \code{dotnet pack} of the four libraries (core, relational layer,
+  PostgreSQL, SQL Server) into a local source; a fresh project
   references the packages, not the projects. Its own NuGet cache, package source mapping with
   \code{Acme.*} only from the local source and a SHA-512 comparison prove that exactly the
   packages just built are resolved. \\
   \tablerule
-  Tooling & \code{dotnet-ef} as a local tool. The design-time services are found without any
-  help. Migration and SQL script contain RLS, \code{FORCE}, policy and index (PostgreSQL) and
+  Tooling & \code{dotnet-ef} as a local tool. The design-time services are loaded by the
+  attribute in the startup project. Migration and SQL script contain RLS, \code{FORCE}, policy and index (PostgreSQL) and
   security policy and session key (SQL Server).
   \code{has-\allowbreak{}pending-\allowbreak{}model-\allowbreak{}changes} then reports no
   change. \\
@@ -588,12 +658,13 @@ prints the versions. The test found things the unit tests could not show:
     (IL2104, IL3053).
 \end{itemize}
 
-Not checked is SQL Server under NativeAOT; the package is marked for it, a run with a real
-database is missing.
+Not checked are SQL Server under NativeAOT (the package is marked for it, a run with a real
+database is missing) and the Cosmos package, which the consumer test does not pack.
 
 
 % ------------------------------------------------------------
 \chapter{Scaffolding (reverse engineering)}\label{ch:scaffolding-reverse-engineering}
+\versionrisk{medium}
 
 \code{dotnet ef dbcontext scaffold} reads an existing database schema and generates entities
 and a context. A plugin that manages its own schema objects can recognize them during this
@@ -603,9 +674,9 @@ too. The route goes through two design-time services:
   \textbf{Service} & \textbf{Task} \\
   \tablehead
   \code{IDatabase\allowbreak{}Model\allowbreak{}Factory} & Reads the schema into a
-  \code{Database\allowbreak{}Model}. A derived Npgsql factory can query
+  \code{Database\allowbreak{}Model}. A derived Npgsql factory queries
   \code{pg\_\allowbreak{}policies} and
-  \code{pg\_\allowbreak{}class.\allowbreak{}relrowsecurity} and attach them as annotations
+  \code{pg\_\allowbreak{}class.\allowbreak{}relrowsecurity} and attaches them as annotations
   to \code{Database\allowbreak{}Table}. \\
   \tablerule
   \code{IAnnotation\allowbreak{}Code\allowbreak{}Generator} & Writes these annotations as

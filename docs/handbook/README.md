@@ -19,6 +19,7 @@ With a TeX Live installation (2025 or newer, including `latexmk` and `minted`):
 cd docs/handbook
 python3 check_code.py                  # line length, excerpts against the source files
 python3 check_structure.py             # editions in sync, references, table widths
+python3 check_examples.py              # run the listings marked with "% run:" (.NET SDK, Docker)
 latexmk EF-Core-Plugin-Handbook.tex    # -> out/EF-Core-Plugin-Handbook.pdf
 latexmk EF-Core-Plugin-Handbuch.tex    # -> out/EF-Core-Plugin-Handbuch.pdf
 latexmk -c                             # remove auxiliary files (out/aux/)
@@ -48,11 +49,14 @@ TeX Live allows in restricted shell-escape mode, so `-shell-escape` is not neede
 | `en/05_runtime.tex` · `de/05_laufzeit.tex` | Part V |
 | `en/06_migrations_design_time.tex` · `de/06_migrations_design_time.tex` | Part VI |
 | `en/07_quality.tex` · `de/07_qualitaet.tex` | Part VII |
-| `en/08_advanced.tex` · `de/08_fortgeschritten.tex` | Part VIII |
-| `en/09_deep_extensions.tex` · `de/09_tiefe_erweiterungen.tex` | Part IX |
-| `en/10_appendices.tex` · `de/10_anhaenge.tex` | Appendices A–F (exercises, sources), license |
+| `en/08_advanced.tex` · `de/08_fortgeschritten.tex` | Part VIII, advanced extension points |
+| `en/09_operations.tex` · `de/09_betrieb.tex` | Part IX, operation and integration |
+| `en/10_deep_extensions.tex` · `de/10_tiefe_erweiterungen.tex` | Part X, deep extensions |
+| `en/11_providers.tex` · `de/11_provider.tex` | Part XI, multiple providers |
+| `en/12_appendices.tex` · `de/12_anhaenge.tex` | Part XII: appendices A–F (exercises, sources), license |
 | `check_code.py`, `excerpts.py` | Line length of all code excerpts; bound excerpts against their source files |
 | `check_structure.py` | Both editions in sync per chapter, reference targets, datatable widths |
+| `check_examples.py` | Runs the listings marked with `% run:`: the exercise's test command (TRX counters, at least one test executed) and the ShopApi session against PostgreSQL in Docker |
 | `fonts/` | DejaVu fonts (free license, see `LICENSE-DejaVu.txt`) |
 
 ## Building blocks
@@ -61,6 +65,7 @@ The chapter files only use the commands from `handbook.sty`:
 
 ```latex
 \chapter{Value Generation}\label{ch:value-generation}
+\versionrisk{stable}                           % stable, medium or volatile (EF1001); listed in chapter 27
 \section{...}                                  % sections are not numbered
 \code{IMethodCallTranslator}                   % inline code
 \begin{sourcecode}[Query/CurrentTenantTranslator.cs]{csharp}
@@ -83,7 +88,7 @@ The chapter files only use the commands from `handbook.sty`:
 ## Editing rules
 
 * **Edition.** The book has its own version, `\handbookversion` in `handbook.sty` (currently
-  1.1). The package versions equal it (`VersionPrefix` in `Directory.Build.props`, 1.1.0),
+  1.2). The package versions equal it (`VersionPrefix` in `Directory.Build.props`, 1.2.0),
   so raise both together; it appears on the title page and in the page header. The minor
   version for corrections and additions, the major version for a revised book or a new EF
   Core major version.
@@ -92,7 +97,7 @@ The chapter files only use the commands from `handbook.sty`:
   labels; the file names differ by language. Any change to the content belongs in both
   `de/` and `en/`.
 * **Cross-references** use `\ref`: `Kapitel~\ref{ch:value-generation}`,
-  `chapter~\ref{ch:value-generation}`, `appendix~\ref{app:A}`, `part~\ref{part:VIII}`.
+  `chapter~\ref{ch:value-generation}`, `appendix~\ref{app:A}`, `part~\ref{part:advanced}`.
   Chapter labels are derived from the English title and are the same in both editions, so
   inserting a chapter renumbers all references automatically.
 * **Code comments name chapters by title, never by number**, because `\ref` does not work
@@ -107,6 +112,13 @@ The chapter files only use the commands from `handbook.sty`:
   `...` lines are ignored, so the German excerpts translate comments and excerpts may be
   shortened; line breaks may differ. Add ` (strings)` when messages are translated. An
   excerpt that rewrites code says so in its title ("vereinfacht" / "simplified").
+* **Executable examples.** A comment line `% run: <kind>` directly before a shell listing makes
+  `check_examples.py` (and the CI job `handbook-examples`) run it; the commands must be identical
+  in both editions, only comments after `#` may be translated. Kinds: `dotnet-test` (every line
+  a `dotnet test` command; at least one test must run, none fail) and `shopapi` (the ShopApi
+  session: database and sample are started by the script, the curl requests come from the
+  listing). Only these listings are executed; C# excerpts are bound with `% source:` or marked
+  as simplified, other listings are shortened and never compiled.
 * **Both editions have the same structure.** `check_structure.py` compares sections,
   listings, `% source:` bindings, tables and callouts per chapter; the relative widths of a
   `datatable` must add up to its number of columns.

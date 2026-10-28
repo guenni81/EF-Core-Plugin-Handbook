@@ -1,0 +1,28 @@
+#nullable enable
+Acme.EntityFrameworkCore.Tenancy.Cosmos.Conventions.CosmosTenancyConventionSetPlugin
+Acme.EntityFrameworkCore.Tenancy.Cosmos.Conventions.CosmosTenancyConventionSetPlugin.CosmosTenancyConventionSetPlugin() -> void
+Acme.EntityFrameworkCore.Tenancy.Cosmos.Conventions.CosmosTenantPartitionKeyConvention
+Acme.EntityFrameworkCore.Tenancy.Cosmos.Conventions.CosmosTenantPartitionKeyConvention.CosmosTenantPartitionKeyConvention() -> void
+Acme.EntityFrameworkCore.Tenancy.Cosmos.Infrastructure.CosmosTenancyOptionsExtension
+Acme.EntityFrameworkCore.Tenancy.Cosmos.Infrastructure.CosmosTenancyOptionsExtension.CosmosTenancyOptionsExtension() -> void
+Acme.EntityFrameworkCore.Tenancy.Cosmos.Infrastructure.CosmosTenancyOptionsExtension.CosmosTenancyOptionsExtension(Acme.EntityFrameworkCore.Tenancy.Cosmos.Infrastructure.CosmosTenancyOptionsExtension! copyFrom) -> void
+Acme.EntityFrameworkCore.Tenancy.Cosmos.Infrastructure.CosmosTenancySettings
+Acme.EntityFrameworkCore.Tenancy.Cosmos.Infrastructure.CosmosTenancySettings.VerifyMaterializedTenants.get -> bool
+Acme.EntityFrameworkCore.Tenancy.Cosmos.Infrastructure.CosmosTenancySettings.VerifyMaterializedTenants.init -> void
+Acme.EntityFrameworkCore.Tenancy.Cosmos.Storage.CosmosTenantIdTypeMappingSourcePlugin
+Acme.EntityFrameworkCore.Tenancy.Cosmos.Storage.CosmosTenantIdTypeMappingSourcePlugin.CosmosTenantIdTypeMappingSourcePlugin() -> void
+Acme.EntityFrameworkCore.Tenancy.Cosmos.Storage.TenantIdStringConverter
+Acme.EntityFrameworkCore.Tenancy.Cosmos.Storage.TenantIdStringConverter.TenantIdStringConverter() -> void
+Microsoft.EntityFrameworkCore.CosmosTenancyOptionsBuilderExtensions
+static Acme.EntityFrameworkCore.Tenancy.Cosmos.Infrastructure.CosmosTenancySettings.Default.get -> Acme.EntityFrameworkCore.Tenancy.Cosmos.Infrastructure.CosmosTenancySettings!
+static Acme.EntityFrameworkCore.Tenancy.Cosmos.Storage.TenantIdStringConverter.Instance.get -> Acme.EntityFrameworkCore.Tenancy.Cosmos.Storage.TenantIdStringConverter!
+static Microsoft.EntityFrameworkCore.CosmosTenancyOptionsBuilderExtensions.UseAcmeTenancy(this Microsoft.EntityFrameworkCore.Infrastructure.CosmosDbContextOptionsBuilder! cosmosOptionsBuilder, System.IServiceProvider! applicationServices, bool verifyMaterializedTenants = false) -> Microsoft.EntityFrameworkCore.Infrastructure.CosmosDbContextOptionsBuilder!
+virtual Acme.EntityFrameworkCore.Tenancy.Cosmos.Conventions.CosmosTenancyConventionSetPlugin.ModifyConventions(Microsoft.EntityFrameworkCore.Metadata.Conventions.ConventionSet! conventionSet) -> Microsoft.EntityFrameworkCore.Metadata.Conventions.ConventionSet!
+virtual Acme.EntityFrameworkCore.Tenancy.Cosmos.Conventions.CosmosTenantPartitionKeyConvention.ProcessModelFinalizing(Microsoft.EntityFrameworkCore.Metadata.Builders.IConventionModelBuilder! modelBuilder, Microsoft.EntityFrameworkCore.Metadata.Conventions.IConventionContext<Microsoft.EntityFrameworkCore.Metadata.Builders.IConventionModelBuilder!>! context) -> void
+virtual Acme.EntityFrameworkCore.Tenancy.Cosmos.Infrastructure.CosmosTenancyOptionsExtension.ApplyServices(Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> void
+virtual Acme.EntityFrameworkCore.Tenancy.Cosmos.Infrastructure.CosmosTenancyOptionsExtension.Clone() -> Acme.EntityFrameworkCore.Tenancy.Cosmos.Infrastructure.CosmosTenancyOptionsExtension!
+virtual Acme.EntityFrameworkCore.Tenancy.Cosmos.Infrastructure.CosmosTenancyOptionsExtension.Info.get -> Microsoft.EntityFrameworkCore.Infrastructure.DbContextOptionsExtensionInfo!
+virtual Acme.EntityFrameworkCore.Tenancy.Cosmos.Infrastructure.CosmosTenancyOptionsExtension.Settings.get -> Acme.EntityFrameworkCore.Tenancy.Cosmos.Infrastructure.CosmosTenancySettings!
+virtual Acme.EntityFrameworkCore.Tenancy.Cosmos.Infrastructure.CosmosTenancyOptionsExtension.Validate(Microsoft.EntityFrameworkCore.Infrastructure.IDbContextOptions! options) -> void
+virtual Acme.EntityFrameworkCore.Tenancy.Cosmos.Infrastructure.CosmosTenancyOptionsExtension.WithSettings(Acme.EntityFrameworkCore.Tenancy.Cosmos.Infrastructure.CosmosTenancySettings! settings) -> Acme.EntityFrameworkCore.Tenancy.Cosmos.Infrastructure.CosmosTenancyOptionsExtension!
+virtual Acme.EntityFrameworkCore.Tenancy.Cosmos.Storage.CosmosTenantIdTypeMappingSourcePlugin.FindMapping(in Microsoft.EntityFrameworkCore.Storage.TypeMappingInfo mappingInfo) -> Microsoft.EntityFrameworkCore.Storage.CoreTypeMapping?

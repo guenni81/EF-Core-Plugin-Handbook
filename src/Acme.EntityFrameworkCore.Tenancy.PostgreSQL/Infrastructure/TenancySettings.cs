@@ -42,4 +42,10 @@ public sealed record TenancySettings
     /// no tenant.
     /// </summary>
     public bool UseTransactionPooling { get; init; }
+
+    /// <summary>
+    /// Tag the current activity with <c>tenant.id</c> before every command (default: off).
+    /// Registers a command interceptor in the internal service provider.
+    /// </summary>
+    public bool EnrichOpenTelemetry { get; init; }
 }

@@ -81,8 +81,19 @@ public class SqlServerTenantIsolationConvention : IModelFinalizingConvention
             if (entityType.BaseType is not null || entityType.IsOwned())
                 continue;
 
+            // Same contract as the PostgreSQL package: an ITenantOwned type whose TenantId is
+            // ignored or not mapped (explicit interface implementation) must not silently lose
+            // its policy and the SaveChanges check
             if (entityType.FindTenantPropertyCandidate() is not IConventionProperty property)
+            {
+                if (typeof(ITenantOwned).IsAssignableFrom(entityType.ClrType))
+                    throw new InvalidOperationException(
+                        $"'{entityType.DisplayName()}' implements {nameof(ITenantOwned)}, but the "
+                        + $"property '{nameof(ITenantOwned.TenantId)}' is not mapped. "
+                        + "With an explicit interface implementation, mark the mapped property "
+                        + "with IsTenantProperty().");
                 continue;
+            }
 
             if (property.ClrType != typeof(TenantId))
                 throw new InvalidOperationException(
@@ -98,6 +109,17 @@ public class SqlServerTenantIsolationConvention : IModelFinalizingConvention
             // Views, queries and keyless types without a table get no policy
             if (StoreObjectIdentifier.Create(entityType, StoreObjectType.Table) is not { } table)
                 continue;
+
+            // A security policy protects exactly the tables it names. The history table of a
+            // temporal table is a table of its own: FOR SYSTEM_TIME queries read it without the
+            // current table's predicate, so every tenant's old rows would be visible.
+            if (entityType.IsTemporal())
+                throw new InvalidOperationException(
+                    $"'{entityType.DisplayName()}' is tenant-owned and mapped to the temporal table "
+                    + $"'{table.DisplayName()}'. The security policy protects only the current "
+                    + "table, not its history table, so temporal tables are not supported with "
+                    + "tenant isolation. Remove IsTemporal() or exclude the entity type with "
+                    + "[NoTenantIsolation] and protect the history table yourself.");
 
             // Runtime annotation (core) and design-time annotation (migrations) are separate:
             // the column name is only needed for the generated DDL

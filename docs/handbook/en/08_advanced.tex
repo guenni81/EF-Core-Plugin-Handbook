@@ -1,7 +1,7 @@
 % ============================================================
 \setpartpreamble{\partintro
-  {Limits of the run-time hooks, further extension points, operating in production and the
-  way from the plugin into the application.}
+  {Limits of the run-time hooks and further extension points: bulk operations, value
+  generation, the update pipeline, complex types, models per runtime context and advanced migrations.}
   {
     \item Chapter~\ref{ch:bulk-operations-and-the-limits}: Bulk operations and the limits of
     interceptors
@@ -10,19 +10,12 @@
     \item Chapter~\ref{ch:complex-types-and-json}: Complex types and JSON
     \item Chapter~\ref{ch:models-per-runtime-context}: Models per runtime context
     \item Chapter~\ref{ch:advanced-migrations}: Advanced migrations
-    \item Chapter~\ref{ch:row-level-security-in-production}: Row Level Security in
-    production
-    \item Chapter~\ref{ch:tenant-safe-relationships}: Tenant-safe relationships
-    \item Chapter~\ref{ch:retrofitting-and-operating}: Retrofitting and operating
-    multi-tenancy
-    \item Chapter~\ref{ch:plugin-performance}: Plugin performance
-    \item Chapter~\ref{ch:using-the-plugin-in-asp}: Using the plugin in ASP.NET Core
-    \item Chapter~\ref{ch:ci-and-api-stability}: CI and API stability
   }}
-\part{Advanced topics}\label{part:VIII}
+\part{Advanced extension points}\label{part:advanced}
 
 % ------------------------------------------------------------
 \chapter{Bulk operations and the limits of interceptors}\label{ch:bulk-operations-and-the-limits}
+\versionrisk{medium}
 
 A SaveChanges interceptor only sees what goes through \code{Save\allowbreak{}Changes}.
 \code{Execute\allowbreak{}Update} and \code{Execute\allowbreak{}Delete} write directly to
@@ -99,37 +92,97 @@ protected override Expression VisitMethodCall(MethodCallExpression node)
         {
             if (setter is NewExpression { Arguments: [var selector, ..] }
                 && Unquote(selector) is LambdaExpression lambda)
-                Check(lambda);
+                Check(lambda, node.Arguments[0]);
         }
     }
 
     return base.VisitMethodCall(node);
 }
 
-private void Check(LambdaExpression selector)
+private void Check(LambdaExpression selector, Expression source)
 {
-    var parameter = selector.Parameters[0];
-    var name = selector.Body switch
+    // After a projection: resolve x.Entity.TenantId to o.TenantId
+    var (body, roots) = Inline(selector.Body, selector.Parameters[0], source);
+
+    var (instance, name) = body switch
     {
-        // e => e.TenantId
-        MemberExpression member when member.Expression == parameter => member.Member.Name,
-        // e => EF.Property<TenantId>(e, "TenantId"), also for shadow properties
+        // o => o.TenantId, o => o.Customer.TenantId
+        MemberExpression { Expression: { } target } member => (target, member.Member.Name),
+        // o => EF.Property<TenantId>(o, "TenantId"), also for shadow properties
         MethodCallExpression
         {
             Method.Name: nameof(EF.Property),
             Arguments: [var target, ConstantExpression { Value: string property }]
-        } when target == parameter => property,
-        _ => null,
+        } call when call.Method.DeclaringType == typeof(EF) => (target, property),
+        _ => (null, null),
     };
-    // ...
+    if (instance is null || name is null || !IsRootedAt(instance, roots))
+        return;
+
+    // The model decides, not the name: is the instance an entity whose tenant
+    // property is being set?
+    Type[] types = [instance.Type, Unconvert(instance).Type];
+    if (_context.Model.GetEntityTypes().Any(e =>
+            types.Contains(e.ClrType) && e.GetTenantPropertyName() == name))
+        throw new TenancyException(
+            "The tenant property of an entity must not be modified in ExecuteUpdate.");
 }
 \end{sourcecode}
 
 If the property being set is the tenant property according to the runtime annotation, the
 interceptor throws a \code{Tenancy\allowbreak{}Exception}, before any connection is opened. It runs
-once per query shape, before translation and the query cache; later executions cost nothing.
-Other columns and ordinary queries pass unchanged. RLS remains the actual boundary: the
-interceptor only stops reassigning rows early and with a clear message; it does not check
+only at compilation, so once per query shape before translation; executions served from the
+query cache cost nothing.
+Other columns and ordinary queries pass unchanged.
+
+\code{Execute\allowbreak{}Update} is also allowed after a projection. The setter then names a member
+of the projected type, and the lambda's parameter is no entity type:
+
+\begin{sourcecode}[Setters after a projection (\allowbreak{}example)]{csharp}
+db.Orders.Select(o => new { Entity = o })
+    .ExecuteUpdate(s => s.SetProperty(x => x.Entity.TenantId, other));
+
+db.Orders.Select(o => new { Entity = o, o.TenantId })      // projected scalar
+    .ExecuteUpdate(s => s.SetProperty(x => x.TenantId, other));
+\end{sourcecode}
+
+EF translates both forms into an \code{UPDATE} of the tenant column. A check that only recognizes
+direct accesses to the parameter would let them through. \code{Inline} therefore replaces the
+parameter with the body of every \code{Select} below the \code{Execute\allowbreak{}Update}, skips
+operators that keep the element type (\code{Where}, \code{Order\allowbreak{}By}, \code{Take}), and
+follows \code{Join} and \code{Select\allowbreak{}Many} through their result selector into both
+sources. A member access on an anonymous object or on a member initializer
+(\code{new Dto \{ Entity = o \}}) is reduced to the projected expression:
+\code{x.\allowbreak{}Entity.\allowbreak{}Tenant\allowbreak{}Id} becomes
+\code{o.\allowbreak{}Tenant\allowbreak{}Id}. Whether that is the tenant property is decided by the
+model: the instance has to be an entity type whose tenant property (according to
+\code{Get\allowbreak{}Tenant\allowbreak{}Property\allowbreak{}Name}, so also one with another name
+marked with \code{Is\allowbreak{}Tenant\allowbreak{}Property(\allowbreak{})}) is being set. A property
+of the same name on an entity without a tenant stays allowed.
+
+\begin{datatable}{H{1.20}H{0.80}H{1.00}}
+  \textbf{Setter} & \textbf{Result} & \textbf{Test} \\
+  \tablehead
+  \code{o => o.\allowbreak{}Tenant\allowbreak{}Id}, \code{EF.\allowbreak{}Property} on a shadow
+  property & rejected & \code{Bulk\allowbreak{}Operation\allowbreak{}Tests} \\
+  \tablerule
+  After \code{Select} (also nested, also repeated), after \code{Join} and
+  \code{Select\allowbreak{}Many}, projected scalar & rejected & same, against PostgreSQL and SQL
+  Server: \code{Bulk\allowbreak{}Update\allowbreak{}Projection\allowbreak{}Tests},
+  \code{Sql\allowbreak{}Server\allowbreak{}Bulk\allowbreak{}Update\allowbreak{}Tests} \\
+  \tablerule
+  Other columns, also after a projection; a property of the same name without a tenant &
+  executed, RLS limits the rows & same \\
+  \tablerule
+  Projection through constructor parameters (\code{new Dto(\allowbreak{}o, o.\allowbreak{}Tenant\allowbreak{}Id)}),
+  \code{Group\allowbreak{}By} & not checked; EF does not translate them &
+  \code{Forms\allowbreak{}\_that\allowbreak{}\_EF\allowbreak{}\_does\allowbreak{}\_not\allowbreak{}\_translate\allowbreak{}\_…} \\
+\end{datatable}
+
+The database tests count the commands: a rejected update never reaches the database. Without the
+option EF translates the same setters, and only \code{WITH CHECK} of the policy or the
+\code{BLOCK} predicate rejects them. RLS therefore remains the actual boundary: the interceptor
+only stops reassigning rows early and with a clear message; it does not check
 \code{Execute\allowbreak{}Delete} or raw SQL.
 
 The registration holds a trap. \code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor}, like
@@ -140,10 +193,11 @@ however, EF never calls it: EF takes query expression interceptors from the
 \code{ISingleton\allowbreak{}Interceptor} registrations. The plugin therefore registers it as
 \code{IInterceptor}; stateless as it is, an instance per context does no harm.
 \code{Bulk\allowbreak{}Operation\allowbreak{}Tests} records both registrations, the integration
-tests show an allowed and a rejected update against PostgreSQL.
+tests show allowed and rejected updates against PostgreSQL and SQL Server.
 
 % ------------------------------------------------------------
 \chapter{Value generation}\label{ch:value-generation}
+\versionrisk{stable}
 
 EF generates key values either in the database (identity, sequences) or client-side via a
 \code{Value\allowbreak{}Generator}. For \code{Guid} keys EF does this by itself, for custom
@@ -210,6 +264,7 @@ that the factory appears in the generated code.
 
 % ------------------------------------------------------------
 \chapter{The update pipeline}\label{ch:the-update-pipeline}
+\versionrisk{volatile}
 
 Chapter~\ref{ch:the-query-pipeline} describes the way from LINQ to SQL. Writing has its own
 pipeline, which plugins extend for bulk operations, database-side soft deletes or returned
@@ -247,8 +302,121 @@ delete), a command interceptor can add SQL, and for bulk changes there is
 needs a different shape, for example \code{INSERT .\allowbreak{}.\allowbreak{}.\allowbreak{}
 ON CONFLICT} for upserts.
 
+\section{Example: the database clock on UPDATE}
+
+A column \code{Updated\allowbreak{}At} should hold the time of the last change, and the
+database's clock should decide it, not that of whichever application server wrote the row. For
+\code{INSERT} EF has the means: \code{Has\allowbreak{}Default\allowbreak{}Value\allowbreak{}Sql(\allowbreak{}"now()")}.
+For \code{UPDATE} there is none. \code{Value\allowbreak{}Generated\allowbreak{}On\allowbreak{}Add\allowbreak{}Or\allowbreak{}Update(\allowbreak{})}
+only tells EF that the database produces the value; EF leaves the column out of \code{SET},
+reads it back with \code{RETURNING} and expects a trigger to have set it. The simpler means do
+not reach the goal:
+
+\begin{itemize}
+  \item A \textbf{SaveChanges interceptor} can only set a value from the application: the
+    application server's clock, not \code{now()} of the transaction.
+  \item A \textbf{command interceptor} would have to edit finished SQL text, with parameter
+    names and the \code{RETURNING} clause, in every batch: fragile.
+  \item A \textbf{trigger} works, but it is a schema object outside the EF model that every
+    migration must carry along.
+\end{itemize}
+
+What is missing is a different shape of the \code{UPDATE} itself, and only the
+\code{IUpdate\allowbreak{}Sql\allowbreak{}Generator} writes it. The example is a teaching
+example in the test project, not part of the tenancy packages. A Fluent API method marks the
+property, the derived generator adds the assignment:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests/UpdatePipeline/DatabaseClockUpdateSqlGenerator.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Update\allowbreak{}Pipeline/\allowbreak{}Database\allowbreak{}Clock\allowbreak{}Update\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
+public static PropertyBuilder<T> HasDatabaseClockOnUpdate<T>(this PropertyBuilder<T> builder)
+{
+    builder.Metadata.SetAnnotation(Annotation, true);
+    return builder.HasDefaultValueSql("now()").ValueGeneratedOnAddOrUpdate();
+}
+
+public class DatabaseClockUpdateSqlGenerator : NpgsqlUpdateSqlGenerator   // internal (EF1001)
+{
+    protected override void AppendUpdateCommand(
+        StringBuilder commandStringBuilder,
+        string name,
+        string? schema,
+        IReadOnlyList<IColumnModification> writeOperations,
+        IReadOnlyList<IColumnModification> readOperations,
+        IReadOnlyList<IColumnModification> conditionOperations,
+        bool appendReturningOneClause = false)
+    {
+        AppendUpdateCommandHeader(commandStringBuilder, name, schema, writeOperations);
+
+        // EF's order, with the extra assignments after SET
+        foreach (var column in readOperations.Where(IsDatabaseClock))
+        {
+            commandStringBuilder.Append(", ");
+            SqlGenerationHelper.DelimitIdentifier(commandStringBuilder, column.ColumnName);
+            commandStringBuilder.Append(" = now()");
+        }
+
+        AppendWhereClause(commandStringBuilder, conditionOperations);
+        AppendReturningClause(commandStringBuilder, readOperations,
+            appendReturningOneClause ? "1" : null);
+        commandStringBuilder.AppendLine(SqlGenerationHelper.StatementTerminator);
+    }
+}
+\end{sourcecode}
+
+The override changes as little as possible. A generated-on-update column is a read operation for
+EF: it is in \code{RETURNING}, not in \code{SET}. The method writes the header from EF, appends
+\code{"column" = now()} for every marked read column, and leaves the \code{WHERE} clause with
+key and concurrency token and the \code{RETURNING} clause to EF. That is why the read-back value
+and optimistic concurrency keep working. With \code{xmin} as row version, SaveChanges sends:
+
+\begin{sourcecode}[SaveChanges after a change of Title]{sql}
+UPDATE "Documents" SET "Title" = @p0, "UpdatedAt" = now()
+WHERE "Id" = @p1 AND xmin = @p2
+RETURNING "UpdatedAt", xmin;
+\end{sourcecode}
+
+\code{IUpdate\allowbreak{}Sql\allowbreak{}Generator} is a singleton (table above): the
+generator must not keep state per command; everything it needs comes from the parameters. It
+replaces a provider service with \code{Replace\allowbreak{}Service}, here next to the tenancy
+plugin, which does not touch this service:
+
+\begin{sourcecode}[Registration]{csharp}
+options.UseNpgsql(connectionString)
+    .UseAcmeTenancy()
+    .ReplaceService<IUpdateSqlGenerator, DatabaseClockUpdateSqlGenerator>();
+
+modelBuilder.Entity<Document>(b =>
+{
+    b.Property(d => d.UpdatedAt).HasDatabaseClockOnUpdate();
+    b.Property(d => d.Version).IsRowVersion();            // Npgsql: the system column xmin
+});
+\end{sourcecode}
+
+The base class decides how far the example carries. It derives from
+\code{Npgsql\allowbreak{}Update\allowbreak{}Sql\allowbreak{}Generator}, an internal Npgsql
+class (EF1001): replacing it with EF's base class would lose Npgsql's own SQL, such as partial
+updates of JSON columns. That is the reason for this chapter's rating. The limits:
+
+\begin{itemize}
+  \item \textbf{One per context.} There is exactly one update SQL generator. A second plugin
+    that replaces it wins or loses depending on the order of registration; the two can only
+    be combined by deriving one from the other.
+  \item \textbf{Only SaveChanges.} \code{Execute\allowbreak{}Update} does not go through this
+    pipeline (chapter~\ref{ch:bulk-operations-and-the-limits}); it has to set the column itself.
+    Entities mapped to stored procedures do not either.
+  \item \textbf{Provider-specific.} The override relies on PostgreSQL's \code{RETURNING}; SQL
+    Server writes \code{OUTPUT} and needs a generator of its own.
+\end{itemize}
+
+\code{Update\allowbreak{}Pipeline\allowbreak{}Tests} checks the example against PostgreSQL: the
+recorded \code{UPDATE} has the assignment, the \code{WHERE} with \code{xmin} and the
+\code{RETURNING}; the entity afterwards holds exactly the database's value; and a second writer
+with an outdated version gets a \code{Db\allowbreak{}Update\allowbreak{}Concurrency\allowbreak{}Exception}
+and changes nothing. Without \code{Replace\allowbreak{}Service} the SQL test fails.
+
 % ------------------------------------------------------------
 \chapter{Complex types and JSON}\label{ch:complex-types-and-json}
+\versionrisk{medium}
 
 \section{Complex types}
 
@@ -277,11 +445,12 @@ concern entities.
 \section{JSON columns}
 
 Owned types and (since EF Core 10) complex types can be stored as a single JSON column with
-\code{To\allowbreak{}Json(\allowbreak{})}. Values in it are not read and written through
-converters but through the type mapping's
-\code{Json\allowbreak{}Value\allowbreak{}Reader\allowbreak{}Writer}
-(chapter~\ref{ch:type-mappings-and-value-converters}). Without it, model building fails. The
-sample's unit and integration tests check both sides:
+\code{To\allowbreak{}Json(\allowbreak{})}. Values in it are read and written through the
+type mapping's \code{Json\allowbreak{}Value\allowbreak{}Reader\allowbreak{}Writer}
+(chapter~\ref{ch:type-mappings-and-value-converters}). A value converter alone is enough only
+if EF can wrap the provider type's reader/writer around it
+(\code{Json\allowbreak{}Converted\allowbreak{}Value\allowbreak{}Reader\allowbreak{}Writer}); a
+custom mapping with neither makes model building fail. The sample's unit and integration tests check both sides:
 
 % source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/JsonTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Json\allowbreak{}Tests.\allowbreak{}cs]{csharp}
@@ -315,8 +484,9 @@ System.Text.Json serialize independently of each other
 
 % ------------------------------------------------------------
 \chapter{Models per runtime context}\label{ch:models-per-runtime-context}
+\versionrisk{stable}
 
-EF builds the model once per context type and caches it
+EF builds the model once per internal service provider and context type and caches it
 (chapter~\ref{ch:ef-core-s-architecture-from}). If the model should depend on run-time data,
 such as one schema per tenant, the cache key must contain that data. That is what
 \code{IModel\allowbreak{}Cache\allowbreak{}Key\allowbreak{}Factory} is for:
@@ -373,6 +543,7 @@ compared:
 
 % ------------------------------------------------------------
 \chapter{Advanced migrations}\label{ch:advanced-migrations}
+\versionrisk{stable}
 
 \section{Order of operations}
 
@@ -382,7 +553,7 @@ Generated and hand-written operations run in the order they appear in
 it directly after \code{CREATE TABLE}. If the role is only created at the end of
 \code{Up(\allowbreak{})}, the migration fails.
 
-\begin{sourcecode}[Migrations/\allowbreak{}20261021\_\allowbreak{}Initial.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Migrations/\allowbreak{}20261021\_\allowbreak{}Initial.\allowbreak{}cs (\allowbreak{}hand-edited, simplified)]{csharp}
 protected override void Up(MigrationBuilder migrationBuilder)
 {
     // 1. Whatever policies reference: BEFORE the generated operations
@@ -393,7 +564,7 @@ protected override void Up(MigrationBuilder migrationBuilder)
 
     // 3. Whatever requires the tables: AFTER the generated operations
     migrationBuilder.CreateApplicationRole("shop_app", canLogin: true);
-    migrationBuilder.GrantTablePrivileges("shop_app");     // applies to existing tables
+    migrationBuilder.GrantTablePrivileges("shop_app");   // also future tables, sequences
 }
 \end{sourcecode}
 
@@ -431,1101 +602,3 @@ and the plugin's SQL generator therefore take effect there too. It is important 
 design-time factory or host uses the same plugin options as the application, otherwise SQL
 for a different model is produced. Page~\pageref{sec:deployment} shows how the bundle fits
 into a pipeline with separate roles.
-
-% ------------------------------------------------------------
-\chapter{Row Level Security in production}\label{ch:row-level-security-in-production}
-
-RLS is only as strong as its operating conditions. These pitfalls silently render the
-policies ineffective or unusable:
-
-\begin{datatable}{H{0.93}H{0.93}H{1.14}}
-  \textbf{Pitfall} & \textbf{Consequence} & \textbf{Remedy} \\
-  \tablehead
-  App runs as table owner & Policies are ignored & \code{FORCE ROW LEVEL SECURITY} (plugin
-  default) and separate roles \\
-  \tablerule
-  Superuser or \code{BYPASSRLS} & RLS is always bypassed, even with FORCE & App role with
-  \code{NOSUPERUSER NOBYPASSRLS} (custom operation, chapter~\ref{ch:custom-migration-operations}) \\
-  \tablerule
-  Setting not set & Without \code{nullif}: error; with it: empty results & The interceptor
-  sets the value on every open \\
-  \tablerule
-  No index on the tenant column & Every query scans the whole table & Index convention
-  (chapter~\ref{ch:conventions}) \\
-  \tablerule
-  Transaction pooling (PgBouncer) & Session settings reach other clients or get lost &
-  \code{Use\allowbreak{}Transaction\allowbreak{}Pooling(\allowbreak{})}: the setting
-  transaction-locally (see below) \\
-  \tablerule
-  Connection opened outside EF & The session keeps an old tenant or none & Let EF open
-  connections, or \code{Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})}
-  (chapter~\ref{ch:interceptors}) \\
-  \tablerule
-  “Bypass” switch for the app role & Anyone who can run SQL as the app role can flip it &
-  Separate roles for cross-tenant access (see below) \\
-\end{datatable}
-
-\section{The threat model}\label{sec:threat-model}
-
-RLS is a layer of protection with clear limits. Whoever uses it should know what it protects
-against, what it relies on and where it ends:
-
-\begin{datatable}{H{0.45}H{1.55}}
-  \textbf{Aspect} & \textbf{In the sample} \\
-  \tablehead
-  Protected & The rows of tenant-owned tables in the supported mappings
-  (page~\pageref{sec:supported-table-mappings}). Not protected are shared master data, the
-  schema and, without composite keys, the existence of foreign values
-  (chapter~\ref{ch:tenant-safe-relationships}). \\
-  \tablerule
-  Trusted & The database server and its roles; the migration role as table owner; the code of
-  the application and the plugin, including the interceptors; the
-  \code{ITenant\allowbreak{}Provider} and the source it reads the tenant from. \\
-  \tablerule
-  Assumptions & The app role is neither superuser nor owner and has no \code{BYPASSRLS}. The
-  tenant comes from an authenticated claim, not from a header or parameter the client chooses
-  freely. EF opens the connections, and there is no transaction pooling, except with
-  \code{Use\allowbreak{}Transaction\allowbreak{}Pooling(\allowbreak{})}. \\
-  \tablerule
-  Limit & The app role may set the session setting itself; it has to, so that the interceptor
-  can set it. Whoever runs arbitrary SQL under this role switches the tenant with it. \\
-\end{datatable}
-
-The limit is not a flaw of the plugin but a property of the session model.
-\code{Threat\allowbreak{}Model\allowbreak{}Tests} shows it against PostgreSQL: one
-\code{SELECT set\_\allowbreak{}config(\allowbreak{}'app.\allowbreak{}tenant\_\allowbreak{}id',
-\allowbreak{} .\allowbreak{}.\allowbreak{}.\allowbreak{})} under the app role is enough, and the
-query after it returns the other tenant's rows.
-\code{Sql\allowbreak{}Server\allowbreak{}Threat\allowbreak{}Model\allowbreak{}Tests} shows the
-same with \code{sp\_\allowbreak{}set\_\allowbreak{}session\_\allowbreak{}context}. This defines
-what RLS protects against here and what it does not:
-
-\begin{itemize}
-  \item \textbf{Protected:} forgotten filters, faulty LINQ queries, the application's raw SQL
-    with a wrong \code{WHERE}, bulk operations, reports that accidentally run through the app
-    role. In all these cases the plugin sets the tenant, and the code does not change it.
-  \item \textbf{Not protected:} SQL injection and compromised application code. Both can change
-    the setting, even within a single statement, since \code{set\_\allowbreak{}config} is a
-    function. What helps against them are parameters instead of concatenated strings (EF
-    parameterizes LINQ and \code{From\allowbreak{}Sql}/\code{Sql\allowbreak{}Query} with
-    interpolated strings; \code{From\allowbreak{}Sql\allowbreak{}Raw} with concatenated values
-    does not) and privileges that give the app role only the tables it needs.
-  \item \textbf{Outside the database:} a forged or wrongly assigned claim grants access to
-    exactly that tenant. That is the job of authentication; the plugin takes the tenant from
-    the \code{ITenant\allowbreak{}Provider}.
-\end{itemize}
-
-The sample deliberately does not implement possible hardenings. SQL Server can freeze the key
-until the end of the connection with \code{sp\_\allowbreak{}set\_\allowbreak{}session\_\allowbreak{}context
-.\allowbreak{}.\allowbreak{}.\allowbreak{}, @read\_only = 1}
-(\href{https://learn.microsoft.com/en-us/sql/relational-databases/security/row-level-security}{SQL Server: Row-Level Security});
-the test above shows that a later change then fails. The price: \code{Apply\allowbreak{}Tenant\allowbreak{}Session},
-too, can no longer change the tenant of an open connection. PostgreSQL has no read-only setting;
-there remain a role per tenant with \code{SET ROLE} or a signed tenant token checked by a
-\code{SECURITY DEFINER} function. Both move complexity into the database and are only named as a
-direction here. Cross-tenant access still belongs in roles of its own (section below).
-
-\section{Transaction pooling}\label{sec:transaction-pooling}
-
-PgBouncer in “transaction” mode shares a server connection between clients per transaction.
-A session value set with
-\code{set\_\allowbreak{}config(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{},\allowbreak{}
-false)} can then reach another client, a security hole. The safe variant sets the value
-\emph{transaction-locally} with
-\code{set\_\allowbreak{}config(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{},\allowbreak{}
-true)}: it ends with commit or rollback. For that, the interceptor moves from
-\code{IDb\allowbreak{}Connection\allowbreak{}Interceptor} to
-\code{IDb\allowbreak{}Transaction\allowbreak{}Interceptor} and sets the tenant in
-\code{Transaction\allowbreak{}Started}, in a command of the new transaction. The sample offers
-this as an option:
-
-\begin{sourcecode}[Application]{csharp}
-services.AddDbContext<ShopContext>((sp, options) => options
-    .UseNpgsql(connectionString)
-    .UseAcmeTenancy(sp, t => t.UseTransactionPooling()));
-\end{sourcecode}
-
-% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Runtime/PostgreSqlTransactionSessionInterceptor.cs
-\begin{sourcecode}[Runtime/\allowbreak{}Postgre\allowbreak{}Sql\allowbreak{}Transaction\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
-public override async ValueTask<DbTransaction> TransactionStartedAsync(
-    DbConnection connection,
-    TransactionEndEventData eventData,
-    DbTransaction result,
-    CancellationToken cancellationToken = default)
-{
-    await using var command = CreateSessionCommand(connection, result, eventData.Context);
-    await command.ExecuteNonQueryAsync(cancellationToken);
-    return result;
-}
-
-// SaveChanges always in a transaction, even for a single command
-private static void RequireTransaction(DbContextEventData eventData)
-{
-    // ...
-        context.Database.AutoTransactionBehavior = AutoTransactionBehavior.Always;
-}
-
-protected virtual DbCommand CreateSessionCommand(
-    DbConnection connection, DbTransaction transaction, DbContext? context)
-{
-    // ...
-    var command = connection.CreateCommand();
-    command.Transaction = transaction;
-    command.CommandText = "SELECT set_config(@name, @value, true)";   // is_local = true
-    // ...
-}
-\end{sourcecode}
-
-\code{Use\allowbreak{}Acme\allowbreak{}Tenancy(\allowbreak{}sp)} then registers this interceptor
-instead of the connection interceptor. Three rules come with it:
-
-\begin{itemize}
-  \item \textbf{Reading in transactions.} Queries outside a transaction have no tenant and see
-    no rows. That is safe, but the application has to put reading work that needs data into a
-    transaction.
-  \item \textbf{Saving always in a transaction.} EF omits the automatic transaction when
-    \code{Save\allowbreak{}Changes} runs only one command
-    (\code{Auto\allowbreak{}Transaction\allowbreak{}Behavior.\allowbreak{}When\allowbreak{}Needed}).
-    A single insert would then run without a tenant and fail on the policy. The interceptor is
-    therefore also an \code{ISave\allowbreak{}Changes\allowbreak{}Interceptor} and sets
-    \code{Always}.
-  \item \textbf{No session value.} If the option is set and a
-    \code{Tenant\allowbreak{}Connection\allowbreak{}Interceptor} is registered anyway, it refuses
-    to set the value with a \code{Tenancy\allowbreak{}Exception} instead of leaving a value that
-    outlives the transaction. That also rules out
-    \code{Apply\allowbreak{}Tenant\allowbreak{}Session}.
-\end{itemize}
-
-\code{Transaction\allowbreak{}Pooling\allowbreak{}Tests} checks against PostgreSQL: inside the
-transaction the value is set and RLS applies, after commit and after rollback it is empty on the
-same connection, a single insert gets its transaction, and the connection interceptor refuses
-the session value. PgBouncer itself is not part of the test; what is checked is the property
-that matters: that no value remains after the transaction.
-
-\section{Policy performance}
-
-PostgreSQL inserts policies into every query like additional \code{WHERE} conditions.
-\code{current\_\allowbreak{}setting} is \code{STABLE}. That guarantees the same result for
-all rows within one statement and \emph{allows} the optimizer to combine several calls into
-one (\href{https://www.postgresql.org/docs/17/xfunc-volatility.html}{PostgreSQL: Function Volatility Categories}); it does not guarantee a fixed
-number of calls. How often the function actually runs depends on the plan. If the comparison
-is part of an \code{Index Cond}, PostgreSQL evaluates the comparison value once and reads only
-the tenant's rows. If it is a \code{Filter} over a seq scan, it may be evaluated per row, and
-then the scan weighs more than the function. Expensive policies come from subqueries (for
-example permissions from another table). In addition, PostgreSQL holds back conditions of the
-query whose functions are not \code{LEAKPROOF} behind the policy conditions, which can prevent
-optimizations (\href{https://www.postgresql.org/docs/17/ddl-rowsecurity.html}{PostgreSQL: Row Security Policies}).
-
-Only the plan under real conditions is therefore meaningful: \code{EXPLAIN
-(\allowbreak{}ANALYZE,\allowbreak{} BUFFERS)} as the app role with a tenant set, with a
-realistic amount of data and current statistics. Measured as owner or superuser, the policies
-are missing from the plan, because superusers and roles with \code{BYPASSRLS} bypass them, and
-so does the owner without \code{FORCE}. The overhead shows in comparing the same query with
-and without the policy, not in the number of function calls.
-
-\section{Legitimate cross-tenant access}
-
-Sooner or later someone needs data across tenants: reports for the operator, maintenance
-jobs, support. The tempting shortcut is a switch in the application, for example an
-additional session setting \code{app.\allowbreak{}bypass} that the policy honors. That is
-not a security boundary: whatever the application role can set, an injected SQL statement
-can set too. Separation must come from database roles instead:
-
-\begin{datatable}{H{0.75}H{1.25}H{1.00}}
-  \textbf{Need} & \textbf{Solution} & \textbf{Why it is safe} \\
-  \tablehead
-  Reports, analytics & Separate read-only role with \code{BYPASSRLS}, only \code{SELECT},
-  its own connection string and a context configuration without tenant & The app role cannot
-  become this role; its credentials live elsewhere \\
-  \tablerule
-  Support reads selected data & Additional permissive policy for a support role:
-  \code{Has\allowbreak{}Policy(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}
-  with \code{For(\allowbreak{}Select)} and
-  \code{To(\allowbreak{}\textquotedbl{}shop\_\allowbreak{}support\textquotedbl{})} &
-  Restricted to SELECT and to members of the role \\
-  \tablerule
-  Maintenance per tenant & Background job that iterates the tenants and sets each one
-  (chapter~\ref{ch:using-the-plugin-in-asp}) & Runs through the normal policies \\
-\end{datatable}
-
-\begin{sourcecode}[Reporting role (\allowbreak{}tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Cross\allowbreak{}Tenant\allowbreak{}Access\allowbreak{}Tests.\allowbreak{}cs)]{sql}
--- Created by an administrator: BYPASSRLS requires a superuser
-CREATE ROLE shop_reporting LOGIN PASSWORD '...' NOSUPERUSER BYPASSRLS;
-GRANT USAGE ON SCHEMA public TO shop_reporting;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO shop_reporting;
-\end{sourcecode}
-
-The application role, in contrast, cannot switch the policies off. \code{SET
-row\_\allowbreak{}security = off} does not disable RLS for a role without \code{BYPASSRLS};
-PostgreSQL instead rejects every query the policies would affect.
-\code{Cross\allowbreak{}Tenant\allowbreak{}Access\allowbreak{}Tests} checks all three: the
-reporting role sees all tenants, it cannot write, and the app role cannot help itself.
-
-\begin{important}[Audit cross-tenant access]
-  Every connection of the reporting role is an access to all tenants. Log it
-  (\code{log\_\allowbreak{}connections}, pgaudit) and grant the role to as few people and
-  services as possible. The plugin's \code{Create\allowbreak{}Application\allowbreak{}Role}
-  deliberately always creates roles with \code{NOBYPASSRLS}: bypass roles do not belong in
-  the application's migrations.
-\end{important}
-
-% ------------------------------------------------------------
-\chapter{Tenant-safe relationships}\label{ch:tenant-safe-relationships}
-
-Which table mappings the plugin protects and which it rejects while the model is built is set by
-the matrix on page~\pageref{sec:supported-table-mappings}; this chapter does not repeat it. It is
-about the second axis: relationships between protected tables. RLS governs which \emph{rows} a
-session sees. Whether a row only refers to rows of the same tenant is not governed by RLS. That
-is \emph{referential tenant consistency}, and it comes from the model.
-
-The sample uses customer, order and item: \code{Customer} → \code{Order} →
-\code{Order\allowbreak{}Item}, all three \code{ITenant\allowbreak{}Owned}, plus a shared
-\code{Product} without a tenant.
-
-\section{Visibility is not consistency}
-
-PostgreSQL documents explicitly that checks of foreign keys, unique and primary keys bypass RLS
-to maintain data integrity, and warns of “covert channels” through these checks
-(\href{https://www.postgresql.org/docs/17/ddl-rowsecurity.html}{PostgreSQL: Row Security Policies}).
-The SQL Server documentation says nothing explicit about it;
-\code{Sql\allowbreak{}Server\allowbreak{}Threat\allowbreak{}Model\allowbreak{}Tests} shows that
-the foreign key check there also sees rows the filter predicate hides. With foreign keys on the
-ID alone, as EF creates them by default, this follows:
-
-\begin{datatable}{H{0.70}H{1.30}}
-  \textbf{Observation} & \textbf{Cause} \\
-  \tablehead
-  Tenant A adds an item to an order of B & The FK check finds the order, although A cannot
-  see it. \\
-  \tablerule
-  A learns whether a foreign ID exists & Unknown IDs fail on the foreign key, foreign ones
-  do not. \\
-  \tablerule
-  The own item vanishes from \code{Include(\allowbreak{}i => i.\allowbreak{}Order)} & A required
-  navigation becomes an \code{INNER JOIN}, and the order is invisible. \\
-  \tablerule
-  A deletes an own order, an item of B disappears & The cascading delete is a referential action
-  and bypasses RLS as well. \\
-  \tablerule
-  A learns that an e-mail address exists at B & A global unique index reports the
-  collision. \\
-\end{datatable}
-
-\code{Relationship\allowbreak{}Tests} proves every row against PostgreSQL with a restricted
-role. None of these cases is a read leak in the strict sense; A sees no foreign row. But the
-data loses its tenant boundary, and the error messages answer questions A should not be able
-to ask.
-
-\section{Composite foreign keys}
-
-The solution is to make the tenant part of every reference. The principal gets an alternate key
-of tenant and ID, the dependent side a foreign key of its tenant column and the ID:
-
-% source: tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests/RelationshipTests.cs
-\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests/\allowbreak{}Relationship\allowbreak{}Tests.\allowbreak{}cs › Tenant\allowbreak{}Safe\allowbreak{}Context]{csharp}
-modelBuilder.Entity<Customer>(b =>
-{
-    b.HasAlternateKey(c => new { c.TenantId, c.Id });
-    b.HasIndex(c => new { c.TenantId, c.Email }).IsUnique();   // unique per tenant
-});
-
-modelBuilder.Entity<Order>(b =>
-{
-    b.HasAlternateKey(o => new { o.TenantId, o.Id });
-    b.HasOne(o => o.Customer).WithMany(c => c.Orders)
-        .HasForeignKey(o => new { o.TenantId, o.CustomerId })
-        .HasPrincipalKey(c => new { c.TenantId, c.Id })
-        .OnDelete(DeleteBehavior.Restrict);                   // customers are not cascaded
-});
-
-modelBuilder.Entity<OrderItem>()
-    .HasOne(i => i.Order).WithMany(o => o.Items)
-    .HasForeignKey(i => new { i.TenantId, i.OrderId })
-    .HasPrincipalKey(o => new { o.TenantId, o.Id })
-    .OnDelete(DeleteBehavior.Cascade);                         // items belong to the order
-\end{sourcecode}
-
-Now an item of A refers to the pair (A, ID). An order of B never satisfies it, and the error is
-the same as for an unknown ID: there is nothing left to learn. The tenant column is part of the
-foreign key and the tenant property at the same time. The SaveChanges interceptor sets it on new
-items, and fixup through the navigation sets the same value. No index is needed for the policy,
-because key and foreign key start with the tenant column; the index convention recognizes that.
-
-The price is an additional unique index per principal and a wider foreign key. The plugin does
-not create these keys automatically. A convention could, but it would have to rewrite every
-relationship between protected types and reconcile it with explicit configuration. The sample
-leaves the decision to the application's model.
-
-\section{Uniqueness per tenant}
-
-A unique index over a business column applies to the whole table, that is across all tenants.
-Uniqueness per tenant is almost always what is meant: \code{(TenantId, Email)} instead of
-\code{Email}. Where uniqueness really has to be global, for example for the tenants'
-subdomains, the column belongs in the tenant directory, which deliberately holds no tenant data.
-
-\section{Shared master data}
-
-\code{Product} has no tenant, no policy and is readable by everyone. Foreign keys from tenant data
-to master data are unproblematic; the test reads the product through the item. The opposite
-direction, master data with references to tenant data, must not exist. Writing to master data
-should not be allowed to the app role; \code{Grant\allowbreak{}Table\allowbreak{}Privileges}
-grants privileges on all tables of a schema, a finer grant is up to the application's
-migrations.
-
-\section{Join tables}
-
-The plugin rejects implicit many-to-many tables when one side is tenant-owned. A join entity with
-a tenant property of its own is protected (page~\pageref{sec:supported-table-mappings}). For
-consistency it gets the same composite foreign keys as every dependent table:
-\code{(TenantId, LeftId)} and \code{(TenantId, RightId)} on the alternate keys of both sides.
-Then a link can only connect two rows of the same tenant.
-
-\section{Delete rules}
-
-Cascading deletes run in the database as referential actions and bypass RLS. With composite
-foreign keys they still stay within the tenant, because every dependent row carries the same
-tenant. Without them a cascade deletes foreign rows; the test
-\code{Naive\allowbreak{}\_cascade\allowbreak{}\_deletes\allowbreak{}\_rows\allowbreak{}\_of\allowbreak{}\_another\allowbreak{}\_tenant}
-shows exactly that. For roots such as the customer, \code{Restrict} is usually right, for parts of
-an aggregate such as items \code{Cascade}. EF also cascades in the change tracker, but only for
-loaded entities; the rule in the database is what counts.
-
-
-% ------------------------------------------------------------
-\chapter{Retrofitting and operating multi-tenancy}\label{ch:retrofitting-and-operating}
-
-The previous chapters assume a new database. Usually, however, there already are tables with
-data, a running application and users who keep working during the change. This chapter shows the
-way from a table without a tenant column to RLS, and after that operation under retries and lost
-connections. All steps are executable in \code{Operations\allowbreak{}Tests} against PostgreSQL.
-The chapter closes with deployment: migrations in the pipeline with separate roles, and changes
-without downtime.
-
-\section{From a table without a tenant to RLS}
-
-Whoever simply lets an existing entity implement \code{ITenant\allowbreak{}Owned} gets a single
-migration: a column with the empty tenant as default, RLS, policy, index. After it nobody sees the
-old rows any more. A backfill in the same migration does not reliably help either: with
-\code{FORCE ROW LEVEL SECURITY} the policy also applies to the migration role, and without a tenant
-set its \code{UPDATE} finds no row. The way therefore leads through two migrations, following the
-pattern expand, fill, protect:
-
-\begin{datatable}{H{0.22}H{0.90}H{1.88}}
-  \textbf{No.} & \textbf{Step} & \textbf{Approach} \\
-  \tablehead
-  1 & Expand & The entity implements \code{ITenant\allowbreak{}Owned} but stays excluded with
-  \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})}.
-  The migration only adds the column. \\
-  \tablerule
-  2 & Fill & As owner, in the same or a migration of its own: every row gets its tenant from
-  whatever knows the assignment, for example a mapping table or the tenant of the parent row. \\
-  \tablerule
-  3 & Switch the application & An app version whose model no longer has the exclusion: the
-  interceptor sets the tenant on new rows. The database does not protect yet; the model does not
-  check that. \\
-  \tablerule
-  4 & Close the gap & Assign rows that were created without a tenant between steps 1 and 3. \\
-  \tablerule
-  5 & Protect & Second migration: exclusion removed, so \code{ENABLE}/\code{FORCE}, policy and
-  index. First of all a guard that stops as long as a row has no tenant. \\
-  \tablerule
-  6 & Tighten & Optionally composite keys and unique indexes per tenant
-  (chapter~\ref{ch:tenant-safe-relationships}). \\
-\end{datatable}
-
-The guard is a step of its own at the start of \code{Up}, before the operations EF generates:
-
-\begin{sourcecode}[Guard (\allowbreak{}SQL)]{postgresql}
-DO $$ BEGIN
-  IF EXISTS (SELECT 1 FROM "Tickets"
-             WHERE "TenantId" = '00000000-0000-0000-0000-000000000000') THEN
-    RAISE EXCEPTION 'Tickets without a tenant: backfill first';
-  END IF;
-END $$;
-\end{sourcecode}
-
-\begin{sourcecode}[Migrations/\allowbreak{}…\allowbreak{}\_Enable\allowbreak{}Ticket\allowbreak{}Isolation.\allowbreak{}cs]{csharp}
-protected override void Up(MigrationBuilder migrationBuilder)
-{
-    // Before anything else: do not protect without a complete assignment
-    migrationBuilder.Sql(TicketGuardSql);      // the guard above, as a constant
-
-    // ... generated by EF: ENABLE/FORCE ROW LEVEL SECURITY, CREATE POLICY, CREATE INDEX
-}
-\end{sourcecode}
-
-The migration runs in a transaction. If the guard fires, the table stays without RLS, and no
-half-done state arises;
-\code{Guard\allowbreak{}\_stops\allowbreak{}\_enabling\allowbreak{}\_rls\allowbreak{}\_while\allowbreak{}\_rows\allowbreak{}\_lack\allowbreak{}\_a\allowbreak{}\_tenant}
-checks this. After a complete assignment every tenant sees exactly its rows.
-
-\subsection*{App versions, Down and rollback}
-
-During the change two app versions often run at the same time, and each meets one of the two
-states of the database:
-
-\begin{datatable}{H{0.95}H{1.00}H{1.05}}
-  \textbf{Database} & \textbf{App without tenant} & \textbf{App with tenant} \\
-  \tablehead
-  After migration 1 (column, no RLS) & Runs; new rows without a tenant (step 4) & Runs, sets
-  the tenant; not yet protected \\
-  \tablerule
-  After migration 2 (RLS) & Fail closed: reads nothing, writes fail & Protected \\
-\end{datatable}
-
-The old app version must therefore no longer run once migration 2 is applied. Rolling the
-application back to a version without a tenant thus first requires the Down of migration 2. The
-Down removes policy and RLS; column and values stay, but the table is unprotected again. The test
-checks both. A Down of migration 1 drops the column and with it the assignment; it belongs in
-development only.
-
-Policy changes follow the same pattern. If the setting name changes
-(\code{Use\allowbreak{}Setting\allowbreak{}Name}), the migration replaces the policy in its
-transaction. Between the migration and the new app version the policy reads a setting the running
-app does not set, and the database refuses everything until both match. A transition in which the
-interceptor sets both settings is conceivable but not implemented. For SQL Server,
-page~\pageref{sec:sqlserver-session-settings} describes the same case.
-
-\section{Retries, transactions and lost connections}
-
-The plugin sets the tenant when EF opens a connection. This determines the behavior under EF's
-resilience mechanisms:
-
-\begin{itemize}
-  \item \textbf{Retries.} An execution strategy such as
-    \code{Enable\allowbreak{}Retry\allowbreak{}On\allowbreak{}Failure} repeats an operation after
-    a transient error on a newly opened connection. The interceptor runs again, the tenant is set.
-    The test ends the session on the server with \code{pg\_\allowbreak{}terminate\_\allowbreak{}backend};
-    the next query fails, is repeated and returns only rows of the tenant.
-  \item \textbf{Explicit transactions.} With a retrying strategy EF refuses commands in a
-    transaction the application began itself, because a retry would have to repeat the whole
-    transaction. The transaction therefore belongs into
-    \code{Create\allowbreak{}Execution\allowbreak{}Strategy(\allowbreak{}).\allowbreak{}Execute\allowbreak{}Async(\allowbreak{}…)}.
-    Inside, EF opens the connection once, sets the tenant and keeps it until the commit. If the
-    connection breaks in the middle of the transaction, the strategy repeats the whole delegate on
-    a new connection; side effects outside the database then have to be idempotent.
-  \item \textbf{Session reinitialization.} Npgsql resets a connection's state when it returns to
-    the pool, as long as \code{No Reset On Close} is not enabled
-    (\href{https://www.npgsql.org/doc/connection-string-parameters.html}{Npgsql: Connection String Parameters}).
-    SQL Server also clears the session context when the connection is returned. The plugin relies
-    on neither, but sets the tenant on every open; only connections that EF does not open need
-    \code{Apply\allowbreak{}Tenant\allowbreak{}Session} (chapter~\ref{ch:interceptors}).
-\end{itemize}
-
-For transaction pooling, \code{Use\allowbreak{}Transaction\allowbreak{}Pooling(\allowbreak{})}
-sets the tenant per transaction (page~\pageref{sec:transaction-pooling}). Not implemented is a
-read-only session key (section “The threat model”). \code{Operations\allowbreak{}Tests} contains the lost connection and
-the transaction inside the strategy; the cases of open connections are in
-\code{Connection\allowbreak{}Lifetime\allowbreak{}Tests}.
-
-
-\section{Deployment: pipeline, roles and zero downtime}\label{sec:deployment}
-
-The samples create the database in development with \code{Development\allowbreak{}Database}.
-In production, every schema change belongs in a pipeline that strictly separates two roles:
-
-\begin{itemize}
-  \item \textbf{\code{shop\_\allowbreak{}owner}} owns schema, tables and policies and runs the
-    migrations.
-  \item \textbf{\code{shop\_\allowbreak{}app}} is the application's role: only
-    \code{SELECT}, \code{INSERT}, \code{UPDATE}, \code{DELETE}, always under the policies.
-\end{itemize}
-
-The application therefore never calls
-\code{db.\allowbreak{}Database.\allowbreak{}Migrate(\allowbreak{})} on startup. Its role would
-need DDL rights for that, and whoever may alter a table may also run
-\code{DISABLE ROW LEVEL SECURITY} or drop the policy. \code{FORCE} binds the owner to the policy
-but does not protect the policy from the owner. A hole in the application, such as an SQL
-injection, would then no longer be contained by the database. Operations add to that: in a
-rolling deployment several instances start at once, and a failed migration should stop the
-rollout, not keep the instances in a restart loop.
-
-\subsection*{Once: the roles}
-
-Before the first pipeline runs, the database administrators create the roles. That is not a
-migration, because migrations already run as the owner. The script is in the repository:
-
-% source: docs/deployment/setup-roles.sql
-\begin{sourcecode}[docs/\allowbreak{}deployment/\allowbreak{}setup-\allowbreak{}roles.\allowbreak{}sql]{postgresql}
-CREATE ROLE shop_owner LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD :'owner_password';
-CREATE ROLE shop_app LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD :'app_password';
-CREATE DATABASE shop OWNER shop_owner;
-
-...
-GRANT USAGE ON SCHEMA public TO shop_app;
-
-ALTER DEFAULT PRIVILEGES FOR ROLE shop_owner IN SCHEMA public
-    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO shop_app;
-ALTER DEFAULT PRIVILEGES FOR ROLE shop_owner IN SCHEMA public
-    GRANT USAGE, SELECT ON SEQUENCES TO shop_app;
-\end{sourcecode}
-
-The elision is \code{\textbackslash{}connect shop}: from there on, the script runs in the new
-database. The \code{DEFAULT PRIVILEGES} matter: every table that a later migration creates as
-\code{shop\_\allowbreak{}owner} is usable by \code{shop\_\allowbreak{}app} right away. Without
-them, the new application version fails with \code{permission denied}, although migration and
-policy are correct. The plugin's \code{Grant\allowbreak{}Table\allowbreak{}Privileges}
-operation also sets default privileges, but only for the role that runs it; the script sets
-them independently of that.
-
-\subsection*{The pipeline}
-
-\begin{flowdiagram}
-  \flowstep{Build and test}{One commit, one build: tests, bundle and application are produced
-  together}
-  \flowstep{Migration bundle}{\code{dotnet ef migrations bundle}, self-contained; plus the
-  idempotent script for review}
-  \flowstep{Approval}{GitHub environment \code{production}: approval and secrets only for the
-  following jobs}
-  \flowstep{Bundle as shop\_owner}{Applies pending migrations in transactions; the only job
-  with the owner connection}
-  \flowstep{Rolling deployment}{Only after a successful migration; the application connects as
-  \code{shop\_\allowbreak{}app}}
-  \flowstep{Contract (later)}{A follow-up migration cleans up when no old instance is running
-  any more}
-\end{flowdiagram}
-
-The template \code{docs/\allowbreak{}deployment/\allowbreak{}migrations-\allowbreak{}deploy.\allowbreak{}yml}
-implements this with three jobs. It is not active in the repository; an application copies it
-to \code{.github/\allowbreak{}workflows} and replaces the deploy step with its platform's:
-
-% source: docs/deployment/migrations-deploy.yml
-\begin{sourcecode}[docs/\allowbreak{}deployment/\allowbreak{}migrations-\allowbreak{}deploy.\allowbreak{}yml (\allowbreak{}shortened)]{text}
-jobs:
-  build:
-    steps:
-      ...
-      - name: Migration bundle
-        run: >
-          dotnet ef migrations bundle --project "$APP_PROJECT" --context "$DB_CONTEXT"
-          --configuration Release --self-contained -r linux-x64 -o artifacts/efbundle
-      ...
-      - run: dotnet publish "$APP_PROJECT" -c Release -o artifacts/app
-
-  migrate:
-    needs: build
-    environment: production
-    steps:
-      ...
-      - name: Apply pending migrations as shop_owner
-        env:
-          OWNER_CONNECTION: ${{ secrets.SHOP_OWNER_CONNECTION_STRING }}
-        run: |
-          chmod +x artifacts/efbundle            # artifacts lose the executable bit
-          artifacts/efbundle --connection "$OWNER_CONNECTION"
-
-  deploy:
-    needs: migrate
-    environment: production
-    ...
-\end{sourcecode}
-
-The bundle contains the startup project with the plugin; for its options, what section
-“Migration bundles” in chapter~\ref{ch:advanced-migrations} says applies.
-\code{--connection} overrides the design-time factory's connection, and a second run applies
-nothing. Only the \code{migrate} job knows the owner connection string; the application's is
-given to the hosting platform, not to the pipeline.
-
-The consumer test (\code{eng/\allowbreak{}consumer-\allowbreak{}test/\allowbreak{}run.\allowbreak{}sh
---nativeaot}) runs exactly this sequence against PostgreSQL in Docker: it runs
-\code{setup-\allowbreak{}roles.\allowbreak{}sql} unchanged, builds the bundle from the generated
-migration, applies it twice as \code{shop\_\allowbreak{}owner} (the second run changes
-nothing), checks that \code{shop\_\allowbreak{}app} may not alter the table
-(\code{must be owner}), and starts the application as \code{shop\_\allowbreak{}app}, which sees
-only its tenant's rows.
-
-\subsection*{Zero downtime under RLS: expand and contract}
-
-In a rolling or blue-green deployment, the migration runs before the new version, and for a
-while old and new instances work against the same schema. Every migration must therefore work
-with the previous version of the application. The expand-and-contract pattern splits a change
-into three phases for that, like the conversion in section~“From a table without a tenant to
-RLS”:
-
-\begin{datatable}{H{0.70}H{1.15}H{1.15}}
-  \textbf{Phase} & \textbf{Schema} & \textbf{What to watch under RLS} \\
-  \tablehead
-  1 Expand & New columns nullable or with a default, new tables, new indexes; nothing is
-  removed or renamed. & New tables with \code{ITenant\allowbreak{}Owned} get their policy right
-  away; the old version does not use them. If a policy has to change, a second one is added
-  that allows the new form. \\
-  \tablerule
-  2 Roll out & Unchanged. The new version writes to the new columns, old instances drain. &
-  Both versions set the same tenant; the policies must admit the rows of both versions. \\
-  \tablerule
-  3 Contract & Follow-up migration: drop old columns, set \code{NOT NULL}, remove temporary
-  policies. & Only when no old instance is running; before that a guard as in section~“From a
-  table without a tenant to RLS”. \\
-\end{datatable}
-
-For policies, a PostgreSQL property applies: several \code{PERMISSIVE} policies of a table are
-combined with \code{OR}. An additional policy thus widens what is visible and serves as the
-transition in phase~1; removing it in phase~3 is the contraction. Each of these policies must
-separate tenants on its own, otherwise the transition opens the table. Because DDL is
-transactional in PostgreSQL, replacing a policy within one migration leaves no moment without a
-policy.
-
-Rolling back the application is possible without a database change until phase~3, because the
-schema still supports the old version. After that it needs the Down of the follow-up migration,
-and dropped columns do not come back with it. A Down therefore does not belong in the pipeline;
-an error after phase~3 is fixed forward with a new migration.
-
-% ------------------------------------------------------------
-\chapter{Plugin performance}\label{ch:plugin-performance}
-
-Plugin code runs at three frequencies. Knowing which code runs how often tells you where
-optimization pays off:
-
-\begin{datatable}{H{0.75}H{1.25}H{1.00}}
-  \textbf{Frequency} & \textbf{Code} & \textbf{Consequence} \\
-  \tablehead
-  Once per provider & Conventions, type mapping plugins, singleton options & Readability
-  over micro-optimization \\
-  \tablerule
-  Once per query shape & Translators, query interceptors & Moderate; the result is cached
-  (chapter~\ref{ch:the-query-pipeline}) \\
-  \tablerule
-  On every execution & Interceptors for commands, connections, SaveChanges, materialization;
-  evaluatable filter when the funcletizer extracts the parameter values & Hot path: no reflection, no unnecessary allocations \\
-\end{datatable}
-
-This leads to a few rules the sample follows: \code{Method\allowbreak{}Info} and
-\code{Property\allowbreak{}Info} lookups live in static fields. The SaveChanges interceptor
-only collects entries when there are tenant-relevant changes. The connection interceptor
-costs one round trip per open, which is documented. Such assumptions should be measured, not
-guessed. The repository contains a BenchmarkDotNet project; the benchmark for the
-SaveChanges logic runs without a database:
-
-% source: benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/SaveChangesInterceptorBenchmark.cs
-\begin{sourcecode}[benchmarks/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Save\allowbreak{}Changes\allowbreak{}Interceptor\allowbreak{}Benchmark.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
-[MemoryDiagnoser]
-public class SaveChangesInterceptorBenchmark
-{
-    [Params(1, 100)]
-    public int Entities { get; set; }
-
-    // GlobalSetup: context with UseAcmeTenancy() (no connection) and the interceptor
-
-    [Benchmark(Baseline = true)]
-    public int TrackOnly()                  // what EF does anyway before saving
-    {
-        AddOrders();
-        var count = _db.ChangeTracker.Entries().Count();
-        _db.ChangeTracker.Clear();
-        return count;
-    }
-
-    [Benchmark]
-    public int TrackAndApplyTenant()        // the same plus the plugin's SaveChanges logic
-    {
-        AddOrders();
-        _interceptor.ApplyTenant(_db);
-        var count = _db.ChangeTracker.Entries().Count();
-        _db.ChangeTracker.Clear();
-        return count;
-    }
-}
-\end{sourcecode}
-
-\begin{sourcecode}[Running the benchmark]{text}
-dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks \
-    -- --filter '*SaveChanges*' --job short
-\end{sourcecode}
-
-\begin{datatable}{H{1.67}H{0.83}H{0.83}H{0.83}H{0.83}}
-  \textbf{Method} & \textbf{Entities} & \textbf{Mean} & \textbf{Ratio} & \textbf{Allocated} \\
-  \tablehead
-  \code{Track\allowbreak{}Only} & 1 & 1.5 µs & 1.00 & 1.8 KB \\
-  \tablerule
-  \code{Track\allowbreak{}And\allowbreak{}Apply\allowbreak{}Tenant} & 1 & 2.3 µs & 1.54 &
-  2.7 KB \\
-  \tablerule
-  \code{Track\allowbreak{}Only} & 100 & 123 µs & 1.00 & 134 KB \\
-  \tablerule
-  \code{Track\allowbreak{}And\allowbreak{}Apply\allowbreak{}Tenant} & 100 & 170 µs & 1.38 &
-  202 KB \\
-\end{datatable}
-
-Example results (short job, .NET 10, author's machine; absolute values vary, the ratios are
-more meaningful). The plugin adds about half a microsecond per saved entity, roughly 40 to
-50 percent on top of change tracking alone. That sounds like much, but a single round trip
-to the database costs hundreds of microseconds; the connection interceptor's extra round
-trip per open (chapter~\ref{ch:interceptors}) therefore weighs far more than the SaveChanges
-logic. That is the kind of insight a benchmark provides: it shows where optimizing is
-worthwhile and where it is not.
-
-\section{Reading and query compilation}
-
-Two more benchmarks cover the other frequencies.
-\code{Materialization\allowbreak{}Interceptor\allowbreak{}Benchmark} measures what
-\code{Verify\allowbreak{}Materialized\allowbreak{}Tenants(\allowbreak{})} costs when reading.
-It needs real rows from a \code{Db\allowbreak{}Data\allowbreak{}Reader} and starts PostgreSQL
-with Testcontainers (Docker) for that. The connection stays open, so the connection
-interceptor's round trip is not measured; \code{As\allowbreak{}No\allowbreak{}Tracking} keeps
-change tracking out. A third variant with an empty
-\code{IMaterialization\allowbreak{}Interceptor} separates EF's cost from the plugin's:
-
-% source: benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/MaterializationInterceptorBenchmark.cs
-\begin{sourcecode}[benchmarks/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Materialization\allowbreak{}Interceptor\allowbreak{}Benchmark.\allowbreak{}cs (shortened)]{csharp}
-[MemoryDiagnoser]
-public class MaterializationInterceptorBenchmark
-{
-    [Params(10, 100, 1000)]
-    public int Rows { get; set; }
-
-    // GlobalSetup: container, 1000 rows of one tenant, connections open
-
-    [Benchmark(Baseline = true)]
-    public Task<int> Read() => CountAsync(_plain);
-
-    [Benchmark]
-    public Task<int> ReadIntercepted() => CountAsync(_intercepted);
-
-    [Benchmark]
-    public Task<int> ReadAndVerify() => CountAsync(_verifying);
-
-    private async Task<int> CountAsync(BenchmarkContext db)
-        => (await db.Orders.AsNoTracking().OrderBy(o => o.Id).Take(Rows).ToListAsync()).Count;
-
-    // Create: UseAcmeTenancy(sp, t => t.VerifyMaterializedTenants(verify))
-}
-\end{sourcecode}
-
-\begin{datatable}{H{1.67}H{0.83}H{0.83}H{0.83}H{0.83}}
-  \textbf{Method} & \textbf{Rows} & \textbf{Mean} & \textbf{Ratio} & \textbf{Allocated} \\
-  \tablehead
-  \code{Read} & 10 & 200 µs & 1.00 & 12 KB \\
-  \tablerule
-  \code{Read\allowbreak{}Intercepted} & 10 & 210 µs & 1.08 & 21 KB \\
-  \tablerule
-  \code{Read\allowbreak{}And\allowbreak{}Verify} & 10 & 220 µs & 1.12 & 22 KB \\
-  \tablerule
-  \code{Read} & 100 & 278 µs & 1.00 & 36 KB \\
-  \tablerule
-  \code{Read\allowbreak{}Intercepted} & 100 & 764 µs & 2.77 & 121 KB \\
-  \tablerule
-  \code{Read\allowbreak{}And\allowbreak{}Verify} & 100 & 741 µs & 2.68 & 136 KB \\
-  \tablerule
-  \code{Read} & 1000 & 846 µs & 1.00 & 269 KB \\
-  \tablerule
-  \code{Read\allowbreak{}Intercepted} & 1000 & 3858 µs & 4.70 & 1120 KB \\
-  \tablerule
-  \code{Read\allowbreak{}And\allowbreak{}Verify} & 1000 & 4288 µs & 5.22 & 1268 KB \\
-\end{datatable}
-
-The result is surprising: most of the cost is not the check, but having a materialization
-interceptor registered at all. EF then produces, for every row, the data that
-\code{Materialization\allowbreak{}Interception\allowbreak{}Data} offers, and leaves the fast,
-compiled materialization path: at 1000 rows about 0.85 KB and 3 µs per row. The plugin's check
-(provider from the cache, read the value, compare) adds around 0.15 KB and 0.4 µs per row. At
-ten rows both disappear in the round trip; at a thousand rows reading on the client becomes
-about five times as expensive.
-
-\code{Query\allowbreak{}Compilation\allowbreak{}Benchmark} needs no database:
-\code{To\allowbreak{}Query\allowbreak{}String} runs the pipeline up to the SQL without a
-connection. \code{Compile} empties EF's query cache (the \code{IMemory\allowbreak{}Cache} of
-the internal service provider) before every call; \code{Cache\allowbreak{}Hit} runs the same
-query shape with a new parameter value. Compared are EF Core alone, the plugin, and the plugin
-with its query filter:
-
-\begin{datatable}{H{1.40}H{0.90}H{0.90}H{0.90}H{0.90}}
-  \textbf{Context} & \textbf{Compile} & \textbf{Allocated} & \textbf{Cache hit} &
-  \textbf{Allocated} \\
-  \tablehead
-  EF Core & 2.64 ms & 146 KB & 18 µs & 9.9 KB \\
-  \tablerule
-  Plugin & 2.68 ms & 147 KB & 15 µs & 9.9 KB \\
-  \tablerule
-  Plugin with query filter & 2.78 ms & 160 KB & 15 µs & 10.2 KB \\
-\end{datatable}
-
-Translator plugins, evaluatable filter, custom SQL generator and nullability processor cost
-nothing measurable when compiling; the query filter makes the expression tree, and thus the
-translation, a few percent longer. On a cache hit every difference disappears in the noise.
-All values come from a short job (.NET 10, author's machine); its error bars are wide, but the
-orders of magnitude are clear:
-
-\begin{datatable}{H{0.80}H{0.90}H{1.30}}
-  \textbf{Phase} & \textbf{Frequency} & \textbf{Plugin overhead} \\
-  \tablehead
-  Compilation & Once per query shape & Hardly measurable, a few percent with the query filter \\
-  \tablerule
-  Cache hit & Every query & Not measurable \\
-  \tablerule
-  SaveChanges & Every save & About 0.5 µs per entity (40 to 50 percent of change tracking) \\
-  \tablerule
-  Materialization & Every row read & About 3.5 µs per row with
-  \code{Verify\allowbreak{}Materialized\allowbreak{}Tenants(\allowbreak{})}, none without \\
-\end{datatable}
-
-\subsection*{When the check on reading pays off}
-
-\code{Verify\allowbreak{}Materialized\allowbreak{}Tenants(\allowbreak{})} is defense in depth:
-it does not protect against an attack that RLS does not stop, but notices when RLS does not
-apply at all, for example because the application connects as the owner, a superuser or a role
-with \code{BYPASSRLS}, or works on a self-opened connection without
-\code{Apply\allowbreak{}Tenant\allowbreak{}Session}. That leads to the recommendation:
-
-\begin{itemize}
-  \item \textbf{Turn it on} when a misconfiguration costs more than the CPU time: data with
-    high protection requirements, many environments with their own configuration, small
-    result sets as typical API queries return them. There the cost disappears in the round
-    trip.
-  \item \textbf{Turn it off} for read-heavy paths with large result sets, such as exports and
-    reports. There the database carries the isolation alone, backed by the role separation
-    (page~\pageref{sec:deployment}) and by tests that read with the application's restricted
-    role.
-  \item \textbf{In between}: always on in tests and staging, in production only for the
-    context of the sensitive data. The option applies per context configuration, not
-    globally.
-\end{itemize}
-
-\begin{sourcecode}[All benchmarks, dry run]{text}
-dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks \
-    -- --filter '*' --job dry
-\end{sourcecode}
-
-\begin{tip}
-  For the startup of large models, the compiled model
-  (chapter~\ref{ch:compiled-models-trimming-and-nativeaot}) is the most effective lever. A
-  plugin's conventions then no longer run at run time at all; that is why it pays to test
-  compiled model support rather than merely claim it.
-\end{tip}
-
-% ------------------------------------------------------------
-\chapter{Using the plugin in ASP.NET Core}\label{ch:using-the-plugin-in-asp}
-
-The sample \code{samples/\allowbreak{}Shop\allowbreak{}Api} shows the way from the plugin
-into a web API. The tenant comes from the claim \code{tenant\_\allowbreak{}id} of the
-signed-in user:
-
-% source: samples/ShopApi/HttpTenantProvider.cs
-\begin{sourcecode}[samples/\allowbreak{}Shop\allowbreak{}Api/\allowbreak{}Http\allowbreak{}Tenant\allowbreak{}Provider.\allowbreak{}cs]{csharp}
-public sealed class HttpTenantProvider : ITenantProvider
-{
-    public const string ClaimType = "tenant_id";
-
-    private readonly IHttpContextAccessor _httpContextAccessor;
-
-    public HttpTenantProvider(IHttpContextAccessor httpContextAccessor)
-    {
-        ArgumentNullException.ThrowIfNull(httpContextAccessor);
-
-        _httpContextAccessor = httpContextAccessor;
-    }
-
-    // Determined anew on every access: also works as a singleton (pooling)
-    public TenantId? CurrentTenantId
-    {
-        get
-        {
-            var value = _httpContextAccessor.HttpContext?.User.FindFirst(ClaimType)?.Value;
-            return Guid.TryParse(value, out var id) ? new TenantId(id) : null;
-        }
-    }
-}
-\end{sourcecode}
-
-% source: samples/ShopApi/Program.cs
-\begin{sourcecode}[samples/\allowbreak{}Shop\allowbreak{}Api/\allowbreak{}Program.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
-builder.Services.AddHttpContextAccessor();
-builder.Services.AddAcmeTenancy<HttpTenantProvider>();
-builder.Services.AddDbContext<ShopApiContext>((sp, options) => options
-    .UseNpgsql(builder.Configuration.GetConnectionString("Shop"))
-    .UseAcmeTenancy(sp));
-
-// No tenant filter in code: RLS in the database provides the separation
-app.MapGet("/orders", async (ShopApiContext db) =>
-    await db.Orders.OrderBy(o => o.Id).ToListAsync());
-\end{sourcecode}
-
-\begin{important}[Where the tenant comes from]
-  The tenant must come from a trustworthy source: a claim from a signed token. A header or
-  query parameter that the client sets freely undermines the entire isolation. The sample
-  contains a header simulation for the development environment only and labels it
-  explicitly.
-\end{important}
-
-For \code{Add\allowbreak{}Db\allowbreak{}Context\allowbreak{}Pool}, register the provider as
-a singleton. This is possible because \code{Http\allowbreak{}Tenant\allowbreak{}Provider}
-determines the tenant anew on every access; the interceptors ask it on every connection and
-every save:
-
-\begin{sourcecode}[Variant with pooling]{csharp}
-builder.Services.AddAcmeTenancy<HttpTenantProvider>(ServiceLifetime.Singleton);
-builder.Services.AddDbContextPool<ShopApiContext>((sp, options) => options
-    .UseNpgsql(connectionString)
-    .UseAcmeTenancy(sp));   // sp: root provider; interceptors are created once
-\end{sourcecode}
-
-\section{DbContext factories}
-
-\code{Add\allowbreak{}Db\allowbreak{}Context\allowbreak{}Factory} is the usual choice in
-Blazor Server and for parallel work. Unlike \code{Add\allowbreak{}Db\allowbreak{}Context},
-it registers the factory and the options as \textbf{singletons} by default. The options
-callback then receives the root provider, not the scope of the current request. For a scoped
-tenant provider that holds state per scope, this has consequences:
-
-\begin{datatable}{H{0.87}H{1.13}}
-  \textbf{Registration} & \textbf{Behavior} \\
-  \tablehead
-  Singleton factory, scope validation on (ASP.NET Core in Development) & Exception: “Cannot
-  resolve scoped service 'ITenantProvider' from root provider.” \\
-  \tablerule
-  Singleton factory, scope validation off (production default) & No error. The interceptors
-  get an instance from the root container that no request ever fills: no tenant, saving
-  throws, queries see nothing \\
-  \tablerule
-  Factory registered as \code{Scoped} & Every scope gets its own factory with its own tenant
-  provider: correct \\
-\end{datatable}
-
-\begin{sourcecode}[Factory with the tenant of the request]{csharp}
-builder.Services.AddDbContextFactory<ShopApiContext>(
-    (sp, options) => options.UseNpgsql(connectionString).UseAcmeTenancy(sp),
-    ServiceLifetime.Scoped);         // factory and options per scope
-\end{sourcecode}
-
-A provider that determines the tenant anew on every access, such as
-\code{Http\allowbreak{}Tenant\allowbreak{}Provider}, works in every variant; the problem
-affects providers with state per scope.
-\code{Add\allowbreak{}Pooled\allowbreak{}Db\allowbreak{}Context\allowbreak{}Factory} always
-behaves like pooling: the options exist once, so the tenant provider must be such a
-singleton. \code{Db\allowbreak{}Context\allowbreak{}Factory\allowbreak{}Tests} shows all
-three variants.
-
-\section{Outside of HTTP requests}
-
-Background services, message handlers and scheduled jobs have no request and no claim. The
-tenant then comes from the job itself, for example from the message or from a list of
-tenants to process. The sample's \code{Ambient\allowbreak{}Tenant\allowbreak{}Provider}
-stores it in an \code{Async\allowbreak{}Local}, which flows with the asynchronous control
-flow:
-
-% source: samples/ShopSample/AmbientTenantProvider.cs
-\begin{sourcecode}[samples/\allowbreak{}Shop\allowbreak{}Sample/\allowbreak{}Ambient\allowbreak{}Tenant\allowbreak{}Provider.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
-public sealed class AmbientTenantProvider : ITenantProvider
-{
-    private static readonly AsyncLocal<TenantId?> Current = new();
-
-    public TenantId? CurrentTenantId => Current.Value;
-
-    public static IDisposable Use(TenantId tenant)
-    {
-        var previous = Current.Value;
-        Current.Value = tenant;
-        return new Restore(previous);     // sets the previous tenant back on Dispose
-    }
-
-    // private sealed class Restore : IDisposable { ... Current.Value = _previous; }
-}
-\end{sourcecode}
-
-\begin{sourcecode}[Job pattern (\allowbreak{}tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Background\allowbreak{}Tenant\allowbreak{}Tests.\allowbreak{}cs)]{csharp}
-// Tenant first, then scope and context: the interceptors are created inside the scope
-using (AmbientTenantProvider.Use(tenant))
-{
-    await using var scope = scopeFactory.CreateAsyncScope();
-    var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
-    // ... work for this tenant ...
-}
-\end{sourcecode}
-
-Because the provider reads the \code{Async\allowbreak{}Local} on every access, it can be
-registered as a singleton. Parallel jobs keep their own tenant, and after the \code{using}
-block no tenant is left behind; \code{Background\allowbreak{}Tenant\allowbreak{}Tests}
-checks both with 20 parallel jobs. An application with web requests \emph{and} jobs combines
-both sources in one provider: the claim first, otherwise the ambient tenant.
-
-\begin{important}[Never fall back to “all tenants”]
-  Without a tenant, a job must fail or see nothing, never everything. The plugin behaves
-  this way: the session value stays empty, the policies match no rows and saving throws.
-  Jobs that really need all tenants use the reporting role from
-  chapter~\ref{ch:row-level-security-in-production}.
-\end{important}
-
-% ------------------------------------------------------------
-\chapter{CI and API stability}\label{ch:ci-and-api-stability}
-
-\section{The workflow}
-
-The GitHub Actions workflow in the repository implements the recommendations from
-chapters~\ref{ch:test-strategy} and \ref{ch:versioning-and-compatibility}. One job builds
-and tests without and with a database, a second builds the handbook:
-
-\begin{sourcecode}[.\allowbreak{}github/\allowbreak{}workflows/\allowbreak{}ci.\allowbreak{}yml (\allowbreak{}shortened)]{text}
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with: { global-json-file: global.json }
-      - run: dotnet build -c Release
-      - run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Tests -c Release --no-build
-      - run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests
-          -c Release --no-build
-      - run: dotnet test tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests
-          -c Release --no-build
-
-  handbook:                            # both PDFs with LuaLaTeX, in docs/handbook
-    runs-on: ubuntu-latest
-    container: texlive/texlive@sha256:540d…   # TeX Live 2026, pinned by digest
-    steps:
-      # ... checkout ...
-      - run: python3 check_code.py       # line length, excerpts against the sources
-      - run: python3 check_structure.py  # editions in sync, references, tables
-      - run: latexmk EF-Core-Plugin-Handbook.tex
-
-  consumer:                            # check the packages as a consumer
-    steps:
-      - run: eng/consumer-test/run.sh --nativeaot
-\end{sourcecode}
-
-Code excerpts go stale silently when the code changes. A comment line
-\code{\% source: <path>} directly before the listing therefore binds an excerpt to its source
-file, and \code{check\_\allowbreak{}code.\allowbreak{}py} compares the two: comments and elisions
-(\code{...}) do not count, so the German edition may translate comments and excerpts may be
-shortened; every other line must appear in the source in the same order, line breaks may
-differ. With the suffix \code{(strings)} translated messages are left out as well. An excerpt
-whose title names a file of the repository and that is not bound must be called “simplified”.
-\code{check\_\allowbreak{}structure.\allowbreak{}py} checks that both editions have the same
-sections, listings, bindings, tables and callouts per chapter, that every reference target exists
-and that the column widths of every table add up.
-
-The sample builds against stable versions only (.NET 10, EF Core 10). A second workflow,
-\code{compatibility.\allowbreak{}yml}, runs weekly and tests against the newest stable 10.0.x
-patches, because the regular CI builds against the beginning of the version range.
-Chapter~\ref{ch:versioning-and-compatibility} sketches a channel for the next EF major version with previews and
-RCs; it needs the matching .NET prerelease SDK, because the prereleases of EF Core 11 only
-offer \code{net11.\allowbreak{}0}. That is a property of this version, not a general rule:
-EF Core 9 targeted .NET 8.
-
-\section{Protecting the public API}
-
-A plugin has two public APIs: the one for users (Fluent API, options, types) and the one for
-extenders (virtual methods, dependencies, public services). Both break easily and unnoticed.
-The
-\code{Microsoft.\allowbreak{}Code\allowbreak{}Analysis.\allowbreak{}Public\allowbreak{}Api\allowbreak{}Analyzers}
-package keeps the public API in two text files
-(\code{Public\allowbreak{}API.\allowbreak{}Shipped.\allowbreak{}txt},
-\code{Public\allowbreak{}API.\allowbreak{}Unshipped.\allowbreak{}txt}) and reports every
-deviation. Every API change thus becomes visible as a diff in the pull request.
-
-\begin{note}[Setup]
-  On the first build, the analyzer reports every public API as RS0016 because the files are
-  empty. The code fix “Add all items … to the public API” fills them, on the command line with
-  \code{dotnet format analyzers -{}-diagnostics RS0016 -{}-severity warn}. At release time,
-  the content moves from Unshipped to Shipped; from then on, removing a shipped API is a
-  visible breaking change.
-\end{note}
-
-\begin{important}[Warnings are not enough]
-  As long as RS0016 and RS0017 are only warnings, they get lost in the build output. In the
-  sample, the files thus stayed empty up to edition~1.0: 178 warnings in a full build, none
-  in incremental ones, and nobody noticed.
-  \code{Directory.\allowbreak{}Build.\allowbreak{}props} therefore turns both into errors
-  (\code{Warnings\allowbreak{}As\allowbreak{}Errors}); a new public API now has to be entered
-  in \code{Public\allowbreak{}API.\allowbreak{}Unshipped.\allowbreak{}txt}, otherwise the
-  build breaks.
-\end{important}

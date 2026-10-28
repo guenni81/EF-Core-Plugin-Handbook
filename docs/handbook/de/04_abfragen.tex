@@ -11,10 +11,11 @@
     Abfrage
     \item Kapitel~\ref{ch:materialization-from-rows-to-objects}: Materialisierung: von Zeilen zu Objekten
   }}
-\part{Abfragen}\label{part:IV}
+\part{Abfragen}\label{part:queries}
 
 % ------------------------------------------------------------
 \chapter{Die Query-Pipeline}\label{ch:the-query-pipeline}
+\versionrisk{medium}
 
 Eine LINQ-Abfrage durchläuft in EF Core eine Reihe von Stufen, bevor SQL entsteht, und
 eine weitere, bevor Objekte zurückkommen. Jede Query-Erweiterung dieses Buchs sitzt an
@@ -101,7 +102,7 @@ ORDER BY c.Id ASC
 
 \textbf{Postprocessing und Kompilierung.} Der \code{Select\allowbreak{}Expression} wird
 abgeschlossen und zusammen mit dem Shaper, der später die Objekte baut, zu einem Delegaten
-kompiliert. Bis hierher läuft alles einmal pro Abfrageform.
+kompiliert. Vom Preprocessing bis hierher läuft alles einmal pro Abfrageform.
 
 \textbf{Parameterabhängige Verarbeitung.} Erst bei der Ausführung kennt EF die Werte der
 Parameter. Der \code{Relational\allowbreak{}Parameter\allowbreak{}Based\allowbreak{}Sql\allowbreak{}Processor}
@@ -328,6 +329,7 @@ Stufe zuordnen. Erst danach lohnt die Wahl des Mechanismus in der Entscheidungsh
 
 % ------------------------------------------------------------
 \chapter{Methoden und Member übersetzen}\label{ch:translating-methods-and-members}
+\versionrisk{medium}
 
 \section{Das EF.Functions-Muster}
 
@@ -435,7 +437,7 @@ WHERE o."TenantId" = nullif(current_setting('app.tenant_id', TRUE), '')::uuid
   \tablerule
   \code{arguments\allowbreak{}Propagate\allowbreak{}Nullability} & „Das Ergebnis ist genau
   dann NULL, wenn dieses Argument NULL ist.“ Gibt es solche Argumente, leitet EF die
-  Nullbarkeit allein aus ihnen ab. Für Funktionen, die selbst NULL erzeugen
+  Nullability allein aus ihnen ab. Für Funktionen, die selbst NULL erzeugen
   (\code{nullif}, \code{current\_\allowbreak{}setting(\allowbreak{}…,\allowbreak{} true)}),
   deshalb überall \code{false}; für \code{reverse(\allowbreak{}x)} oder
   \code{upper(\allowbreak{}x)} \code{true}. \\
@@ -469,7 +471,7 @@ _sql.Function("nullif", [arguments[1], _sql.Constant("", arguments[1].TypeMappin
   Fehler zeigt sich nur bei Pflichtspalten.
 
   \textbf{Ursache.} Hat eine Funktion propagierende Argumente, bestimmt EFs
-  Nullability-Prozessor ihre Nullbarkeit allein aus diesen. Ist das Argument nicht nullbar
+  Nullability-Prozessor ihre Nullability allein aus diesen. Ist das Argument nicht nullbar
   (eine Pflichtspalte, eine Konstante), gilt die Funktion als nie NULL, egal was
   \code{nullable} sagt.
 
@@ -560,6 +562,7 @@ public class TenancyMemberTranslatorPlugin : IMemberTranslatorPlugin
 
 % ------------------------------------------------------------
 \chapter{Clientseitige Auswertung verhindern}\label{ch:preventing-client-side-evaluation}
+\versionrisk{stable}
 
 Der erste Schritt der Pipeline, der Funcletizer, wertet jeden Teilausdruck vorab in .NET
 aus, der keinen Bezug zu Abfragedaten hat. Aus \code{o.\allowbreak{}Total > limit * 2} wird
@@ -597,9 +600,10 @@ public static class TenancyDbFunctionsExtensions { /* CurrentTenant() */ }
 \end{sourcecode}
 
 Das Plugin liegt im \textbf{Kernpaket} und erkennt Funktionsklassen an einem Attribut. So
-deckt ein einziges Plugin auch die PostgreSQL-spezifischen Funktionen aus
-Kapitel~\ref{ch:custom-sql-expression-nodes} und \ref{ch:aggregate-translators} und jedes
-künftige Provider-Paket ab, ohne dass der Kern diese Klassen kennen muss.
+deckt es jedes Provider-Paket der Mandantenfähigkeit ab, ohne dass der Kern dessen Klassen
+kennen muss. Das eigenständige Beispiel-Plugin aus Kapitel~\ref{ch:custom-sql-expression-nodes}
+und \ref{ch:aggregate-translators} hängt nicht vom Kernpaket ab und bringt deshalb einen eigenen
+Filter mit, der seine Funktionsklasse am Typ erkennt.
 
 Ob eine eigene EF.Functions-Methode dieses Plugin braucht, hängt davon ab, ob sie
 Argumente mit Datenbezug hat.
@@ -639,6 +643,7 @@ public static class ShopDbFunctionsExtensions          // ohne [TenancyDbFunctio
 
 % ------------------------------------------------------------
 \chapter{Weitere Erweiterungspunkte der Abfrage}\label{ch:further-query-extension-points}
+\versionrisk{medium}
 
 Das Beispiel braucht Method- und Member-Translators. Komplexe Plugins greifen auf weitere
 Punkte zurück; hier ein Überblick mit Einordnung:
@@ -652,11 +657,13 @@ Punkte zurück; hier ein Überblick mit Einordnung:
   umgesetzt in Kapitel~\ref{ch:aggregate-translators} \\
   \tablerule
   \code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor} & LINQ-Ausdrucksbaum vor der
-  Übersetzung umschreiben & Singleton-Interceptor; ideal für Query-Rewrites, Tags, Hints \\
+  Übersetzung umschreiben & Singleton-Interceptor; im internen Provider als
+  \code{IInterceptor} registrieren (Kapitel~\ref{ch:bulk-operations-and-the-limits}); ideal für
+  Query-Rewrites, Tags, Hints \\
   \tablerule
   \code{IMaterialization\allowbreak{}Interceptor} & Objekte bei der Materialisierung
   erzeugen, initialisieren oder prüfen & Singleton-Interceptor; muss zustandslos und
-  thread-sicher sein; umgesetzt in Kapitel~\ref{ch:materialization-from-rows-to-objects} \\
+  threadsicher sein; umgesetzt in Kapitel~\ref{ch:materialization-from-rows-to-objects} \\
   \tablerule
   \code{IMethod\allowbreak{}Call\allowbreak{}Translator\allowbreak{}Provider} u. a. &
   Translator-Infrastruktur ersetzen & Einzeldienste des Providers; nur in Ausnahmefällen \\
@@ -684,6 +691,7 @@ Punkte zurück; hier ein Überblick mit Einordnung:
 
 % ------------------------------------------------------------
 \chapter{Materialisierung: von Zeilen zu Objekten}\label{ch:materialization-from-rows-to-objects}
+\versionrisk{stable}
 
 Die bisherigen Kapitel dieses Teils beschreiben den Hinweg: aus LINQ wird SQL.
 Kapitel~\ref{ch:the-update-pipeline} beschreibt den Weg von Entitäten zu INSERT, UPDATE und
@@ -882,12 +890,10 @@ rufen deshalb nicht die Haken auf, sondern die Logik dahinter (siehe unten).
   \code{materialization\allowbreak{}Data.\allowbreak{}Context}.
 
   Singleton-Interceptor-Instanzen gehören außerdem zum Cache-Schlüssel des internen
-  Providers. Wer pro Context eine neue Instanz über
-  \code{Add\allowbreak{}Interceptors} übergibt, bekommt pro Context einen neuen internen
-  Provider samt Modell; ab dem 21. bricht EF standardmäßig mit
-  \code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}
-  ab. Ein Plugin registriert ihn in \code{Apply\allowbreak{}Services}; eine Anwendung
-  übergibt stets dieselbe Instanz.
+  Providers: Eine neue Instanz pro Context über \code{Add\allowbreak{}Interceptors} erzeugt
+  pro Context einen neuen internen Provider samt Modell (Folgen in
+  Kapitel~\ref{ch:the-options-extension}). Ein Plugin registriert ihn deshalb in
+  \code{Apply\allowbreak{}Services}; eine Anwendung übergibt stets dieselbe Instanz.
 \end{important}
 
 \section{Beispiel: Mandanten beim Laden prüfen}
@@ -934,7 +940,7 @@ public class TenantMaterializationInterceptor : IMaterializationInterceptor
         var value = (TenantId)readValue(propertyName)!;
 
         if (value != current)
-            throw new TenancyException("... Row level security did not take effect ...");
+            throw new TenancyException("... isolation did not take effect ...");
     }
 
     // Einmal pro Context über seine Interceptors (wie ApplyTenantSession) zum
@@ -973,8 +979,8 @@ if (Settings.VerifyMaterializedTenants)
   nicht, und die Prüfung schlägt an. \\
   \tablerule
   Im Kernpaket & Die Prüfung kennt weder SQL noch Provider-Typen
-  (Kapitel~\ref{ch:what-belongs-in-the-core}); beide Provider-Pakete aktivieren sie mit einer
-  Zeile. \\
+  (Kapitel~\ref{ch:what-belongs-in-the-core}); alle drei Provider-Pakete aktivieren sie mit
+  einer Zeile. \\
 \end{datatable}
 
 Die Integrationstests stellen die Lücke aus Kapitel~\ref{ch:interceptors} nach: Ein Context
@@ -1038,7 +1044,7 @@ Pooling bleibt der Eintrag über die Ausleihen hinweg richtig, weil ein Context 
 und damit seine Interceptors sein Leben lang behält; der Mandant selbst wird weiterhin bei
 jeder Zeile gelesen. Scheitert das Nachschlagen, speichert die Tabelle nichts, und der
 Konfigurationsfehler bleibt bei jedem Aufruf sichtbar.
-\code{Materialization\allowbreak{}Tests} prüft wiederholte Zeilen in einem Context,
+Die Unit-Tests in \code{Materialization\allowbreak{}Tests} prüfen wiederholte Zeilen in einem Context,
 Contexts mit verschiedenen Mandanten und einen gepoolten Context über zwei Ausleihen.
 
 \section{Grenzen}

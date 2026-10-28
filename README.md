@@ -8,7 +8,8 @@
 A practical guide to writing **plugins for Entity Framework Core 10**, plus a complete,
 tested reference plugin: **`Acme.EntityFrameworkCore.Tenancy`** adds multi-tenancy with
 database-enforced **Row Level Security** to EF Core, for **PostgreSQL** (full
-implementation) and **SQL Server** (second provider).
+implementation) and **SQL Server** (second provider), plus a lean **Cosmos DB** package
+without Row Level Security.
 
 The handbook explains EF Core's extension points chapter by chapter: options extensions,
 internal services, conventions, type mappings, query translation, interceptors,
@@ -17,10 +18,10 @@ nodes. A decision guide leads from a concrete problem to the right extension poi
 concept is shown in the plugin in this repository, and the behavior the book describes is
 backed by more than 100 tests.
 
-> **Status:** `Acme.EntityFrameworkCore.Tenancy` is the reference implementation for the
-> handbook ("Acme" is a placeholder name). It is complete and tested, but deliberately not
-> published as a NuGet package: use it as a template for your own plugin or reference the
-> projects directly.
+> **Status:** This repository is first and foremost a handbook with a reference
+> implementation, not a ready-made library. `Acme.EntityFrameworkCore.Tenancy` ("Acme" is a
+> placeholder name) is complete and tested, but deliberately not published as a NuGet
+> package: use it as a template for your own plugin or reference the projects directly.
 
 ## 📖 The handbook
 
@@ -29,14 +30,16 @@ backed by more than 100 tests.
 | English | [EF-Core-Plugin-Handbook.pdf](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/docs/handbook/out/EF-Core-Plugin-Handbook.pdf) | [`docs/handbook/en`](https://github.com/guenni81/EF-Core-Plugin-Handbook/tree/main/docs/handbook/en) |
 | Deutsch | [EF-Core-Plugin-Handbuch.pdf](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/docs/handbook/out/EF-Core-Plugin-Handbuch.pdf) | [`docs/handbook/de`](https://github.com/guenni81/EF-Core-Plugin-Handbook/tree/main/docs/handbook/de) |
 
-47 chapters in 9 parts plus 6 appendices, about 180 pages, for developers who already use
+48 chapters in 11 parts plus 6 appendices (A–F), about 200 pages, for developers who already use
 EF Core and want to extend it. The PDFs are typeset with LaTeX (LuaLaTeX) so that text and
 code excerpts are versioned together with the code. See [`docs/handbook/README.md`](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/docs/handbook/README.md)
 for how to build them.
 
 ## Quick start
 
-Reference `Acme.EntityFrameworkCore.Tenancy.PostgreSQL` (it brings the core package along)
+There is no NuGet package to install: copy the projects from `src/` into your solution as a
+starting point for your own plugin, or reference them with `<ProjectReference>`. Then
+reference `Acme.EntityFrameworkCore.Tenancy.PostgreSQL` (it brings the core and relational projects along)
 and provide an `ITenantProvider` that tells the plugin the current tenant; the sample
 [`HttpTenantProvider`](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/samples/ShopApi/HttpTenantProvider.cs) reads it from a claim.
 
@@ -115,26 +118,32 @@ per table (FILTER and BLOCK predicates) and `SESSION_CONTEXT`.
 | Design time | Annotation code generator, `[DesignTimeServicesReference]` | 23–25 |
 | Testing | Model, SQL, snapshot round-trip, compiled model and Testcontainers tests | 26 |
 | Shipping | Versioning, stable annotation formats, packaging, CI, Public API analyzer | 27–28, 41 |
+| Bulk operations | `ProtectBulkOperations()`: a query expression interceptor rejects `ExecuteUpdate` on the tenant column, also after projections and joins | 30 |
 | Value generation | `TenantId` keys via convention and `HasValueGeneratorFactory(Type)` | 31 |
 | Operations | RLS pitfalls, threat model, PgBouncer (`UseTransactionPooling()`), legitimate cross-tenant access | 36 |
 | Relationships | Composite foreign keys with the tenant, unique per tenant, shared master data, delete rules | 37 |
 | Retrofitting | From a table without a tenant to RLS, app versions during the change, retries and lost connections, deployment pipeline with separate roles (`docs/deployment`) | 38 |
-| Performance | BenchmarkDotNet project: overhead of the SaveChanges logic, of tenant verification on reading and of query compilation | 39 |
+| Performance | BenchmarkDotNet project: overhead of the SaveChanges logic, of the session round trip, of tenant verification on reading and of query compilation | 39 |
 | ASP.NET Core | `samples/ShopApi`, DbContext factories, background jobs | 40 |
-| Custom SQL nodes | `EF.Functions.IsNotDistinctFrom` with SQL generator and nullability processor; the pgvector operator `<=>` as a test example | 42 |
-| Aggregates | `EF.Functions.Every` (`bool_and`) with FILTER/DISTINCT support | 43 |
+| Custom SQL nodes | Separate sample package without tenancy (`Acme.EntityFrameworkCore.Functions.PostgreSQL`): `EF.Functions.IsNotDistinctFrom` with SQL generator and nullability processor; the pgvector operator `<=>` as a test example | 42 |
+| Aggregates | Same sample package: `EF.Functions.Every` (`bool_and`) with FILTER/DISTINCT support | 43 |
 | Runtime annotations | Tenant property in the compiled model, design-time annotations filtered | 44 |
 | Scaffolding | RLS and policies are read back from the database | 45 |
-| Second provider | SQL Server: security policies and `SESSION_CONTEXT` on the same core | 46–47 |
+| Package layers | Core for any EF Core provider, relational layer (session interceptor, table mappings), provider packages | 46 |
+| Second provider | SQL Server: security policies and `SESSION_CONTEXT` on the same core | 47 |
+| Without SQL | Cosmos DB on the core alone: tenant as partition key, query filter as the only isolation, single-partition queries | 48 |
 | Debugging | Model debug view, resolved services, convention set, query trees, logging | App. D |
 
 ## Repository layout
 
 ```
 src/
-  Acme.EntityFrameworkCore.Tenancy              Core package (provider-independent)
+  Acme.EntityFrameworkCore.Tenancy              Core package (any EF Core provider)
+  Acme.EntityFrameworkCore.Tenancy.Relational   Relational layer (session interceptor, table mappings)
   Acme.EntityFrameworkCore.Tenancy.PostgreSQL   PostgreSQL implementation (complete)
   Acme.EntityFrameworkCore.Tenancy.SqlServer    SQL Server implementation (second provider)
+  Acme.EntityFrameworkCore.Tenancy.Cosmos       Cosmos DB contrast example (core only, no SQL)
+  Acme.EntityFrameworkCore.Functions.PostgreSQL Sample plugin without tenancy: custom SQL node, aggregate
 samples/
   ShopSample                                    Console sample incl. migration workflow
   ShopApi                                       ASP.NET Core minimal API, tenant from a claim
@@ -142,9 +151,12 @@ tests/
   ...Tenancy.Tests                              Unit tests, no database required
   ...Tenancy.IntegrationTests                   Tests against PostgreSQL (Docker)
   ...Tenancy.SqlServer.Tests                    Unit and integration tests for SQL Server (Docker)
+  ...Tenancy.Cosmos.Tests                       Model tests and tests against the Cosmos DB emulator (Docker)
 benchmarks/
   ...Tenancy.Benchmarks                         BenchmarkDotNet micro benchmarks
-docs/handbook/                                  Handbook sources (Python) and PDFs
+docs/handbook/                                  Handbook: LaTeX sources (de/, en/), check scripts (Python), PDFs (out/)
+docs/deployment/                                Deployment pipeline and role setup for the migrations
+eng/consumer-test/                              Consumer test: packs the libraries, fresh app, dotnet-ef, NativeAOT
 docker-compose.yml                              PostgreSQL for the samples
 ```
 
@@ -158,6 +170,8 @@ dotnet build
 dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Tests                # no database
 dotnet test tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests     # requires Docker
 dotnet test tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests      # requires Docker
+dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Cosmos.Tests         # requires Docker (emulator)
+dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Cosmos.Tests --filter "Category!=Emulator"   # model tests only, no Docker
 ```
 
 The packages as a customer gets them (pack, fresh application, `dotnet-ef`, compiled model;
@@ -168,7 +182,8 @@ eng/consumer-test/run.sh --nativeaot
 ```
 
 Micro benchmarks (BenchmarkDotNet): SaveChanges logic and query compilation without a
-database, materialization against PostgreSQL via Testcontainers (needs Docker). `--filter`
+database, materialization and the session round trip (opening per query versus a connection
+held open for the unit of work) against PostgreSQL via Testcontainers (needs Docker). `--filter`
 selects classes, `--job dry` is a quick smoke test:
 
 ```bash
@@ -233,12 +248,27 @@ the very top of `Up()`.
   many-to-many join tables) are rejected while the model is built; TPH, owned types in the
   owner's table or as JSON, table splitting and join entities with a tenant property are
   protected (chapter "Conventions", section "Which table mappings are protected").
+  SQL Server temporal tables are rejected for tenant-owned types too: the security policy
+  covers the current table, not its history table, so `TemporalAll()` would return other
+  tenants' old rows. An `ITenantOwned` type without a mapped `TenantId` is rejected by all
+  three provider packages. The contract with its evidence per provider is in chapter
+  "Without SQL: what carries over to Cosmos DB", section "Comparison of the three providers".
+* With `UseTransactionPooling()` the tenant exists only in transactions that EF begins
+  (`BeginTransaction`, `SaveChanges`). `UseTransaction()` with a transaction of your own and an
+  ambient `TransactionScope` get no tenant and fail closed (chapter "Row Level Security in
+  production", section "Transaction pooling").
+* A correct model does not prove that the running database has the policies.
+  `docs/deployment/check-tenant-policies.postgresql.sql` and `...sqlserver.sql` compare the
+  tenant-owned tables you expect (from the design-time model) with the database, read-only, and
+  report OK, NOT PROTECTED or NOT VERIFIABLE per table (chapter "Row Level Security in
+  production", section "Checking the policies of a running database"). A passed check is a
+  plausibility check, not proof of security.
 * Access across tenants (reports, maintenance) belongs in a separate database role, never
   in a switch the application role could flip (chapter "Row Level Security in production").
 
 ## Compatibility
 
-Package versions equal the handbook edition (packages 1.1.0 = edition 1.1).
+Package versions equal the handbook edition (packages 1.2.0 = edition 1.2).
 
 | Plugin | EF Core | Npgsql EF Core provider |
 |---|---|---|

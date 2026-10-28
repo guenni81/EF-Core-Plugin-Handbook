@@ -4,12 +4,15 @@
   complete multi-tenancy plugin for PostgreSQL and SQL Server.}
 \begin{handbookmeta}
   Edition & \handbookversion \\
-  Versions & EF Core 10, Npgsql.EntityFrameworkCore.PostgreSQL 10, .NET 10 \\
+  Versions & EF Core 10, \mbox{Npgsql.EntityFrameworkCore.PostgreSQL} 10,
+  \mbox{Microsoft.EntityFrameworkCore.SqlServer} 10, .NET 10 \\
   Sample & Complete solution at \textbf{github.com/guenni81/EF-Core-Plugin-Handbook}: core
-  package, two provider packages, two sample apps, unit and integration tests \\
+  package, relational package, provider packages for PostgreSQL, SQL Server and Cosmos DB, a
+  sample package for custom SQL functions, two sample apps, unit and integration tests \\
   Verified & The sample code is built against EF Core 10 and Npgsql 10; unit and integration
   tests run against real PostgreSQL and SQL Server. \\
-  Structure & 9 parts, 45 chapters, 4 appendices \\
+  Structure & \handbookparts\ parts, \handbookchapters\ chapters, \handbookappendices\ appendices
+  (A–\handbooklastappendix) \\
   License & MIT License, © 2026 guenni81. Free to use, copy, modify and share, including
   commercially; see the last page. \\
 \end{handbookmeta}
@@ -55,7 +58,7 @@ edition use English comments and messages. Each snippet's label names the file.
   deal with them.
 \end{note}
 
-\tableofcontents
+\handbooktableofcontents
 
 % ============================================================
 \setpartpreamble{\partintro
@@ -69,10 +72,11 @@ edition use English comments and messages. Each snippet's label names the file.
     \item Chapter~\ref{ch:choosing-the-right-extension-point}: Choosing the right extension
     point
   }}
-\part{Foundations}\label{part:I}
+\part{Foundations}\label{part:foundations}
 
 % ------------------------------------------------------------
 \chapter{What is an EF Core plugin?}\label{ch:what-is-an-ef-core}
+\versionrisk{stable}
 
 The term “plugin” is used for very different things. For this book, it helps to distinguish
 four levels that differ in how deeply they reach into EF Core:
@@ -92,7 +96,8 @@ four levels that differ in how deeply they reach into EF Core:
   plugin, EFCore.NamingConventions \\
   \tablerule
   4 · Providers & A complete database integration including connection, update pipeline and
-  SQL generation. & Npgsql, Pomelo (MySQL), SQLite, Cosmos \\
+  SQL generation. & Npgsql, Pomelo (MySQL), SQLite, Cosmos (chapter~\ref{ch:without-sql-what-carries-over}
+  builds a level~3 plugin on it) \\
 \end{datatable}
 
 This book covers \textbf{level 3} completely. Levels 1 and 2 need no book of their own: they
@@ -129,7 +134,7 @@ both end with a result that can be checked:
   needed \ref{ch:state-lifetimes-and-thread-safety}, \ref{ch:the-query-pipeline},
   \ref{ch:materialization-from-rows-to-objects}, \ref{ch:how-migrations-work},
   \ref{ch:versioning-and-compatibility}, \ref{ch:row-level-security-in-production}--%
-  \ref{ch:retrofitting-and-operating} and part~\ref{part:IX} \\
+  \ref{ch:retrofitting-and-operating} and parts~\ref{part:deep-extensions} and~\ref{part:providers} \\
   \tablerule
   Result & An own plugin with an options extension, a convention, a translator and an
   interceptor that builds as a package & A reasoned choice of an extension point: lifetime,
@@ -162,6 +167,7 @@ book uses every one of these possibilities.
 
 % ------------------------------------------------------------
 \chapter{EF Core's architecture from a plugin's point of view}\label{ch:ef-core-s-architecture-from}
+\versionrisk{medium}
 
 \section{Two containers: the internal service provider}
 
@@ -169,7 +175,8 @@ Every \code{Db\allowbreak{}Context} resolves its infrastructure from an \textbf{
 \code{IService\allowbreak{}Provider}. It is separate from the application's DI container and
 contains several hundred services: type mapping, model building, the query pipeline, change
 tracking, the update pipeline, migrations. A plugin hooks in by registering additional
-services in this container or replacing existing ones.
+services in this container or replacing existing ones. The book also calls it the
+\emph{internal provider} for short; that never means the database provider such as Npgsql.
 
 \begin{flowdiagram}
   \flowstep{DbContextOptions}{Provider extension (UseNpgsql) and plugin extensions
@@ -177,7 +184,8 @@ services in this container or replacing existing ones.
   \flowstep{ServiceProviderCache}{Finds a matching internal provider by hash, or builds one}
   \flowstep{ApplyServices()}{Each extension registers its services in the new provider}
   \flowstep{Internal service provider}{Cached and shared by all matching contexts}
-  \flowstep{Model (cached)}{Built once per provider: conventions, type mappings, validation}
+  \flowstep{Model (cached)}{Built once per provider and context type: conventions, type
+  mappings, validation}
   \flowstep{Query, SaveChanges, Migrations}{Run with the services of this provider}
 \end{flowdiagram}
 
@@ -185,6 +193,25 @@ Two caches are decisive here. The \textbf{service provider} is cached based on t
 contexts with the same configuration share one provider. The \textbf{model} is cached per
 provider (and context type). Both make EF Core fast, but they have direct consequences for
 plugins, which chapter~\ref{ch:the-options-extension} covers in detail.
+
+The model exists in two forms. The \textbf{design-time model} contains all annotations and
+is the basis for migrations and snapshots. At run time, \code{context.\allowbreak{}Model}
+returns a lean, read-only \textbf{runtime model} that keeps only the annotations needed at
+run time. Which ones these are and how a plugin controls them is shown in
+chapters~\ref{ch:declarative-sql-from-annotations} and \ref{ch:property-level-fluent-api-and};
+but already in part~\ref{part:model}, plugin code that reads at run time sees only the
+runtime model.
+
+\section{The path through the book}
+
+The parts of the book follow the path of a request through this architecture: options and
+internal service provider (part~\ref{part:infrastructure}), model (part~\ref{part:model}),
+query and materialization (part~\ref{part:queries}), interceptors and diagnostics
+(part~\ref{part:runtime}), migrations and design time (part~\ref{part:migrations}). In this
+order, the update pipeline of \code{Save\allowbreak{}Changes} comes after the interceptors;
+because plugins rarely extend it directly, it sits with the advanced extension points
+(chapter~\ref{ch:the-update-pipeline}). Operating against the database follows in
+part~\ref{part:operations}.
 
 \section{Lifetimes}
 
@@ -340,6 +367,7 @@ many more of them.
 
 % ------------------------------------------------------------
 \chapter{The sample scenario}\label{ch:the-sample-scenario}
+\versionrisk{stable}
 
 The sample plugin \textbf{Acme.EntityFrameworkCore.Tenancy} makes EF Core multi-tenant with
 PostgreSQL. The database itself enforces tenant separation through \textbf{Row Level
@@ -371,7 +399,8 @@ db.Orders.Add(new Order { Total = 42 });         // the plugin sets TenantId
 var mine = await db.Orders.ToListAsync();        // RLS filters in the database
 \end{sourcecode}
 
-To make this work, the plugin uses every extension point covered in this book:
+To make this work, the plugin uses almost every extension point covered in this book; the
+others have examples of their own, marked as sample package or teaching example in the table:
 
 \begin{datatable}{H{1.20}H{1.50}H{0.30}}
   \textbf{Requirement} & \textbf{Implementation} & \textbf{Ch.} \\
@@ -411,7 +440,9 @@ To make this work, the plugin uses every extension point covered in this book:
   \tablerule
   \code{EF.\allowbreak{}Functions.\allowbreak{}Is\allowbreak{}Not\allowbreak{}Distinct\allowbreak{}From},
   \code{EF.\allowbreak{}Functions.\allowbreak{}Every} & Custom SQL node, aggregate
-  translator & \ref{ch:custom-sql-expression-nodes}--\ref{ch:aggregate-translators} \\
+  translator; a separate sample package without tenancy & \ref{ch:custom-sql-expression-nodes}--\ref{ch:aggregate-translators} \\
+  \tablerule
+  \code{now()} in \code{UPDATE} & Update SQL generator; teaching example in the test project & \ref{ch:the-update-pipeline} \\
   \tablerule
   Tenant property with any name &
   \code{Is\allowbreak{}Tenant\allowbreak{}Property(\allowbreak{})}, runtime annotation & \ref{ch:property-level-fluent-api-and}
@@ -424,36 +455,51 @@ To make this work, the plugin uses every extension point covered in this book:
 
 \section{Package architecture}
 
-The plugin consists of three NuGet packages. The \textbf{core package} contains everything
+At its heart the plugin consists of four NuGet packages. The \textbf{core package} contains everything
 that is independent of the database and that assemblies with entity classes may reference
-without pulling in a provider. The \textbf{PostgreSQL package} is the complete
+without pulling in a provider; it works with any EF Core provider. The \textbf{relational
+package} adds what every SQL database needs: the session interceptor on the connection and the
+check of the table mappings. The \textbf{PostgreSQL package} is the complete
 implementation this book uses to explain everything. The \textbf{SQL Server package} uses
-the same core and shows in chapter~\ref{ch:a-second-provider-sql-server} what a second
-provider has to implement itself.
+the same core and relational layer and shows in chapter~\ref{ch:a-second-provider-sql-server} what a second
+provider has to implement itself. A fifth package,
+\code{Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Cosmos},
+builds on the core alone and shows what carries over to a database without SQL
+(chapter~\ref{ch:without-sql-what-carries-over}). Besides these, the small package
+\code{Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Functions.\allowbreak{}Postgre\allowbreak{}SQL}
+holds the examples for custom SQL nodes and aggregates; they have nothing to do with
+multi-tenancy (chapter~\ref{ch:custom-sql-expression-nodes}).
 
-\begin{sourcecode}[Structure of the three packages]{text}
-Acme.EntityFrameworkCore.Tenancy               Core (EF Core relational, no provider)
+\begin{sourcecode}[Structure of the four packages]{text}
+Acme.EntityFrameworkCore.Tenancy               Core (EF Core only, any provider)
 ├─ TenantId, TenantIdConverter, TenantIdJsonReaderWriter, TenancyException
 ├─ ITenantOwned, ITenantProvider, NoTenantIsolationAttribute
 ├─ EF.Functions.CurrentTenant(), TenancyDbFunctionsAttribute
 ├─ Metadata/         runtime annotation, IsTenantProperty(), candidate lookup
 ├─ Conventions/      value generation for TenantId keys
+├─ ValueGeneration/  TenantIdValueGenerator and factory
 ├─ Query/            evaluatable expression filter (for all packages)
-├─ Interceptors/     SaveChanges interceptor, abstract session interceptor
+├─ Interceptors/     SaveChanges, materialization and bulk update interceptors
 ├─ Diagnostics/      event IDs, logging definitions, logger extensions
+├─ Testing/          test mode for SQLite and InMemory
 └─ DependencyInjection/  AddAcmeTenancy<T>()
+
+Acme.EntityFrameworkCore.Tenancy.Relational    relational layer (EF Core relational)
+├─ Interceptors/     abstract session interceptor (DbConnection), tracing
+├─ Metadata/         TenantTableMappingValidator (TPT, TPC, entity splitting, ...)
+└─ Database.ApplyTenantSession()
 
 Acme.EntityFrameworkCore.Tenancy.PostgreSQL    complete implementation
 ├─ Infrastructure/   options extension, builder, singleton options
 ├─ Storage/          TenantIdTypeMapping, type mapping plugin
-├─ Query/            translators, custom SQL node, aggregate, SQL generator
+├─ Query/            translators (CurrentTenant, TenantId members)
 ├─ Metadata/         RLS annotations, RlsPolicy, annotation provider
 ├─ Builders/         Fluent API (HasRowLevelSecurity, HasPolicy, ...)
 ├─ Conventions/      isolation, attribute, validation, convention set plugin
 ├─ Migrations/       SQL generator, custom operations
 ├─ Design/           code generators, design-time services
 ├─ Scaffolding/      read RLS and policies from the database
-└─ Runtime/          TenantConnectionInterceptor
+└─ Runtime/          session interceptors (connection, transaction pooling)
 
 Acme.EntityFrameworkCore.Tenancy.SqlServer     second provider
                                                (chapter "A second provider: SQL Server")
@@ -468,6 +514,7 @@ Acme.EntityFrameworkCore.Tenancy.SqlServer     second provider
 
 % ------------------------------------------------------------
 \chapter{Choosing the right extension point}\label{ch:choosing-the-right-extension-point}
+\versionrisk{stable}
 
 The parts of this book follow EF Core's architecture: infrastructure, model, queries, run
 time, migrations. A concrete problem rarely does. “Every row belongs to a tenant” can be
@@ -657,8 +704,10 @@ from “Extend or replace?” (chapter~\ref{ch:ef-core-s-architecture-from}):
 
 \section{Model, types and values}\phantomsection\label{sec:decide-model}
 
-Everything in this area runs during model building, that is once per internal provider, and
-ends up in the cached model. Run-time values therefore have no place here.
+Everything in this area is decided during model building, that is once per internal
+provider and context type, and ends up in the cached model. Value converters and value
+generators do run on every read, write or add, but as the model has configured them.
+Run-time values therefore have no place in this configuration.
 
 \begin{datatable}{H{1.35}H{1.05}H{1.25}H{0.35}}
   \textbf{Problem and mechanism} & \textbf{Check first} & \textbf{Typical wrong choice} &
@@ -669,8 +718,9 @@ ends up in the cached model. Run-time values therefore have no place here.
   \cellmeta{public · no service} &
   Does existing configuration of EF or the provider cover the need (comment, check
   constraint, index method)? &
-  Storing objects instead of simple values; storing default values, which creates empty
-  migrations. &
+  Storing objects instead of simple values; passing default values on to the relational model,
+  which creates empty migrations; dropping an explicit default, which a convention then
+  overrides. &
   \ref{ch:annotations-and-fluent-api} \\
   \tablerule
   \textbf{Users should configure the plugin per entity or property.} Fluent API extension,
@@ -727,8 +777,10 @@ ends up in the cached model. Run-time values therefore have no place here.
   Does a value converter suffice that users set with \code{Has\allowbreak{}Conversion} or
   \code{Configure\allowbreak{}Conventions}? &
   Replacing \code{IRelational\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source}
-  (single, provider base); forgetting \code{Clone} or the static \code{Default} property. &
-  \ref{ch:type-mappings-and-value-converters} \\
+  (single, provider base); forgetting \code{Clone} or the static \code{Default} property;
+  forgetting the \code{Json\allowbreak{}Value\allowbreak{}Reader\allowbreak{}Writer},
+  without which JSON columns fail during model building. &
+  \ref{ch:type-mappings-and-value-converters}, \ref{ch:complex-types-and-json} \\
   \tablerule
   \textbf{Values should be converted when reading and writing.}
   \code{Value\allowbreak{}Converter}
@@ -847,7 +899,8 @@ and therefore comes first:
   \cellmeta{public · multiple · Singleton} &
   Does a named query filter or a translator suffice? &
   Using per-request state although the result is cached per query shape; passing a new
-  instance per context, which creates a new internal provider every time. &
+  instance per context, which creates a new internal provider every time; registering it as
+  \code{ISingleton\allowbreak{}Interceptor}, then EF never calls it. &
   \ref{ch:further-query-extension-points}, \ref{ch:bulk-operations-and-the-limits} \\
   \tablerule
   \textbf{The translated expression tree should be adjusted.}
@@ -856,7 +909,7 @@ and therefore comes first:
   Can it be done earlier, with a query interceptor or a translator? &
   Replacing the service without deriving from the provider's implementation; then its
   post-processing steps are missing. &
-  \ref{ch:further-query-extension-points} \\
+  \ref{ch:the-query-pipeline}, \ref{ch:further-query-extension-points} \\
   \tablerule
   \textbf{Loaded objects should be created, initialized or checked (materialization).}
   \code{IMaterialization\allowbreak{}Interceptor}
@@ -904,19 +957,20 @@ belongs in the database, not in an interceptor.
   query should change. &
   Rewriting \code{Command\allowbreak{}Text} by text replacement; that breaks with every
   change in the shape of the SQL. &
-  \ref{ch:interceptors}, \ref{ch:the-update-pipeline} \\
+  \ref{ch:interceptors}, \ref{ch:diagnostics-and-logging}, \ref{ch:the-update-pipeline} \\
   \tablerule
   \textbf{State should be bound to a transaction.}
   \code{IDb\allowbreak{}Transaction\allowbreak{}Interceptor}
   \cellmeta{public · multiple · Scoped} &
   Does the connection interceptor suffice? It does as long as no transaction pooling is
   involved. &
-  Using transaction-local settings but allowing queries outside of transactions: those run
-  without the state. In the sample:
-  \code{Use\allowbreak{}Transaction\allowbreak{}Pooling(\allowbreak{})}. &
+  Using transaction-local settings but expecting queries outside of transactions or
+  transactions that EF does not begin itself (\code{Use\allowbreak{}Transaction},
+  \code{Transaction\allowbreak{}Scope}) to work: they run without the state. The sample then
+  fails closed (page~\pageref{sec:transaction-pooling}). &
   \ref{ch:row-level-security-in-production} \\
   \tablerule
-  \textbf{INSERT, UPDATE or DELETE should take a different shape (upsert).}
+  \textbf{INSERT, UPDATE or DELETE should take a different shape (upsert, \code{now()} in UPDATE).}
   Update pipeline, for example \code{IUpdate\allowbreak{}Sql\allowbreak{}Generator}
   \cellmeta{provider base · single · Singleton or Scoped} &
   SaveChanges interceptor (rewriting states), command interceptor or
@@ -960,7 +1014,8 @@ service provider of their own. A plugin registers services for that provider thr
   \textbf{The differ should generate custom operations by itself.}
   \code{IMigrations\allowbreak{}Model\allowbreak{}Differ} and
   \code{ICSharp\allowbreak{}Migration\allowbreak{}Operation\allowbreak{}Generator}
-  \cellmeta{pubternal · single · Scoped or Singleton (design time)} &
+  \cellmeta{differ pubternal, generator public · single · Scoped or Singleton (design
+  time)} &
   The declarative way through annotations, almost always the better choice. &
   Replacing the differ just because a changed annotation needs SQL; the SQL generator does
   that. &
@@ -974,7 +1029,7 @@ service provider of their own. A plugin registers services for that provider thr
   Do nothing: \code{Has\allowbreak{}Annotation} in the snapshot works, it is just hard to
   read. &
   Registering design-time services in \code{Apply\allowbreak{}Services}, that is in the
-  run-time container; not removing translated annotations from the dictionary. &
+  internal provider; not removing translated annotations from the dictionary. &
   \ref{ch:design-time-services} \\
   \tablerule
   \textbf{The compiled model should omit design-time annotations or contain complex

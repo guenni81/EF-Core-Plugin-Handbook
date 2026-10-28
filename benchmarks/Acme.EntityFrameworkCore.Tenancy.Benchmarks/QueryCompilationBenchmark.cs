@@ -27,7 +27,7 @@ public sealed class PlainBenchmarkContext : DbContext
 
 /// <summary>
 /// What the plugin adds to query compilation (translator plugins, evaluatable expression filter,
-/// the replaced SQL generator and nullability processor, optionally the query filter) and
+/// optionally the query filter) and
 /// whether the query cache hides it afterwards. ToQueryString runs the whole pipeline up to
 /// the SQL without a connection; no database is needed.
 /// </summary>

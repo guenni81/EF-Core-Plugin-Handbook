@@ -1,3 +1,4 @@
+using Acme.EntityFrameworkCore.Tenancy.Metadata;
 using Acme.EntityFrameworkCore.Tenancy.SqlServer.Infrastructure;
 using Acme.EntityFrameworkCore.Tenancy.SqlServer.Metadata;
 using Microsoft.EntityFrameworkCore;
@@ -143,4 +144,141 @@ public class SqlServerTableMappingTests
     public void Implicit_join_table_is_rejected()
         => Assert.Contains("join table", Rejected(m =>
             m.Entity<Project>().HasMany(p => p.Labels).WithMany(l => l.Projects)));
+}
+
+/// <summary>Entity type without tenant reference.</summary>
+public class Country
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+}
+
+/// <summary>
+/// Temporal tables: the security policy protects the current table only, the history table
+/// stays readable for every tenant via FOR SYSTEM_TIME (chapter "Multiple providers").
+/// </summary>
+public class SqlServerTemporalTableTests
+{
+    private static ITable Table(DbContext ctx, string name)
+        => ctx.GetService<IDesignTimeModel>().Model.GetRelationalModel().Tables
+            .Single(t => t.Name == name);
+
+    [Fact]
+    public void Temporal_tenant_owned_table_is_rejected()
+    {
+        using var ctx = MappingContext.Create(m => m.Entity<Order>().ToTable(t => t.IsTemporal()));
+
+        var message = Assert.Throws<InvalidOperationException>(() => ctx.Model).Message;
+
+        Assert.Contains("temporal table", message);
+        Assert.Contains("history table", message);
+    }
+
+    [Fact]
+    public void Temporal_tph_hierarchy_is_rejected()
+    {
+        using var ctx = MappingContext.Create(m =>
+        {
+            m.Entity<Payment>().ToTable(t => t.IsTemporal());
+            m.Entity<CardPayment>();
+        });
+
+        Assert.Contains("temporal table", Assert.Throws<InvalidOperationException>(() => ctx.Model).Message);
+    }
+
+    [Fact]
+    public void Temporal_table_without_tenant_reference_stays_supported()
+    {
+        using var ctx = MappingContext.Create(m =>
+        {
+            m.Entity<Country>().ToTable(t => t.IsTemporal());
+            m.Entity<Order>();
+        });
+
+        Assert.True(ctx.Model.FindEntityType(typeof(Country))!.IsTemporal());
+        Assert.Null(Table(ctx, "Country")[SqlServerRlsAnnotationNames.TenantColumn]);
+        Assert.Equal("TenantId", Table(ctx, "Order")[SqlServerRlsAnnotationNames.TenantColumn]);
+    }
+
+    [Fact]
+    public void Temporal_table_of_an_opted_out_entity_type_stays_supported()
+    {
+        using var ctx = MappingContext.Create(m => m.Entity<AuditEntry>().ToTable(t => t.IsTemporal()));
+
+        Assert.True(ctx.Model.FindEntityType(typeof(AuditEntry))!.IsTemporal());
+        Assert.Null(Table(ctx, "AuditEntry")[SqlServerRlsAnnotationNames.TenantColumn]);
+        Assert.DoesNotContain(Contexts.CreateSql(ctx), s => s.Contains("SECURITY POLICY"));
+    }
+}
+
+/// <summary>Implements the interface explicitly; the mapped property has another name.</summary>
+public class Contract : ITenantOwned
+{
+    public int Id { get; set; }
+    public TenantId Mandant { get; set; }
+
+    TenantId ITenantOwned.TenantId
+    {
+        get => Mandant;
+        set => Mandant = value;
+    }
+}
+
+/// <summary>
+/// An ITenantOwned type without a mapped tenant property must fail while the model is built,
+/// as with PostgreSQL; otherwise it would lose its policy and the SaveChanges check silently.
+/// </summary>
+public class SqlServerTenantPropertyValidationTests
+{
+    private static ITable Table(DbContext ctx, string name)
+        => ctx.GetService<IDesignTimeModel>().Model.GetRelationalModel().Tables
+            .Single(t => t.Name == name);
+
+    [Fact]
+    public void Ignored_tenant_property_is_rejected()
+    {
+        using var ctx = MappingContext.Create(m => m.Entity<Order>().Ignore(o => o.TenantId));
+
+        var message = Assert.Throws<InvalidOperationException>(() => ctx.Model).Message;
+
+        Assert.Contains("'Order' implements ITenantOwned", message);
+        Assert.Contains("is not mapped", message);
+    }
+
+    [Fact]
+    public void Explicit_interface_implementation_without_marking_is_rejected()
+    {
+        using var ctx = MappingContext.Create(m => m.Entity<Contract>());
+
+        Assert.Contains("IsTenantProperty()",
+            Assert.Throws<InvalidOperationException>(() => ctx.Model).Message);
+    }
+
+    [Fact]
+    public void Explicitly_marked_property_with_another_name_is_protected()
+    {
+        using var ctx = MappingContext.Create(
+            m => m.Entity<Contract>().Property(c => c.Mandant).IsTenantProperty());
+
+        Assert.Equal("Mandant", ctx.Model.FindEntityType(typeof(Contract))!.GetTenantPropertyName());
+        Assert.Equal("Mandant", Table(ctx, "Contract")[SqlServerRlsAnnotationNames.TenantColumn]);
+        Assert.Contains(Contexts.CreateSql(ctx), s => s.Contains("CREATE SECURITY POLICY"));
+    }
+
+    [Fact]
+    public void Opted_out_entity_type_stays_unprotected_without_error()
+    {
+        using var ctx = MappingContext.Create(m => m.Entity<AuditEntry>());
+
+        Assert.Null(ctx.Model.FindEntityType(typeof(AuditEntry))!.GetTenantPropertyName());
+        Assert.Null(Table(ctx, "AuditEntry")[SqlServerRlsAnnotationNames.TenantColumn]);
+    }
+
+    [Fact]
+    public void Entity_type_without_tenant_reference_is_unaffected()
+    {
+        using var ctx = MappingContext.Create(m => m.Entity<Country>());
+
+        Assert.Null(ctx.Model.FindEntityType(typeof(Country))!.GetTenantPropertyName());
+    }
 }

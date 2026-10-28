@@ -16,7 +16,7 @@
     <PackageReference Include="System.Security.Cryptography.Pkcs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Acme.EntityFrameworkCore.Tenancy\Acme.EntityFrameworkCore.Tenancy.csproj" />
+    <ProjectReference Include="..\Acme.EntityFrameworkCore.Tenancy.Relational\Acme.EntityFrameworkCore.Tenancy.Relational.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers">

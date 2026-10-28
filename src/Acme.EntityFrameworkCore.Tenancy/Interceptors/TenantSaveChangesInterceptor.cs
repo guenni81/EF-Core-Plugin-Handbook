@@ -29,9 +29,11 @@ public class TenantSaveChangesInterceptor : SaveChangesInterceptor
         _tenants = tenants;
     }
 
-    // The tenant provider of the context this instance was added to; the singleton
-    // materialization interceptor finds it here
-    internal ITenantProvider Tenants => _tenants;
+    /// <summary>
+    /// The tenant provider of the context this instance was added to. The singleton
+    /// materialization interceptor and the Cosmos query filter find it here.
+    /// </summary>
+    public ITenantProvider Tenants => _tenants;
 
     /// <summary>Applies and checks the tenant before a synchronous SaveChanges.</summary>
     /// <exception cref="TenancyException">The changes violate tenant separation.</exception>

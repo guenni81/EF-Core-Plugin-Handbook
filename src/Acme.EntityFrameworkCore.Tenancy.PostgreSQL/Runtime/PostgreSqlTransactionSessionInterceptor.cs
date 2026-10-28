@@ -34,6 +34,7 @@ public class PostgreSqlTransactionSessionInterceptor : DbTransactionInterceptor,
     }
 
     /// <summary>Sets the tenant for the transaction EF has just begun.</summary>
+    /// <remarks>If the command fails, the transaction is rolled back and disposed.</remarks>
     /// <param name="connection">The connection of the transaction.</param>
     /// <param name="eventData">Context and transaction information.</param>
     /// <param name="result">The transaction.</param>
@@ -43,8 +44,19 @@ public class PostgreSqlTransactionSessionInterceptor : DbTransactionInterceptor,
     {
         ArgumentNullException.ThrowIfNull(eventData);
 
-        using var command = CreateSessionCommand(connection, result, eventData.Context);
-        command.ExecuteNonQuery();
+        try
+        {
+            using var command = CreateSessionCommand(connection, result, eventData.Context);
+            command.ExecuteNonQuery();
+        }
+        catch
+        {
+            // EF only tracks the transaction once this method returns. Left open, it would block
+            // every later BeginTransaction of the context ("a transaction is already in progress")
+            result.Dispose();       // rolls back
+            throw;
+        }
+
         return result;
     }
 
@@ -62,8 +74,17 @@ public class PostgreSqlTransactionSessionInterceptor : DbTransactionInterceptor,
     {
         ArgumentNullException.ThrowIfNull(eventData);
 
-        await using var command = CreateSessionCommand(connection, result, eventData.Context);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        try
+        {
+            await using var command = CreateSessionCommand(connection, result, eventData.Context);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        catch
+        {
+            await result.DisposeAsync();       // rolls back, like TransactionStarted
+            throw;
+        }
+
         return result;
     }
 

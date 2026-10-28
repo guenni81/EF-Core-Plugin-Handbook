@@ -132,4 +132,27 @@ public static class SqlServerTenancyOptionsBuilderExtensions
 
         return sqlServerOptionsBuilder;
     }
+
+    /// <summary>
+    /// Tags the current activity with the tenant (<c>tenant.id</c>) before every command, for
+    /// traces in OpenTelemetry (default: off).
+    /// </summary>
+    /// <param name="sqlServerOptionsBuilder">The builder passed to <c>UseSqlServer</c>.</param>
+    /// <param name="enable">Whether to tag activities.</param>
+    /// <returns>The same builder, for chaining.</returns>
+    public static SqlServerDbContextOptionsBuilder EnrichOpenTelemetry(
+        this SqlServerDbContextOptionsBuilder sqlServerOptionsBuilder, bool enable = true)
+    {
+        ArgumentNullException.ThrowIfNull(sqlServerOptionsBuilder);
+
+        var optionsBuilder = ((IRelationalDbContextOptionsBuilderInfrastructure)sqlServerOptionsBuilder)
+            .OptionsBuilder;
+        var extension = optionsBuilder.Options.FindExtension<SqlServerTenancyOptionsExtension>()
+                        ?? new SqlServerTenancyOptionsExtension();
+
+        ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(
+            extension.WithSettings(extension.Settings with { EnrichOpenTelemetry = enable }));
+
+        return sqlServerOptionsBuilder;
+    }
 }

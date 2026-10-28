@@ -1,16 +1,17 @@
 % ============================================================
 \setpartpreamble{\partintro
-  {Testen, versionieren, paketieren, und die Checkliste für den Weg von A bis Z.}
+  {Testen, versionieren, paketieren und die Checkliste für den Weg von A bis Z.}
   {
     \item Kapitel~\ref{ch:test-strategy}: Teststrategie
     \item Kapitel~\ref{ch:versioning-and-compatibility}: Versionierung und Kompatibilität
     \item Kapitel~\ref{ch:packaging-and-documentation}: Packaging und Dokumentation
     \item Kapitel~\ref{ch:the-checklist-from-a-to}: Die Checkliste von A bis Z
   }}
-\part{Qualität und Auslieferung}\label{part:VII}
+\part{Qualität und Auslieferung}\label{part:quality}
 
 % ------------------------------------------------------------
 \chapter{Teststrategie}\label{ch:test-strategy}
+\versionrisk{medium}
 
 Plugins lassen sich erstaunlich weit ohne Datenbank testen. Modellbau, Type Mappings,
 SQL-Übersetzung, Migrations-SQL und Snapshots brauchen nur einen Connection-String, keine
@@ -34,7 +35,7 @@ Verbindung. Die Teststrategie des Beispiels hat vier Ebenen:
 
 Tests bauen viele Contexts mit unterschiedlichem
 \code{On\allowbreak{}Model\allowbreak{}Creating}. Weil EF das Modell pro internem Provider
-cached, muss jeder Test einen eigenen Provider bekommen; dafür gibt es
+cacht, muss jeder Test einen eigenen internen Provider bekommen; dafür gibt es
 \code{Enable\allowbreak{}Service\allowbreak{}Provider\allowbreak{}Caching(\allowbreak{}false)}:
 
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Test\allowbreak{}Model.\allowbreak{}cs (\allowbreak{}gekürzt, vereinfacht)]{csharp}
@@ -78,8 +79,54 @@ public static IReadOnlyList<string> MigrationSql(DbContext? source, DbContext ta
   Translators und Migrationen laufen also nie; SQLite hat einen anderen SQL-Dialekt, andere
   Type Mappings und keine Row Level Security. Ein provider-spezifisches Plugin wird mit
   seinem eigenen Provider getestet: ohne Datenbank (nur Connection-String) für alles bis zum
-  SQL-Text, gegen die echte Datenbank für das Verhalten.
+  SQL-Text, gegen die echte Datenbank für das Verhalten. Für Anwendungen, die das Plugin
+  nutzen, sieht es anders aus (nächster Abschnitt).
 \end{note}
+
+\section{Testmodus für Anwendungen}
+
+Anwendungen haben oft hunderte Tests ihrer Geschäftslogik auf SQLite oder InMemory. Sie prüfen
+nicht die Isolation, sondern die eigene Logik, und sie dürfen nicht schon deshalb scheitern,
+weil die Entitäten \code{ITenant\allowbreak{}Owned} implementieren. Das PostgreSQL-Paket
+lehnt SQLite bewusst ab, und diese Prüfung abzuschalten hilft nicht: Das Paket ersetzt
+Provider-Dienste durch Npgsql-Ableitungen, bildet \code{Tenant\allowbreak{}Id} auf
+\code{uuid} ab und filtert mit \code{current\_\allowbreak{}setting(\allowbreak{})}. Der Kern
+hat deshalb einen eigenen Testmodus, der nur die anwendungsseitige Hälfte des Plugins enthält:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/TestingModeTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Testing\allowbreak{}Mode\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+private sealed class AppContext : DbContext
+{
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+        => modelBuilder.HasTenantQueryFilters(this);
+}
+
+new DbContextOptionsBuilder<AppContext>()
+    .UseSqlite(connection)
+    .UseAcmeTenancyForTesting(Services(tenants))
+    .Options
+
+ctx.Orders.Add(new Order { Total = 1 });      // TenantId bewusst leer
+await ctx.SaveChangesAsync();
+\end{sourcecode}
+
+\code{Use\allowbreak{}Acme\allowbreak{}Tenancy\allowbreak{}For\allowbreak{}Testing(\allowbreak{}sp)}
+bildet \code{Tenant\allowbreak{}Id} für jeden Provider als \code{Guid} ab (über einen
+Value-Converter-Selector, wie EF es für Enums macht), ergänzt den SaveChanges-Interceptor des
+Kerns und hinterlegt dafür die Mandanten-Property.
+\code{Has\allowbreak{}Tenant\allowbreak{}Query\allowbreak{}Filters(\allowbreak{}this)} filtert
+mit dem Mandanten als Abfrageparameter, derselbe Filter wie für Cosmos DB
+(Kapitel~\ref{ch:without-sql-what-carries-over}). Row Level Security, Migrations-SQL, Session
+und Translators fehlen. \code{Testing\allowbreak{}Mode\allowbreak{}Tests} betreibt den Modus
+auf SQLite und InMemory.
+
+\begin{important}[Ein Testmodus, kein Produktivmodus]
+  \code{Use\allowbreak{}Acme\allowbreak{}Tenancy\allowbreak{}For\allowbreak{}Testing} lehnt
+  PostgreSQL, SQL Server und Cosmos DB ab, damit er die echte Isolation nicht versehentlich
+  ersetzt. Ob die Isolation hält, zeigen die Integrationstests des Plugins und die
+  Integrationstests der Anwendung gegen die echte Datenbank (Testcontainers); der Testmodus
+  hält nur die Tests der Geschäftslogik am Laufen.
+\end{important}
 
 \section{Was getestet wird}
 
@@ -108,7 +155,8 @@ public static IReadOnlyList<string> MigrationSql(DbContext? source, DbContext ta
   \tablerule
   Keine Phantom-Migration & Unverändertes Modell erzeugt keine einzige Operation. \\
   \tablerule
-  Migrations-SQL & Initial, Änderung (DROP + CREATE), Opt-out, eigene Operationen. \\
+  Migrations-SQL & Initial, Änderung (DROP + CREATE), Opt-out, eigene Operationen,
+  Reihenfolge von Policy und Spaltenänderungen. \\
   \tablerule
   SaveChanges-Logik & Setzen, fremder Mandant, Umhängen, kein Mandant. \\
   \tablerule
@@ -117,7 +165,7 @@ public static IReadOnlyList<string> MigrationSql(DbContext? source, DbContext ta
   RLS in PostgreSQL & Isolation, keine Zeilen ohne Mandant, WITH CHECK greift. \\
   \tablerule
   Grenzfälle (Kapitel~\ref{ch:bulk-operations-and-the-limits}--\ref{ch:advanced-migrations})
-  & ExecuteUpdate und Raw SQL gegen RLS, Value Generation, JSON-Spalten, Compiled Model,
+  & ExecuteUpdate und rohes SQL gegen RLS, Value Generation, JSON-Spalten, Compiled Model,
   idempotentes Skript. \\
   \tablerule
   Kombinierbarkeit & Decorator um den Migrations-Generator und die Kompositionsmatrix zweier
@@ -164,7 +212,8 @@ public void Snapshot_roundtrip_produces_no_differences()
 
 \section{Integrationstests mit Testcontainers}
 
-Das echte Sicherheitsverhalten lässt sich nur gegen PostgreSQL prüfen. Die Fixture startet
+Das echte Sicherheitsverhalten lässt sich nur gegen die echte Datenbank prüfen, hier am Beispiel
+PostgreSQL. Die Fixture startet
 einen Container, legt das Schema mit \code{Ensure\allowbreak{}Created} an (inklusive RLS,
 Kapitel~\ref{ch:how-migrations-work}), führt die eigenen Migrations-Operationen real aus und
 verbindet die Tests mit einer eingeschränkten Rolle:
@@ -205,13 +254,67 @@ public async Task Database_rejects_rows_of_other_tenant()
   NetTopologySuite-Plugin im EF-Repository zeigt, wie ein Plugin sie nutzt.
 \end{tip}
 
+\section{Kombinationen aus Migrationen und Isolation}
+
+Einzelne Funktionen sind gut abgedeckt; die Fehler, die ein Review fand, lagen in Kombinationen:
+ein geänderter Session-Schlüssel zusammen mit einer gelöschten Tabelle, eine Temporal-Tabelle,
+eine ignorierte Mandanten-Property. Ein vollständiges kartesisches Produkt aller
+Migrations-Operationen und Einstellungen wäre groß und meist redundant. Die Tests decken deshalb
+eine kleine Matrix ab, ausgewählt nach einer Frage: Wo berühren zwei Funktionen dasselbe
+Datenbankobjekt? Bei SQL Server sind das die gemeinsame Predicate-Funktion und die
+schemagebundene Policy, bei PostgreSQL die Policy und die Spalten, die sie nennt. Jeder
+Migrationsfall wird von EFs echtem Differ erzeugt, läuft Up und Down in einer Transaktion gegen
+die echte Datenbank und liest und schreibt danach als eingeschränkte App-Rolle für zwei
+Mandanten:
+
+\begin{datatable}{H{1.05}H{0.95}H{1.00}}
+  \textbf{Kombination} & \textbf{Test} & \textbf{Prüft} \\
+  \tablehead
+  Session-Schlüssel oder Policy-Schema geändert, eine geschützte Tabelle gelöscht &
+  \code{Sql\allowbreak{}Server\allowbreak{}Session\allowbreak{}Settings\allowbreak{}Tests} &
+  Reihenfolge des SQL, Up und Down, Isolation der verbleibenden Tabelle \\
+  \tablerule
+  Session-Schlüssel geändert, Tabelle umbenannt &
+  \code{Sql\allowbreak{}Server\allowbreak{}Combined\allowbreak{}Migration\allowbreak{}Tests} &
+  Reihenfolge des SQL, Up und Down, Policy auf dem neuen Namen \\
+  \tablerule
+  Policy-Schema geändert, Spalte umbenannt, Tabelle umbenannt und verschoben & wie oben & Up
+  und Down, Funktion und Policy nur im neuen Schema \\
+  \tablerule
+  Migration scheitert, nachdem Policy und Funktion gelöscht wurden & wie oben & Rollback:
+  Tabelle, Policy und Funktion mit dem alten Schlüssel sind unverändert \\
+  \tablerule
+  PostgreSQL: Mandantenspalte und Isolation in einer Migration hinzugefügt bzw. entfernt &
+  \code{Migration\allowbreak{}Order\allowbreak{}Tests} & Up und Down ohne Fehler, Isolation
+  als App-Rolle; Reihenfolge des SQL in \code{Migration\allowbreak{}Sql\allowbreak{}Tests} \\
+  \tablerule
+  PostgreSQL: Migration scheitert nach der Spaltenänderung bzw. nach \code{DROP POLICY} & wie
+  oben & Rollback: RLS, Policy und Spalte unverändert, Isolation weiter wirksam \\
+  \tablerule
+  PostgreSQL: Mandantenspalte umbenannt, Setting-Name geändert & wie oben & Up und Down,
+  Policy mit neuem Spaltennamen und Setting \\
+  \tablerule
+  Temporal-Tabelle (nur SQL Server), ignorierte oder nicht gemappte Mandanten-Property & Modelltests beider
+  relationaler Pakete & Beim Modellbau abgelehnt \\
+\end{datatable}
+
+Auch PostgreSQL kennt diese Fehlerklasse, obwohl Policies einer Umbenennung folgen und es keine
+gemeinsame Funktion gibt: Die Policy hängt an ihren Spalten, und EF ordnet die
+\code{Alter\allowbreak{}Table\allowbreak{}Operation} vor neue und nach gelöschte Spalten
+(Kapitel~\ref{ch:declarative-sql-from-annotations}). Weiterhin ohne Datenbanktest sind: eine
+umbenannte oder verschobene Tabelle zusammen mit geändertem Setting-Name bei PostgreSQL (nur das
+erzeugte SQL ist geprüft); mehrere Contexts, die dieselbe Datenbank gleichzeitig migrieren; und
+das Cosmos-Paket, das keine Migrations hat. Für diese Kombinationen wird nicht behauptet, dass
+sie funktionieren.
+
 % ------------------------------------------------------------
 \chapter{Versionierung und Kompatibilität}\label{ch:versioning-and-compatibility}
+\versionrisk{medium}
 
 \section{Paketversion und unterstützte EF-Version}
 
 Das Beispiel versioniert Plugin und Handbuch gemeinsam: Die Paketversion entspricht der
-Buchausgabe, Pakete 1.1.0 gehören zu Ausgabe~1.1. So gehört jeder Codeauszug zu genau einem
+Buchausgabe, Pakete 1.2.0 gehören zu Ausgabe~1.2. So gehört jeder Codeauszug zu genau einem
 Paketstand. Welche EF-Version ein Stand unterstützt, steht deshalb nicht in der Versionsnummer,
 sondern im Abhängigkeitsbereich der Pakete und in der Kompatibilitätstabelle der README: Plugin
 1.x unterstützt EF Core~10. Der Wechsel auf eine neue EF-Major-Version ist für Anwender ein
@@ -234,12 +337,11 @@ Bereich an einer Stelle, damit die CI ihn für den Patch-Kanal überschreiben ka
 \section{Umgang mit interner API}
 
 Plugins kommen um interne APIs selten herum: Das Beispiel erbt von
-\code{Npgsql\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator},
 \code{Npgsql\allowbreak{}Annotation\allowbreak{}Provider} und
 \code{Npgsql\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator} und nutzt
 \code{Npgsql\allowbreak{}Options\allowbreak{}Extension}; insgesamt berührt das
-PostgreSQL-Paket 13 interne Typen, das SQL-Server-Paket 2 und der Kern keinen (Inventar im
-Upgrade-Playbook). Solche Typen können sich auch in Minor-Versionen ändern. EF meldet ihre
+PostgreSQL-Paket 10 interne Typen, das SQL-Server-Paket 2, das Cosmos-Paket 1, Kern und
+relationale Schicht keinen (Inventar im Upgrade-Playbook). Solche Typen können sich auch in Minor-Versionen ändern. EF meldet ihre
 Verwendung mit der Warnung \textbf{EF1001}.
 
 \begin{datatable}{H{0.80}H{1.20}}
@@ -395,7 +497,7 @@ Target-Framework ließe sich nicht einmal wiederherstellen.
 \begin{datatable}{H{0.24}H{1.27}H{1.76}H{0.73}}
   \textbf{Nr.} & \textbf{Schritt} & \textbf{Vorgehen} & \textbf{Im Beispiel} \\
   \tablehead
-  1 & Pakete aktualisieren & Wie oben, dazu Begleitpakete, die mit EF erscheinen
+  1 & Pakete aktualisieren & Versionen aus Schritt~1, dazu Begleitpakete, die mit EF erscheinen
   (\code{Microsoft.\allowbreak{}Extensions.\allowbreak{}*}); fest gepinnte Begleitpakete
   blockieren schon den Restore & \code{EFCore\allowbreak{}Version} \\
   \tablerule
@@ -404,8 +506,9 @@ Target-Framework ließe sich nicht einmal wiederherstellen.
   Überschreibungen (CS0115) & Befehl unten \\
   \tablerule
   3 & Interne API untersuchen & Das EF1001-Inventar (unten) gegen die Quellen beider
-  Versionen vergleichen; jede Stelle einzeln, auch die, die noch kompilieren &
-  Kern: 0, PostgreSQL: 13, SQL Server: 2 interne Typen \\
+  Versionen vergleichen; jede Stelle einzeln, auch die, die noch kompilieren;
+  mit den volatilen Kapiteln beginnen (Seite~\pageref{sec:version-dependency}) &
+  Kern: 0, PostgreSQL: 10, SQL Server: 2, Cosmos DB: 1 interne Typen (Funktionen-Beispiel: 5) \\
   \tablerule
   4 & Registrierungen und Lebensdauern vergleichen & EFs Service-Tabellen beider Versionen
   vergleichen; die eigenen \code{Replace}-Aufrufe legen Lebensdauern fest &
@@ -468,6 +571,25 @@ dotnet build -c Release 2>&1 | grep -oE "error [A-Z]+[0-9]+" | sort | uniq -c | 
 dotnet build -c Release --no-incremental -p:NoWarn=EF9100 2>&1 \
   | grep -oE "EF1001: [A-Za-z.]+" | sort | uniq -c | sort -rn
 \end{sourcecode}
+
+\phantomsection\label{sec:version-dependency}
+Wie stark ein Kapitel von der EF-Version abhängt, steht an seinem Anfang. Bei einem
+Major-Upgrade prüft man die \textbf{volatilen} Kapitel zuerst: Ihr Code leitet von Klassen
+aus \code{.Internal}-Namespaces ab oder nutzt sie direkt (EF1001), und Brüche dort zeigen
+sich oft erst zur Laufzeit. Danach folgen die mittleren, die stabilen zuletzt.
+
+\begin{datatable}{H{0.55}H{1.15}H{1.30}}
+  \textbf{Einstufung} & \textbf{Bedeutung} & \textbf{Kapitel} \\
+  \tablehead
+  \textcolor{risk@volatile}{\textbf{volatil}} & Stark von \code{.Internal}-Namespaces
+  abhängig (EF1001); bei jedem Major-Upgrade zuerst prüfen & \ref{ch:declarative-sql-from-annotations}, \ref{ch:design-time-services}, \ref{ch:the-update-pipeline}, \ref{ch:custom-sql-expression-nodes}, \ref{ch:property-level-fluent-api-and}, \ref{ch:scaffolding-in-practice} \\
+  \tablerule
+  \textcolor{risk@medium}{\textbf{mittel}} & Provider-Basisklassen oder öffentliche, aber oft
+  geänderte API & \ref{ch:ef-core-s-architecture-from}, \ref{ch:the-options-extension}, \ref{ch:registering-services}, \ref{ch:type-mappings-and-value-converters}, \ref{ch:the-query-pipeline}, \ref{ch:translating-methods-and-members}, \ref{ch:further-query-extension-points}, \ref{ch:custom-migration-operations}, \ref{ch:compiled-models-trimming-and-nativeaot}, \ref{ch:scaffolding-reverse-engineering}, \ref{ch:test-strategy}, \ref{ch:versioning-and-compatibility}, \ref{ch:bulk-operations-and-the-limits}, \ref{ch:complex-types-and-json}, \ref{ch:aggregate-translators}, \ref{ch:a-second-provider-sql-server},
+  \ref{ch:without-sql-what-carries-over} \\
+  \tablerule
+  \textcolor{risk@stable}{\textbf{stabil}} & Konzepte und öffentliche API & alle übrigen \\
+\end{datatable}
 
 \begin{tip}[Abweichungen erklären, nicht wegtesten]
   Schlägt nach dem Upgrade ein SQL- oder Verhaltenstest fehl, ist die Versuchung groß, nur
@@ -551,7 +673,7 @@ NuGet-Audit meldet bekannte Schwachstellen als Warnungen NU1901 bis NU1904
 (\href{https://learn.microsoft.com/en-us/nuget/concepts/auditing-packages}{NuGet: Auditing package dependencies}).
 Entscheidend ist, \emph{wen} ein Befund trifft. Ermittelt wird das mit \code{dotnet nuget why},
 das den Pfad von der direkten Abhängigkeit bis zum betroffenen Paket zeigt. Im Beispiel gab es
-drei Fälle:
+vier Fälle:
 
 \begin{datatable}{H{0.75}H{1.05}H{0.70}H{1.50}}
   \textbf{Paket} & \textbf{Herkunft} & \textbf{Betrifft} & \textbf{Entscheidung} \\
@@ -569,6 +691,10 @@ drei Fälle:
   \tablerule
   \code{SSH.\allowbreak{}NET} 2024.2.0 & Testcontainers 4.6 & Nur Tests & Testcontainers 4.16
   innerhalb derselben Major-Version; bringt 2026.0.0. \\
+  \tablerule
+  \code{SQLite\allowbreak{}PCL\allowbreak{}Raw.\allowbreak{}lib.\allowbreak{}e\_sqlite3} 2.1.11 &
+  EF Core Sqlite 10.0.0 → \code{SQLite\allowbreak{}PCL\allowbreak{}Raw.\allowbreak{}bundle\_e\_sqlite3}
+  & Nur Tests & Direkte Abhängigkeit auf 2.1.14 nur im Testprojekt. \\
 \end{datatable}
 
 Jede direkte Abhängigkeit auf ein eigentlich transitives Paket steht in
@@ -606,6 +732,7 @@ wertet die Audit-Warnungen beim Veröffentlichen als Fehler, sodass NativeAOT mi
 
 % ------------------------------------------------------------
 \chapter{Packaging und Dokumentation}\label{ch:packaging-and-documentation}
+\versionrisk{stable}
 
 Gemeinsame Einstellungen liegen in \code{Directory.\allowbreak{}Build.\allowbreak{}props},
 Paketversionen zentral in \code{Directory.\allowbreak{}Packages.\allowbreak{}props} (Central
@@ -623,7 +750,7 @@ Package Management):
 <PropertyGroup>
   <PackageLicenseExpression>MIT</PackageLicenseExpression>
   <PackageReadmeFile>README.md</PackageReadmeFile>
-  <VersionPrefix>1.1.0</VersionPrefix>       <!-- = Buchausgabe -->
+  <VersionPrefix>1.2.0</VersionPrefix>       <!-- = Buchausgabe -->
   <IncludeSymbols>true</IncludeSymbols>
   <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   <PublishRepositoryUrl>true</PublishRepositoryUrl>      <!-- SourceLink -->
@@ -653,9 +780,9 @@ Package Management):
   \code{Internals\allowbreak{}Visible\allowbreak{}To} & Tests erreichen interne Logik ohne
   öffentliche API. \\
   \tablerule
-  Paketnamen & Kern ohne Provider, Provider-Paket mit Suffix
-  (\code{.\allowbreak{}Postgre\allowbreak{}SQL},
-  \code{.\allowbreak{}Sql\allowbreak{}Server}). \\
+  Paketnamen & Kern ohne Provider, relationale Schicht als \code{.\allowbreak{}Relational},
+  Provider-Pakete mit Suffix (\code{.\allowbreak{}Postgre\allowbreak{}SQL},
+  \code{.\allowbreak{}Sql\allowbreak{}Server}, \code{.\allowbreak{}Cosmos}). \\
 \end{datatable}
 
 Zur Dokumentation gehören neben der API-Doku vor allem die Dinge, die Nutzer nicht im Code
@@ -665,6 +792,7 @@ welche Einschränkungen bestehen (Pooling) und welche Sicherheitsannahmen gelten
 
 % ------------------------------------------------------------
 \chapter{Die Checkliste von A bis Z}\label{ch:the-checklist-from-a-to}
+\versionrisk{stable}
 
 Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst eine Regel zusammen; die Begründung steht in den Kapiteln, die unter jeder Überschrift genannt sind.
 
@@ -676,8 +804,7 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
   \item Stufe festlegen: Hilfsmethoden, Modell-Helfer, echtes Plugin oder Provider?
   \item Kern- und Provider-Paket trennen; Typen für Entitäts-Assemblies in den Kern.
   \item Für jeden Erweiterungspunkt zuerst ein Plugin-Interface suchen, erst dann ersetzen.
-  \item Jeden Mechanismus mit der Entscheidungshilfe
-    (Kapitel~\ref{ch:choosing-the-right-extension-point}) gegen die einfachere Alternative
+  \item Jeden Mechanismus mit der Entscheidungshilfe gegen die einfachere Alternative
     prüfen.
 \end{checklist}
 
@@ -700,11 +827,10 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
 
 \begin{checklist}
   \item Registrierung über den ServicesBuilder (Lebensdauern aus EFs Tabelle).
-  \item Einzeldienste dekorieren, wo das öffentliche Interface genügt
-    (Kapitel~\ref{ch:registering-services}).
+  \item Einzeldienste dekorieren, wo das öffentliche Interface genügt.
   \item Sonst Replace, und die Logik öffentlich und virtuell anbieten.
   \item ISingletonOptions für Singleton-Dienste, doppelt registriert.
-  \item Jeden Zustand nach Kapitel~\ref{ch:state-lifetimes-and-thread-safety} einordnen: Anfragedaten nie in
+  \item Jeden Zustand einordnen: Anfragedaten nie in
     Options, Hash, Modell, Singleton oder übersetzte Abfrage.
   \item Scoped-Dienste mit Zustand für Pooling zurücksetzen (IResettableService).
   \item App-Abhängigkeiten über AddInterceptors, Pooling-Verhalten dokumentieren.
@@ -715,7 +841,8 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
 \noindent Details: Kapitel~\ref{ch:annotations-and-fluent-api}, \ref{ch:conventions}, \ref{ch:model-validation}.
 
 \begin{checklist}
-  \item Annotations mit Präfix, nur einfache Werte, keine Defaults speichern.
+  \item Annotations mit Präfix, nur einfache Werte; explizite Werte behalten (auch Defaults, die
+    eine Convention überstimmen), für Migrationen im Annotation-Provider normalisieren.
   \item Fluent API nicht-generisch implementieren, generisch delegieren.
   \item Convention-Builder-Überladungen für ConfigurationSource.
   \item Conventions bei ModelFinalizing, wenn sie vom fertigen Modell abhängen.
@@ -739,7 +866,7 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
 
 \section{Abfragen}
 
-\noindent Details: Kapitel~\ref{ch:the-query-pipeline}, \ref{ch:translating-methods-and-members}.
+\noindent Details: Kapitel~\ref{ch:the-query-pipeline}, \ref{ch:translating-methods-and-members}, \ref{ch:preventing-client-side-evaluation}.
 
 \begin{checklist}
   \item EF.Functions-Methoden im Kern, Übersetzung im Provider-Paket.
@@ -756,17 +883,17 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
   \item Interceptors synchron und asynchron implementieren.
   \item Tracking-Markierung von tatsächlicher Wertänderung unterscheiden
     (Seite~\pageref{sec:tracking-flag-versus-value}).
-  \item Singleton-Interceptors zustandslos und thread-sicher.
+  \item Singleton-Interceptors zustandslos und threadsicher.
   \item Singleton-Interceptors in ApplyServices registrieren oder als eine geteilte Instanz
     übergeben, nie pro Context neu; Anfragedaten pro Aufruf über den Context holen.
   \item Eigene Event-IDs in eigenem Bereich, EventDefinitions gecacht.
   \item Sicherheitsrelevantes als Warnung, eskalierbar per ConfigureWarnings.
-  \item Wo Hooks nicht laufen, eine explizite API anbieten (z. B. ApplyTenantSession).
+  \item Wo Interceptors nicht greifen, eine explizite API anbieten (z. B. ApplyTenantSession).
 \end{checklist}
 
 \section{Migrations \& Design-Time}
 
-\noindent Details: Kapitel~\ref{ch:how-migrations-work}, \ref{ch:design-time-services}.
+\noindent Details: Kapitel~\ref{ch:how-migrations-work}, \ref{ch:declarative-sql-from-annotations}, \ref{ch:custom-migration-operations}, \ref{ch:design-time-services}, \ref{ch:compiled-models-trimming-and-nativeaot}, \ref{ch:scaffolding-reverse-engineering}.
 
 \begin{checklist}
   \item Deklarativ über Annotation-Provider (nur Design-Time) und SQL-Generator.
@@ -774,7 +901,7 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
   \item Eigene Operationen idempotent, Extensions im Migrations-Namespace.
   \item Schemagebundene Objekte bei Umbenennungen vor der Änderung entfernen und danach mit
     den endgültigen Namen neu anlegen (Seite~\pageref{sec:sqlserver-schema-bound-changes}).
-  \item DesignTimeServicesReference mit forProvider; Code-Generator entfernt Annotations.
+  \item DesignTimeServicesReference mit forProvider im Startprojekt der Anwendung (nicht im Plugin); Code-Generator entfernt Annotations.
   \item Compiled Models prüfen: Default, Instance, Laufzeit-Annotations.
 \end{checklist}
 
@@ -785,8 +912,8 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
 \begin{checklist}
   \item Modell-, SQL-, Snapshot-Roundtrip- und Integrationstests.
   \item Caching-Test mit verschiedenen Optionen; Test auf keine Phantom-Migration.
-  \item Versionsbereich je EF-Major, CI gegen neueste Patches und Previews, EF1001 bewusst;
-    Upgrades nach dem Playbook (Kapitel~\ref{ch:versioning-and-compatibility}).
+  \item Versionsbereich je EF-Major, EF1001 bewusst; CI mit Patch-Kanal, Preview-Kanal nur als
+    Frühwarnung; Upgrades nach dem Playbook.
   \item XML-Doku, SourceLink, Symbole, README, CHANGELOG, Einschränkungen dokumentiert.
   \item Die Pakete als Verbraucher prüfen: Tooling, Compiled Model, NativeAOT
     (Seite~\pageref{sec:consumer-test}).
@@ -796,16 +923,25 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
     (Kapitel~\ref{ch:registering-services}).
 \end{checklist}
 
-\section{Fortgeschritten (Teil~\ref{part:VIII})}
+\section{Fortgeschrittene Erweiterungspunkte (Teil~\ref{part:advanced})}
 
-\noindent Details: Kapitel~\ref{ch:row-level-security-in-production}, \ref{ch:tenant-safe-relationships}, \ref{ch:retrofitting-and-operating}.
+\noindent Details: Kapitel~\ref{ch:bulk-operations-and-the-limits}, \ref{ch:value-generation}, \ref{ch:the-update-pipeline}, \ref{ch:complex-types-and-json}, \ref{ch:models-per-runtime-context}, \ref{ch:advanced-migrations}.
 
 \begin{checklist}
   \item Wege dokumentieren, die Interceptors umgehen (ExecuteUpdate, rohes SQL).
   \item Value Generators mit HasValueGeneratorFactory(Type) konfigurieren (Compiled Models).
+  \item IUpdateSqlGenerator nur ersetzen, wenn das SQL eine andere Form braucht; zustandslos
+    (Singleton) und genau einer pro Context.
   \item Conventions für Complex Types und JSON-Spalten prüfen.
   \item Reihenfolge eigener Migrations-Operationen dokumentieren und testen.
   \item Idempotente Skripte und suppressTransaction berücksichtigen.
+\end{checklist}
+
+\section{Betrieb und Integration (Teil~\ref{part:operations})}
+
+\noindent Details: Kapitel~\ref{ch:row-level-security-in-production}, \ref{ch:tenant-safe-relationships}, \ref{ch:retrofitting-and-operating}, \ref{ch:plugin-performance}, \ref{ch:using-the-plugin-in-asp}, \ref{ch:ci-and-api-stability}.
+
+\begin{checklist}
   \item Betriebsannahmen dokumentieren (Rollen, Pooling, Transaction-Pooling).
   \item Context-Lebensdauern dokumentieren: Factories, Hintergrundjobs, offene Verbindungen.
   \item Mandantenübergreifender Zugriff nur über eigene Rollen, nie über App-Schalter.
@@ -814,13 +950,13 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
   \item Beziehungen mandantensicher: zusammengesetzte Fremdschlüssel, eindeutig pro Mandant.
   \item Bestehende Tabellen in zwei Migrationen mit Wächter nachrüsten.
   \item Heiße Pfade (Interceptors) messen, nicht vermuten.
-  \item CI mit Patch-Kanal, Preview-Kanal nur als Frühwarnung, Public-API-Analyzer als
-    Fehler.
+  \item Second-Level-Caches: der Mandant in jedem Cache-Schlüssel, ohne Mandant kein Cache.
+  \item Public-API-Analyzer als Fehler, nicht als Warnung.
 \end{checklist}
 
-\section{Tiefe Erweiterungen (Teil~\ref{part:IX})}
+\section{Tiefe Erweiterungen (Teil~\ref{part:deep-extensions})}
 
-\noindent Details: Kapitel~\ref{ch:custom-sql-expression-nodes}, \ref{ch:a-second-provider-sql-server}.
+\noindent Details: Kapitel~\ref{ch:custom-sql-expression-nodes}, \ref{ch:aggregate-translators}, \ref{ch:property-level-fluent-api-and}, \ref{ch:scaffolding-in-practice}.
 
 \begin{checklist}
   \item Eigene SQL-Knoten: VisitChildren, Update, Quote, Print, Equals/GetHashCode.
@@ -828,5 +964,16 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
   \item Aggregate: Prädikat, DISTINCT und leere Mengen bewusst behandeln.
   \item Laufzeit-Annotations bewusst wählen, Design-Time-Annotations filtern.
   \item Scaffolding: Schema-Objekte des Plugins aus der Datenbank lesen.
+\end{checklist}
+
+\section{Mehrere Provider (Teil~\ref{part:providers})}
+
+\noindent Details: Kapitel~\ref{ch:what-belongs-in-the-core}, \ref{ch:a-second-provider-sql-server}, \ref{ch:without-sql-what-carries-over}.
+
+\begin{checklist}
   \item Provider-neutrale Bausteine in den Kern, Unterschiede ins Provider-Paket.
+  \item Relationale Bausteine in eine eigene Schicht, damit der Kern auch ohne SQL nutzbar
+    bleibt.
+  \item Ohne Row Level Security: dokumentieren, dass der Query-Filter die einzige Isolation ist
+    und wie roher Zugriff ihn umgeht.
 \end{checklist}

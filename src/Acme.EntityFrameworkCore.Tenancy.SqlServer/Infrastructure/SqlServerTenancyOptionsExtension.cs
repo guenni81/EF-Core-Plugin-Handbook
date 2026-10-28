@@ -90,6 +90,11 @@ public class SqlServerTenancyOptionsExtension : IDbContextOptionsExtension
             new EntityFrameworkServicesBuilder(services)
                 .TryAdd<IInterceptor, TenantQueryExpressionInterceptor>();
 
+        // Optional tagging of traces, as in the PostgreSQL package
+        if (Settings.EnrichOpenTelemetry)
+            new EntityFrameworkServicesBuilder(services)
+                .TryAdd<IInterceptor, TenantActivityEnrichmentInterceptor>();
+
         // Single-instance services of the provider: replace them; the classes derive from the
         // SQL Server implementations, so all non-tenancy behaviour stays unchanged
         services.Replace(ServiceDescriptor
@@ -131,7 +136,17 @@ public class SqlServerTenancyOptionsExtension : IDbContextOptionsExtension
         public override bool ShouldUseSameServiceProvider(DbContextOptionsExtensionInfo other)
             => other is ExtensionInfo o && o.Extension.Settings == Extension.Settings;
 
+        // One entry per setting, so that EF can name the setting that differs between two
+        // contexts (ManyServiceProvidersCreatedWarning). Hash codes instead of raw strings, as
+        // EF's own extensions do
         public override void PopulateDebugInfo(IDictionary<string, string> debugInfo)
-            => debugInfo["Acme:Tenancy:SqlServer"] = Extension.Settings.GetHashCode().ToString();
+        {
+            var s = Extension.Settings;
+            debugInfo["Acme:Tenancy:SqlServer:SessionKey"] = s.SessionKey.GetHashCode().ToString();
+            debugInfo["Acme:Tenancy:SqlServer:PolicySchema"] = s.PolicySchema.GetHashCode().ToString();
+            debugInfo["Acme:Tenancy:SqlServer:VerifyMaterialized"] = s.VerifyMaterializedTenants.ToString();
+            debugInfo["Acme:Tenancy:SqlServer:ProtectBulkOperations"] = s.ProtectBulkOperations.ToString();
+            debugInfo["Acme:Tenancy:SqlServer:EnrichOpenTelemetry"] = s.EnrichOpenTelemetry.ToString();
+        }
     }
 }

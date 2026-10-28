@@ -9,10 +9,11 @@
     in die Anwendung
     \item Kapitel~\ref{ch:state-lifetimes-and-thread-safety}: Zustand, Lebensdauern und Thread-Safety
   }}
-\part{Infrastruktur}\label{part:II}
+\part{Infrastruktur}\label{part:infrastructure}
 
 % ------------------------------------------------------------
 \chapter{Die Options-Extension}\label{ch:the-options-extension}
+\versionrisk{medium}
 
 Der Einstiegspunkt jedes echten Plugins ist eine Klasse, die
 \code{IDb\allowbreak{}Context\allowbreak{}Options\allowbreak{}Extension} implementiert. Sie
@@ -22,7 +23,8 @@ hat drei Aufgaben: Sie trägt die Konfiguration, sie registriert in
 
 \section{Konfiguration als Record}
 
-Alle modellrelevanten Einstellungen des Beispiels liegen in einem Record. Records liefern
+Alle Einstellungen des Beispiels liegen in einem Record. Jede davon beeinflusst das Modell,
+die registrierten Dienste oder das, was Dienste über die Singleton-Options lesen. Records liefern
 \code{Equals} und \code{Get\allowbreak{}Hash\allowbreak{}Code} über alle Felder, was gleich
 für den Cache-Schlüssel gebraucht wird. Neue Einstellungen fügt man dem Record hinzu, ohne
 Hash und Vergleich anfassen zu müssen.
@@ -39,12 +41,15 @@ public sealed record TenancySettings
     public bool ApplyQueryFilter { get; init; }
     public bool CreateTenantIndex { get; init; } = true;
     public bool VerifyMaterializedTenants { get; init; }
+    public bool ProtectBulkOperations { get; init; }
+    public bool UseTransactionPooling { get; init; }
+    public bool EnrichOpenTelemetry { get; init; }
 }
 \end{sourcecode}
 
 \section{Immutabilität}
 
-EF vergleicht und cached Options. Eine Extension darf sich nach dem Hinzufügen deshalb nie
+EF vergleicht und cacht Options. Eine Extension darf sich nach dem Hinzufügen deshalb nie
 mehr ändern; jede Änderung erzeugt eine Kopie. Was sonst passiert, zeigt Fehlerfall~4 in
 Kapitel~\ref{ch:state-lifetimes-and-thread-safety}: Neue Contexts arbeiten still mit dem alten Wert weiter. Das Muster aus EF Core selbst: ein
 geschützter Kopierkonstruktor und eine virtuelle \code{Clone}-Methode, damit abgeleitete
@@ -167,8 +172,9 @@ public override bool ShouldUseSameServiceProvider(DbContextOptionsExtensionInfo 
 \end{failure}
 
 \begin{important}[Die Faustregel für den Hash]
-  In den Hash gehört genau das, was \textbf{beeinflusst, welche Dienste registriert werden
-  oder wie das Modell aussieht}. Alles andere gehört nicht hinein. Der Mandant selbst ändert
+  In den Hash gehört genau das, was \textbf{beeinflusst, welche Dienste registriert werden,
+  wie das Modell aussieht oder was Dienste über \code{ISingleton\allowbreak{}Options}
+  lesen}. Alles andere gehört nicht hinein. Der Mandant selbst ändert
   sich pro Request und darf deshalb nie in den Options landen; er kommt zur Laufzeit über
   einen Interceptor (Kapitel~\ref{ch:interceptors}).
 \end{important}
@@ -198,6 +204,7 @@ public virtual void Validate(IDbContextOptions options)
 
 % ------------------------------------------------------------
 \chapter{Dienste registrieren}\label{ch:registering-services}
+\versionrisk{medium}
 
 \code{Apply\allowbreak{}Services} füllt den internen Service Provider. EF stellt dafür einen
 Builder bereit, der die Lebensdauer und Kardinalität jedes EF-Dienstes kennt:
@@ -226,6 +233,10 @@ public virtual void ApplyServices(IServiceCollection services)
         .TryAddProviderSpecificServices(m => m
             .TryAddSingleton<ITenancySingletonOptions, TenancySingletonOptions>()
             .TryAddSingleton<TenancyLoggingDefinitions, TenancyLoggingDefinitions>());
+
+    // ... optionale Interceptors je nach Einstellung, ebenfalls über den Services-Builder
+    //     (Kapitel „Materialisierung: von Zeilen zu Objekten“, „Massenoperationen und
+    //     die Grenzen von Interceptors“, „Diagnose und Logging“)
 
     // 3) Einzeldienste des Providers ersetzen
     services.Replace(ServiceDescriptor
@@ -414,7 +425,8 @@ services.AddDbContext<ShopContext>((sp, options) => options
 
   Dekorieren setzt voraus, dass die öffentliche Schnittstelle genügt. Das Tenancy-Plugin
   braucht geschützte Einstiegspunkte innerhalb von \code{CREATE TABLE} und erbt deshalb vom
-  Npgsql-Generator. Für solche Fälle bleibt der oben beschriebene Ausweg: öffentliche Logik
+  Npgsql-Generator. Für solche Fälle bleibt der Ausweg aus „Integration als Ausweg“
+  (Seite~\pageref{sec:integration-way-out}): öffentliche Logik
   wie \code{Create\allowbreak{}Policy\allowbreak{}Sql}, virtuelle Methoden und
   \code{Replace\allowbreak{}Service} in der Anwendung.
 \end{important}
@@ -443,7 +455,8 @@ EF warnt. Komposition ist dann nicht mehr EFs Aufgabe, sondern die der Plugin-Au
 \section{Die Spielregeln in EF Core 10}
 
 Die Methoden aus der Tabelle am Anfang dieses Kapitels verhalten sich bei zwei Plugins so.
-Jede Zeile ist in \code{Composition\allowbreak{}Matrix\allowbreak{}Tests} nachgestellt:
+Die Zeilen sind in \code{Composition\allowbreak{}Matrix\allowbreak{}Tests} und
+\code{Composition\allowbreak{}Tests} nachgestellt:
 
 \begin{datatable}{H{0.75}H{1.25}H{1.00}}
   \textbf{Mechanismus} & \textbf{Verhalten} & \textbf{Folge} \\
@@ -471,7 +484,7 @@ Jede Zeile ist in \code{Composition\allowbreak{}Matrix\allowbreak{}Tests} nachge
   \code{Replace\allowbreak{}Service} (Anwendung) & Wird nach allen Extensions angewendet und
   gewinnt immer & Das Werkzeug der Anwendung für die Integration \\
   \tablerule
-  Translator-Plugins & Plugins kommen vor den Translatoren des Providers; zwischen Plugins
+  Translator-Plugins & Plugins kommen vor den Translators des Providers; zwischen Plugins
   antwortet das zuerst aktivierte & Gleiche Methode: Reihenfolge entscheidet \\
   \tablerule
   Convention-Set-Plugins & Laufen in Aktivierungsreihenfolge; spätere Conventions sehen die
@@ -497,7 +510,7 @@ Integration} (ohne Code in der Anwendung geht eine Funktion verloren).
   Das zuerst aktivierte gewinnt, das andere wird nie gefragt \\
   \tablerule
   Zwei \code{IMember\allowbreak{}Translator\allowbreak{}Plugin} & kombinierbar;
-  potenzieller Konflikt & Derselbe Mechanismus wie bei Method-Translatoren \\
+  potenzieller Konflikt & Derselbe Mechanismus wie bei Method-Translators \\
   \tablerule
   Zwei \code{IConvention\allowbreak{}Set\allowbreak{}Plugin} & kombinierbar;
   reihenfolgeabhängig & Beide laufen. Setzen beide dieselben Metadaten mit
@@ -515,7 +528,7 @@ Integration} (ohne Code in der Anwendung geht eine Funktion verloren).
   (im Test: keine Policies mehr) \\
   \tablerule
   Zwei Plugins ersetzen \code{IQuery\allowbreak{}Sql\allowbreak{}Generator\allowbreak{}Factory}
-  & nur mit Integration & Der Verlierer behält seine Translatoren, aber seine Knoten
+  & nur mit Integration & Der Verlierer behält seine Translators, aber seine Knoten
   erreichen einen Generator, der sie nicht kennt: Das SQL fehlt still. Ersetzt der Gewinner
   auch den parameterabhängigen Prozessor, wirft die Abfrage
   (Kapitel~\ref{ch:custom-sql-expression-nodes}) \\
@@ -594,6 +607,7 @@ Assertions für beide Aktivierungsreihenfolgen.
 
 % ------------------------------------------------------------
 \chapter{Öffentliche API und Integration in die Anwendung}\label{ch:public-api-and-integration-into}
+\versionrisk{stable}
 
 \section{Die Use-Methode}
 
@@ -678,9 +692,11 @@ public class TenancyOptionsBuilder
   \code{Npgsql\allowbreak{}Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder}
   und kommt über
   \code{IRelational\allowbreak{}Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder\allowbreak{}Infrastructure.\allowbreak{}Options\allowbreak{}Builder}
-  an den eigentlichen Builder. Das Beispiel nutzt den einfacheren Weg über
-  \code{Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder}, weil das Plugin
-  mehr ist als eine Provider-Option.
+  an den eigentlichen Builder. Das PostgreSQL-Paket nutzt den einfacheren Weg über
+  \code{Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder}, das SQL-Server-Paket
+  den über den Provider-Builder (Kapitel~\ref{ch:a-second-provider-sql-server}). Warum
+  der Provider-Builder die bessere Wahl ist, sobald es mehrere Provider-Pakete gibt, erklärt
+  Kapitel~\ref{ch:what-belongs-in-the-core}.
 \end{note}
 
 \section{Zwei Container verbinden}
@@ -690,8 +706,8 @@ braucht den aktuellen Mandanten, den nur die Anwendung kennt. Der interne EF-Pro
 App-Dienste aber nicht auflösen. Die saubere Lösung: Solche Komponenten leben im
 App-Container und werden per \code{Add\allowbreak{}Interceptors} an EF übergeben.
 
-\begin{sourcecode}[Dependency\allowbreak{}Injection/\allowbreak{}… (\allowbreak{}Kern),\allowbreak{} Infrastructure/\allowbreak{}… (\allowbreak{}Postgre\allowbreak{}SQL),\allowbreak{} Auszüge]{csharp}
-// Kernpaket: nur den Mandanten-Provider im App-Container registrieren
+\begin{sourcecode}[Dependency\allowbreak{}Injection/\allowbreak{}… (\allowbreak{}Kern),\allowbreak{} Infrastructure/\allowbreak{}… (\allowbreak{}Postgre\allowbreak{}SQL),\allowbreak{} Auszüge,\allowbreak{} vereinfacht]{csharp}
+// Kernpaket: nur den Tenant-Provider im App-Container registrieren
 public static IServiceCollection AddAcmeTenancy<TTenantProvider>(
     this IServiceCollection services,
     ServiceLifetime lifetime = ServiceLifetime.Scoped)
@@ -713,6 +729,7 @@ public static DbContextOptionsBuilder UseAcmeTenancy(
     return optionsBuilder
         .UseAcmeTenancy(configure)
         .AddInterceptors(
+            // mit UseTransactionPooling(): PostgreSqlTransactionSessionInterceptor
             new TenantConnectionInterceptor(tenants),
             new TenantSaveChangesInterceptor(tenants));
 }
@@ -720,7 +737,7 @@ public static DbContextOptionsBuilder UseAcmeTenancy(
 
 Bei \code{Add\allowbreak{}Db\allowbreak{}Context(\allowbreak{}(\allowbreak{}sp,\allowbreak{}
 o) => .\allowbreak{}.\allowbreak{}.\allowbreak{})} ist \code{sp} der Scope der aktuellen
-Anfrage, weil EF die Options standardmäßig pro Scope baut. Der Mandanten-Provider und damit
+Anfrage, weil EF die Options standardmäßig pro Scope baut. Der Tenant-Provider und damit
 die Interceptors sehen den richtigen Mandanten. Die Registrierung liegt im Kernpaket, weil
 sie für jeden Provider gleich ist (Kapitel~\ref{ch:what-belongs-in-the-core}). Für die
 Brücke in die andere Richtung kann ein Interceptor über
@@ -743,6 +760,7 @@ Setting-Namen aus den Singleton-Options (Kapitel~\ref{ch:interceptors}).
 
 % ------------------------------------------------------------
 \chapter{Zustand, Lebensdauern und Thread-Safety}\label{ch:state-lifetimes-and-thread-safety}
+\versionrisk{stable}
 
 Fast jeder schwer zu findende Plugin-Fehler hat dieselbe Ursache: Zustand liegt an der
 falschen Stelle. Ein Mandant in einem Singleton, ein Wert im Hash, der dort nicht hingehört,
@@ -777,6 +795,44 @@ EF aus den Options, cacht ihn anhand des Hashs der Options-Extensions
 derselben Konfiguration. Die Lebensdauer eines EF-Dienstes legt EF fest
 (Anhang~\ref{app:A}); \code{Try\allowbreak{}Add} übernimmt sie
 (Kapitel~\ref{ch:registering-services}).
+
+\begin{center}
+\begin{tikzpicture}[
+  cbox/.style={draw=codeborder, fill=accentlight, rounded corners=3pt, line width=0.6pt,
+    text width=0.265\linewidth, align=left, inner sep=5pt,
+    font={\footnotesize\hyphenpenalty=10000\exhyphenpenalty=10000},
+    minimum height=46mm, anchor=north},
+  bridge/.style={cbox, draw=accent, fill=codebg},
+  link/.style={accent, line width=1pt, -{Triangle[length=5pt, width=6pt]}},
+  num/.style={circle, draw=accent, fill=white, font=\scriptsize\bfseries\color{accent},
+    inner sep=1pt, minimum size=4mm}]
+\node[cbox] (app) at (0,0) {{\small\bfseries\color{accent}App-Container}\\[1pt]
+  {\color{muted}pro Anwendung; Scope pro Request}\\[5pt]
+  \code{ITenant\allowbreak{}Provider} (scoped)\\[2pt]
+  \code{IHttp\allowbreak{}Context\allowbreak{}Accessor}\\[2pt]
+  \code{Db\allowbreak{}Context} (scoped)};
+\node[bridge] (ctx) at (0.355\linewidth,0) {{\small\bfseries\color{accent}DbContext-Instanz}\\[1pt]
+  {\color{muted}pro Request; mit Pooling länger}\\[5pt]
+  \code{Core\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}Interceptors}:\\
+  \code{Tenant\allowbreak{}Save\allowbreak{}Changes\allowbreak{}Interceptor(\allowbreak{}tenants)}\\[4pt]
+  \code{Conditional\allowbreak{}Weak\allowbreak{}Table<\allowbreak{}Db\allowbreak{}Context,\allowbreak{} ITenant\allowbreak{}Provider>}: schwach gehalten, verschwindet mit dem Context};
+\node[cbox] (ef) at (0.71\linewidth,0) {{\small\bfseries\color{accent}Interner Provider von EF}\\[1pt]
+  {\color{muted}gecacht pro Options-Hash, geteilt von allen Contexts}\\[5pt]
+  \code{IModel}, \code{IRelational\allowbreak{}Type\allowbreak{}Mapping\allowbreak{}Source}
+  (singleton)\\[2pt]
+  \code{IMigrations\allowbreak{}Sql\allowbreak{}Generator} (scoped)\\[2pt]
+  \code{Tenant\allowbreak{}Materialization\allowbreak{}Interceptor} (singleton)};
+\draw[link] (app.east) -- node[num] {1} (ctx.west);
+\draw[link] (ef.west) -- node[num] {2} (ctx.east);
+\end{tikzpicture}
+\end{center}
+
+\begin{enumerate}[label={\protect\tikz[baseline=-0.6ex]\protect\node[circle, draw=accent,
+    font=\scriptsize\bfseries\color{accent}, inner sep=1pt, minimum size=4mm] {\arabic*};},
+    leftmargin=2em, itemsep=2pt]
+  \item \code{Use\allowbreak{}Acme\allowbreak{}Tenancy(\allowbreak{}sp)} holt den Tenant-Provider aus dem App-Container und gibt ihn dem SaveChanges-Interceptor in den Options dieses Contexts.
+  \item Ein Singleton im internen Provider bekommt mit jedem Ereignis den Context und sucht den Tenant-Provider genau dieses Contexts. Im internen Provider und im Hash liegt nichts Mandantenspezifisches, ein interner Provider bedient also alle Mandanten, ohne Leck und ohne Warnung vor vielen Service Providern.
+\end{enumerate}
 
 \section{Welcher Zustand wohin gehört}
 
@@ -832,12 +888,14 @@ Contexts einer Konfiguration \emph{eine} Instanz, auf allen Threads gleichzeitig
 Anfragen arbeiten mit verschiedenen Contexts, aber mit denselben Singletons.
 
 Ein Singleton muss deshalb nach seiner Initialisierung unveränderlich sein oder threadsicher
-cachen. Das Beispiel zeigt drei Formen: Das Type-Mapping-Plugin und der
-Materialization-Interceptor sind zustandslos,
+cachen. Das Beispiel zeigt vier Formen: Das Type-Mapping-Plugin ist zustandslos,
 \code{Tenancy\allowbreak{}Singleton\allowbreak{}Options} wird einmal initialisiert und dann
-nur gelesen, und \code{Tenancy\allowbreak{}Logging\allowbreak{}Definitions} legt seine
+nur gelesen, \code{Tenancy\allowbreak{}Logging\allowbreak{}Definitions} legt seine
 Definitionen mit \code{Lazy\allowbreak{}Initializer.\allowbreak{}Ensure\allowbreak{}Initialized}
-an (Kapitel~\ref{ch:diagnostics-and-logging}). Ein einzelner \code{Db\allowbreak{}Context}
+an (Kapitel~\ref{ch:diagnostics-and-logging}), und der Materialization-Interceptor merkt sich
+pro Context nur dessen Tenant-Provider, in einer statischen, threadsicheren
+\code{Conditional\allowbreak{}Weak\allowbreak{}Table}, die den Context schwach hält
+(Abbildung oben). Ein einzelner \code{Db\allowbreak{}Context}
 dagegen ist nicht threadsicher und wird nie gleichzeitig benutzt; ein Scoped-Dienst sieht
 deshalb immer nur einen Aufrufer zur selben Zeit.
 
@@ -856,13 +914,11 @@ das ablehnen.
 
 Beide Caches verstärken jede Entscheidung über Zustand. Der Provider-Cache verwendet die
 Options-Extensions als Schlüssel; das Modell wird pro Provider und Context-Typ gebaut
-(Kapitel~\ref{ch:models-per-runtime-context}). Daraus folgen zwei Fehlerrichtungen, die
-Kapitel~\ref{ch:the-options-extension} ausführlich behandelt: Was im Schlüssel fehlt,
-obwohl es das Modell beeinflusst, führt zu einem falschen, geteilten Modell. Was im
-Schlüssel steht, obwohl es pro Anfrage wechselt, erzeugt pro Wert einen Provider samt
-Modell; ab dem 21. bricht EF standardmäßig mit
-\code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}
-ab. Instanzen von Singleton-Interceptors zählen ebenfalls zum Schlüssel
+(Kapitel~\ref{ch:models-per-runtime-context}). Die beiden Fehlerrichtungen behandelt
+Kapitel~\ref{ch:the-options-extension}: Was im Schlüssel fehlt, obwohl es das Modell
+beeinflusst, führt zu einem falschen, geteilten Modell; was im Schlüssel steht, obwohl es
+pro Anfrage wechselt, erzeugt pro Wert einen Provider samt Modell (Fehlerfall~2 unten).
+Instanzen von Singleton-Interceptors zählen ebenfalls zum Schlüssel
 (Kapitel~\ref{ch:materialization-from-rows-to-objects}).
 
 \section{Pooling, Factories, Jobs und offene Verbindungen}
@@ -877,7 +933,7 @@ Arten, Contexts zu erzeugen, verschieben sie:
   entstehen einmal aus dem Root-Provider; Context-Instanz und ihre Scoped-Dienste dienen
   nacheinander vielen Anfragen & Tenant-Provider liest pro Zugriff; Scoped-Dienste mit
   Zustand implementieren \code{IResettable\allowbreak{}Service}
-  (Kapitel~\ref{ch:using-the-plugin-in-asp}) \\
+  (Fehlerfall~6 unten) \\
   \tablerule
   \code{Add\allowbreak{}Db\allowbreak{}Context\allowbreak{}Factory} & Factory und Options
   sind standardmäßig Singletons; der Options-Callback bekommt den Root-Provider & Factory

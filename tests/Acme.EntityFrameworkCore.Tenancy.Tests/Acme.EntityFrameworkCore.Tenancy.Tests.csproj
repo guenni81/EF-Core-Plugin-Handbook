@@ -6,6 +6,10 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
+    <!-- Security fix for the SQLite test dependency, see Directory.Packages.props -->
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" />
@@ -15,6 +19,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Acme.EntityFrameworkCore.Tenancy.PostgreSQL\Acme.EntityFrameworkCore.Tenancy.PostgreSQL.csproj" />
+    <ProjectReference Include="..\..\src\Acme.EntityFrameworkCore.Functions.PostgreSQL\Acme.EntityFrameworkCore.Functions.PostgreSQL.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

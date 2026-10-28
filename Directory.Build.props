@@ -28,7 +28,7 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>entity-framework-core;efcore;postgresql;sqlserver;multi-tenancy;row-level-security</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <VersionPrefix>1.1.0</VersionPrefix>
+    <VersionPrefix>1.2.0</VersionPrefix>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <!-- SourceLink is built into the .NET 8+ SDK; these two settings enable it -->

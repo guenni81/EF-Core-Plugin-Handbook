@@ -10,10 +10,11 @@
     \item Chapter~\ref{ch:further-query-extension-points}: Further query extension points
     \item Chapter~\ref{ch:materialization-from-rows-to-objects}: Materialization: from rows to objects
   }}
-\part{Queries}\label{part:IV}
+\part{Queries}\label{part:queries}
 
 % ------------------------------------------------------------
 \chapter{The query pipeline}\label{ch:the-query-pipeline}
+\versionrisk{medium}
 
 A LINQ query passes through a series of stages in EF Core before SQL is produced, and
 through another one before objects come back. Every query extension in this book sits at
@@ -98,7 +99,7 @@ ORDER BY c.Id ASC
 
 \textbf{Postprocessing and compilation.} The \code{Select\allowbreak{}Expression} is
 finalized and compiled into a delegate together with the shaper that will later build the
-objects. Up to here, everything runs once per query shape.
+objects. From preprocessing up to here, everything runs once per query shape.
 
 \textbf{Parameter-based processing.} Only at execution time does EF know the parameter
 values. The
@@ -324,6 +325,7 @@ then is it worth choosing the mechanism in the decision guide
 
 % ------------------------------------------------------------
 \chapter{Translating methods and members}\label{ch:translating-methods-and-members}
+\versionrisk{medium}
 
 \section{The EF.Functions pattern}
 
@@ -551,6 +553,7 @@ public class TenancyMemberTranslatorPlugin : IMemberTranslatorPlugin
 
 % ------------------------------------------------------------
 \chapter{Preventing client-side evaluation}\label{ch:preventing-client-side-evaluation}
+\versionrisk{stable}
 
 The first stage of the pipeline, the funcletizer, evaluates every sub-expression in .NET up
 front that has no reference to query data. \code{o.\allowbreak{}Total > limit * 2} thus
@@ -587,9 +590,11 @@ public static class TenancyDbFunctionsExtensions { /* CurrentTenant() */ }
 \end{sourcecode}
 
 The plugin lives in the \textbf{core package} and recognizes function classes by an
-attribute. A single plugin thus also covers the PostgreSQL-specific functions from
-chapters~\ref{ch:custom-sql-expression-nodes} and \ref{ch:aggregate-translators} and every
-future provider package, without the core having to know these classes.
+attribute. It thus covers every provider package of the tenancy plugin, without the core
+having to know their classes. The standalone sample plugin from
+chapters~\ref{ch:custom-sql-expression-nodes} and \ref{ch:aggregate-translators} does not depend
+on the core package and therefore brings a filter of its own, which recognizes its function
+class by type.
 
 Whether a custom EF.Functions method needs this plugin depends on whether it has arguments
 referencing data.
@@ -628,6 +633,7 @@ public static class ShopDbFunctionsExtensions          // without [TenancyDbFunc
 
 % ------------------------------------------------------------
 \chapter{Further query extension points}\label{ch:further-query-extension-points}
+\versionrisk{medium}
 
 The sample needs method and member translators. Complex plugins use further points; here is
 an overview with classification:
@@ -641,7 +647,9 @@ an overview with classification:
   implemented in chapter~\ref{ch:aggregate-translators} \\
   \tablerule
   \code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor} & Rewrite the LINQ expression
-  tree before translation & Singleton interceptor; ideal for query rewrites, tags, hints \\
+  tree before translation & Singleton interceptor; register it in the internal provider as
+  \code{IInterceptor} (chapter~\ref{ch:bulk-operations-and-the-limits}); ideal for query
+  rewrites, tags, hints \\
   \tablerule
   \code{IMaterialization\allowbreak{}Interceptor} & Create, initialize or check objects
   during materialization & Singleton interceptor; must be stateless and thread-safe;
@@ -672,6 +680,7 @@ an overview with classification:
 
 % ------------------------------------------------------------
 \chapter{Materialization: from rows to objects}\label{ch:materialization-from-rows-to-objects}
+\versionrisk{stable}
 
 The previous chapters of this part describe the way there: LINQ becomes SQL.
 Chapter~\ref{ch:the-update-pipeline} describes the way from entities to INSERT, UPDATE and
@@ -865,13 +874,11 @@ do not call the hooks but the logic behind them (see below).
   stateless and thread-safe. It gets the data of a request on every call through
   \code{materialization\allowbreak{}Data.\allowbreak{}Context}.
 
-  Singleton interceptor instances are also part of the internal provider's cache key.
-  Passing a new instance per context through \code{Add\allowbreak{}Interceptors} creates a
-  new internal provider including model for every context; from the 21st on, EF throws by
-  default with
-  \code{Many\allowbreak{}Service\allowbreak{}Providers\allowbreak{}Created\allowbreak{}Warning}.
-  A plugin registers it in \code{Apply\allowbreak{}Services}; an application always passes
-  the same instance.
+  Singleton interceptor instances are also part of the internal provider's cache key: a new
+  instance per context through \code{Add\allowbreak{}Interceptors} creates a new internal
+  provider including model for every context (consequences in
+  chapter~\ref{ch:the-options-extension}). A plugin therefore registers it in
+  \code{Apply\allowbreak{}Services}; an application always passes the same instance.
 \end{important}
 
 \section{Example: checking tenants while loading}
@@ -918,7 +925,7 @@ public class TenantMaterializationInterceptor : IMaterializationInterceptor
         var value = (TenantId)readValue(propertyName)!;
 
         if (value != current)
-            throw new TenancyException("... Row level security did not take effect ...");
+            throw new TenancyException("... isolation did not take effect ...");
     }
 
     // Once per context through its interceptors (like ApplyTenantSession) to the
@@ -957,8 +964,8 @@ if (Settings.VerifyMaterializedTenants)
   effect and the check fires. \\
   \tablerule
   In the core package & The check knows neither SQL nor provider types
-  (chapter~\ref{ch:what-belongs-in-the-core}); both provider packages activate it with one
-  line. \\
+  (chapter~\ref{ch:what-belongs-in-the-core}); all three provider packages activate it with
+  one line. \\
 \end{datatable}
 
 The integration tests reproduce the gap from chapter~\ref{ch:interceptors}: a context for
@@ -1020,7 +1027,7 @@ together with its entry, without the interceptor learning about it. With pooling
 correct across leases, because a context keeps its options and therefore its interceptors for
 its whole life; the tenant itself is still read on every row. If the lookup fails, the table
 stores nothing, and the configuration error stays visible on every call.
-\code{Materialization\allowbreak{}Tests} checks repeated rows in one context, contexts with
+The unit tests in \code{Materialization\allowbreak{}Tests} check repeated rows in one context, contexts with
 different tenants and a pooled context across two leases.
 
 \section{Limits}

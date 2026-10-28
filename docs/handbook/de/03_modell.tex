@@ -8,10 +8,11 @@
     \item Kapitel~\ref{ch:type-mappings-and-value-converters}: Type Mappings und Value
     Converter
   }}
-\part{Das Modell}\label{part:III}
+\part{Das Modell}\label{part:model}
 
 % ------------------------------------------------------------
 \chapter{Annotations und Fluent API}\label{ch:annotations-and-fluent-api}
+\versionrisk{stable}
 
 Annotations sind EFs Mechanismus für erweiterbare Metadaten: Schlüssel-Wert-Paare an jedem
 Modellelement (Modell, Entity-Typ, Property, Index, ...). Ein Plugin speichert seine
@@ -33,8 +34,10 @@ Migrations, Snapshots, Compiled Models) kann damit arbeiten.
   \code{Equals}. Ein Record mit \code{string[]} würde per Referenz verglichen und ständig
   „geändert“ wirken. \\
   \tablerule
-  Default-Werte nicht speichern & „Annotation fehlt“ und „Annotation hat Default“ sind für
-  den Differ verschieden und erzeugen leere Migrationen. \\
+  Explizite Konfiguration behalten, für Migrationen normalisieren & Für den Differ sind
+  „Annotation fehlt“ und „Annotation hat Default“ verschieden und erzeugen leere Migrationen.
+  Ein explizites \code{force:\allowbreak{} false} bleibt trotzdem im Modell; der
+  Annotation-Provider lässt den Default für Migrationen weg (siehe unten). \\
   \tablerule
   Je Teilkonfiguration eine Annotation & Jede Policy hat eine eigene Annotation. Dann zeigt
   der Diff genau, welche sich geändert hat. \\
@@ -82,10 +85,8 @@ public static class RlsEntityTypeBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         builder.Metadata.SetAnnotation(RlsAnnotationNames.Enabled, true);
 
-        if (force)
-            builder.Metadata.SetAnnotation(RlsAnnotationNames.Forced, true);
-        else
-            builder.Metadata.RemoveAnnotation(RlsAnnotationNames.Forced);   // kein Default!
+        // auch false: eine explizite Entscheidung schlägt den FORCE-Default der Convention
+        builder.Metadata.SetAnnotation(RlsAnnotationNames.Forced, force);
 
         return builder;
     }
@@ -109,9 +110,18 @@ public static class RlsEntityTypeBuilderExtensions
 }
 \end{sourcecode}
 
+\code{Has\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{}force:\allowbreak{} false)}
+speichert \code{false} und entfernt die Annotation nicht. Entfernt wäre sie nicht von „nicht
+konfiguriert“ zu unterscheiden, und die Isolations-Convention, die FORCE standardmäßig setzt,
+überschriebe die explizite Entscheidung. Zwei Schichten haben hier verschiedene Aufgaben: Das
+Modell behält jede explizite Konfiguration samt Konfigurationsquelle, der Annotation-Provider
+normalisiert für die Migrationen und behandelt \code{false} wie eine fehlende Annotation: Er
+gibt sie nicht an das relationale Modell weiter (Kapitel~\ref{ch:declarative-sql-from-annotations}). So gewinnt die Entscheidung
+des Anwenders, und ein unverändertes Modell erzeugt trotzdem keine Migration.
+
 Verschachtelte Konfiguration wie bei \code{Has\allowbreak{}Policy} nimmt ein
-\code{Action<\allowbreak{}Policy\allowbreak{}Builder>} entgegen. Der Builder prüft die
-Regeln der Datenbank schon beim Modellbau. Ein Fehler wie „INSERT-Policy mit USING“ fällt so
+\code{Action<\allowbreak{}Policy\allowbreak{}Builder>} entgegen. Der Builder prüft
+PostgreSQLs Regeln schon beim Modellbau. Ein Fehler wie „INSERT-Policy mit USING“ fällt so
 beim ersten Start der Anwendung auf und nicht erst beim Ausführen der Migration in
 Produktion:
 
@@ -119,10 +129,6 @@ Produktion:
 \begin{sourcecode}[Builders/\allowbreak{}Policy\allowbreak{}Builder.\allowbreak{}cs › Build]{csharp}
 internal RlsPolicy Build()
 {
-    if (_using is null && _withCheck is null)
-        throw new InvalidOperationException(
-            $"Policy '{_name}' braucht USING oder WITH CHECK.");
-
     if (_command == PolicyCommand.Insert && _using is not null)
         throw new InvalidOperationException(
             $"INSERT-Policy '{_name}' erlaubt nur WITH CHECK.");
@@ -135,6 +141,31 @@ internal RlsPolicy Build()
         _roles.Count > 0 ? [.. _roles] : null, _using, _withCheck);
 }
 \end{sourcecode}
+
+Der Builder übernimmt genau die Regeln von \code{CREATE POLICY}, nicht mehr. Beide Klauseln
+sind in PostgreSQL optional; eingeschränkt ist nur, welcher Befehl welche Klausel erlaubt:
+
+\begin{datatable}{H{0.70}H{0.75}H{1.55}}
+  \textbf{Befehl} & \textbf{Erlaubt} & \textbf{Ohne Ausdruck} \\
+  \tablehead
+  \code{ALL}, \code{UPDATE} & \code{USING}, \code{WITH CHECK} & Fehlt \code{WITH CHECK}, gilt
+  \code{USING} auch für neue Zeilen. \\
+  \tablerule
+  \code{SELECT}, \code{DELETE} & nur \code{USING} & --- \\
+  \tablerule
+  \code{INSERT} & nur \code{WITH CHECK} & --- \\
+  \tablerule
+  Keine der Klauseln & bei jedem Befehl gültig & Permissive: gibt keine Zeile frei, trägt also
+  nichts zum ODER der permissiven Policies bei. Restrictive: schränkt nichts ein. \\
+\end{datatable}
+
+Die letzte Zeile beschreibt die PostgreSQL-Dokumentation nicht ausdrücklich; sie ist gegen
+PostgreSQL~17 geprüft (\code{Scaffolding\allowbreak{}Roundtrip\allowbreak{}Tests}). Eine Policy
+\code{CREATE POLICY allow\_all ON t;} gibt also trotz ihres Namens nichts frei. Das Plugin war
+hier früher enger und verlangte \code{USING} oder \code{WITH CHECK}. Diese Regel ist entfallen:
+Eine gültige Policy aus der Datenbank muss sich beim Scaffolding wieder als Fluent API
+darstellen lassen (Kapitel~\ref{ch:scaffolding-in-practice}). Wer eine engere Hausregel will,
+prüft sie in einem eigenen Modelltest, nicht im Builder.
 
 \section{Konfigurationsquellen}
 
@@ -198,6 +229,7 @@ entityType.SetAnnotation(RlsAnnotationNames.Enabled, true);
 
 % ------------------------------------------------------------
 \chapter{Conventions}\label{ch:conventions}
+\versionrisk{stable}
 
 Conventions verändern das Modell automatisch. EF selbst besteht zum größten Teil aus
 Conventions: Schlüssel erkennen, Beziehungen finden, Tabellennamen ableiten. Ein Plugin fügt
@@ -226,8 +258,8 @@ während des Modellbaus. Die wichtigsten:
   \code{IModel\allowbreak{}Finalizing\allowbreak{}Convention} & Modell wird abgeschlossen
   (noch änderbar) & Alles, was vom fertigen Modell abhängt \\
   \tablerule
-  \code{IModel\allowbreak{}Finalized\allowbreak{}Convention} & Modell ist fertig (read-only)
-  & Validierung \\
+  \code{IModel\allowbreak{}Finalized\allowbreak{}Convention} & Modell ist fertig und von EF
+  validiert (read-only) & Validierung \\
 \end{datatable}
 
 Der häufigste Convention-Fehler ist der falsche Zeitpunkt:
@@ -344,7 +376,7 @@ public virtual void ProcessModelFinalizing(
         // Markierte Property oder "TenantId" bei ITenantOwned (Kernpaket,
         // Kapitel „Fluent API auf Property-Ebene und Laufzeit-Annotations“)
         if (entityType.FindTenantPropertyCandidate() is not IConventionProperty property)
-            continue;                             // (+ Typprüfung, gekürzt)
+            continue;      // (ITenantOwned ohne gemappte TenantId: Exception, gekürzt)
 
         if (entityType.IsRlsOptedOut())
         {
@@ -369,6 +401,20 @@ public virtual void ProcessModelFinalizing(
     }
 }
 \end{sourcecode}
+
+Bevor die Convention etwas annotiert, prüft sie die Mandanten-Property. Beide relationalen Provider-Pakete
+folgen demselben Vertrag: Eine mit \code{Is\allowbreak{}Tenant\allowbreak{}Property(\allowbreak{})}
+markierte Property hat Vorrang, sonst braucht ein \code{ITenant\allowbreak{}Owned}-Typ eine
+gemappte Property \code{Tenant\allowbreak{}Id} vom Typ \code{Tenant\allowbreak{}Id}. Fehlt sie,
+weil \code{Ignore(\allowbreak{}e => e.\allowbreak{}Tenant\allowbreak{}Id)} sie entfernt hat
+oder weil eine explizite Interface-Implementierung keine gemappte Property ist, wirft das Modell
+eine \code{Invalid\allowbreak{}Operation\allowbreak{}Exception}. Das gilt auch für eine mit
+\code{[No\allowbreak{}Tenant\allowbreak{}Isolation]} ausgenommene Entität, denn das Interface
+verspricht eine Mandantenspalte. Den Typ stillschweigend zu überspringen, kostete ihn die
+Policy, den Index und, weil die Laufzeit-Annotation fehlte, die Prüfung in
+\code{Save\allowbreak{}Changes}. Typen ohne \code{ITenant\allowbreak{}Owned} und ohne
+markierte Property sind keine Mandantendaten und bleiben unberührt. Das Cosmos-Paket lehnt eine
+fehlende Mandanten-Property ebenso ab (Kapitel~\ref{ch:without-sql-what-carries-over}).
 
 % source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Conventions/TenantIsolationConvention.cs
 \begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Convention.\allowbreak{}cs › Apply\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security]{csharp}
@@ -411,7 +457,7 @@ RLS schützt Tabellen, keine Entitäten. Die Policy vergleicht die Mandantenspal
 Tabelle mit dem Session-Setting. Eine Tabelle mit Mandantendaten, aber ohne diese Spalte, lässt
 sich mit dieser Policy nicht schützen. Eine Entität kann mehrere Tabellen belegen, und mehrere
 Entitäten können sich eine Tabelle teilen. Deshalb prüft
-\code{Tenant\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Validator} aus dem Kernpaket
+\code{Tenant\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Validator} aus dem relationalen Paket
 vor jeder Annotation, ob jede Tabelle mit Mandantendaten die Mandantenspalte enthält. Beide
 Provider-Pakete rufen ihn auf, der Vertrag ist also für PostgreSQL und SQL Server gleich:
 
@@ -453,7 +499,19 @@ Provider-Pakete rufen ihn auf, der Vertrag ist also für PostgreSQL und SQL Serv
   \tablerule
   View, \code{To\allowbreak{}Sql\allowbreak{}Query}, keyless ohne Tabelle & keine eigene
   Tabelle & keine Policy; die Basistabellen tragen sie \\
+  \tablerule
+  Temporal-Tabelle (SQL Server, \code{Is\allowbreak{}Temporal}) & die aktuelle Tabelle und
+  ihre Historientabelle, die keine Policy hat & abgelehnt (SQL-Server-Paket) \\
 \end{datatable}
+
+Die Belege: \code{Table\allowbreak{}Mapping\allowbreak{}Tests} prüft die Zeilen von TPH bis
+zur Join-Entität am Modell,
+\code{Sql\allowbreak{}Server\allowbreak{}Temporal\allowbreak{}Table\allowbreak{}Tests} die
+Temporal-Tabelle,
+\code{Mapping\allowbreak{}Isolation\allowbreak{}Tests} die geschützten Zeilen gegen PostgreSQL
+und \code{Sql\allowbreak{}Server\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Tests} Modell
+und DDL für SQL Server; der Vergleich auf Seite~\pageref{sec:provider-comparison} zeigt, was je
+Provider verifiziert ist.
 
 Abgelehnt heißt: Das Modell wirft beim ersten Zugriff auf \code{Model} eine
 \code{Invalid\allowbreak{}Operation\allowbreak{}Exception}, die Tabelle, Typ und Ausweg nennt.
@@ -464,10 +522,20 @@ konkrete Tabelle die Mandantenspalte erbt. Das Plugin unterstützt aber genau ei
 Hierarchie, und eine halbe Umsetzung soll keine Sicherheit vortäuschen. Als Ausweg bleiben TPH
 oder eigenständige Entitäten.
 
+Temporal-Tabellen scheitern aus demselben Grund, obwohl die Historientabelle die Mandantenspalte
+hat. Eine Security Policy in SQL Server schützt genau die Tabellen, die sie nennt, und das Plugin
+nennt nur die aktuelle Tabelle. Abfragen mit \code{FOR SYSTEM\_TIME}, die EF für
+\code{Temporal\allowbreak{}All(\allowbreak{})} und verwandte Methoden absetzt, lesen die
+Historientabelle ohne das Prädikat der aktuellen Tabelle und liefern damit alte Zeilen aller
+Mandanten. Die SQL-Server-Convention lehnt deshalb eine mandantenbezogene Entität mit
+\code{Is\allowbreak{}Temporal(\allowbreak{})} ab; Temporal-Tabellen ohne Mandant und
+ausgenommene Entitäten bleiben erlaubt. Um auch die Historientabelle zu schützen, bräuchte sie
+eigene Prädikate, die das Plugin nicht erzeugt.
+
 Bewusste Ausnahmen bleiben möglich: Eine mit \code{[No\allowbreak{}Tenant\allowbreak{}Isolation]}
 oder \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})}
-ausgenommene Entität wird nicht geprüft, und die Convention protokolliert die Ausnahme als
-Warnung. So unterscheidet das Modell eine Entscheidung von einem Versehen. Für die implizite
+ausgenommene Entität prüft der Tabellen-Validator nicht, und die Convention protokolliert die
+Ausnahme als Warnung. So unterscheidet das Modell eine Entscheidung von einem Versehen. Für die implizite
 Join-Tabelle gibt es im PostgreSQL-Paket
 \code{Using\allowbreak{}Entity(\allowbreak{}j => j.\allowbreak{}Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{}))};
 das SQL-Server-Paket kennt nur das Attribut und braucht dafür eine Join-Klasse. Besser ist
@@ -485,9 +553,6 @@ Die Shadow-Property füllt der SaveChanges-Interceptor wie jede andere Mandanten
 PostgreSQL mit eingeschränkter Rolle: Ein TPC-Modell scheitert, bevor eine einzige Tabelle
 existiert. In einem Modell mit TPH, Owned Type, JSON-Spalte und dieser Join-Entität hat jede
 Tabelle RLS, und ohne Mandant ist in keiner Tabelle eine Zeile sichtbar.
-\code{Table\allowbreak{}Mapping\allowbreak{}Tests} und
-\code{Sql\allowbreak{}Server\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Tests} decken
-jede Zeile der Matrix ohne Datenbank ab.
 
 \section{Strukturelle Änderungen: Index und Query-Filter}
 
@@ -531,6 +596,36 @@ Bemerkenswert ist, dass der Filter die eigene Funktion
 verwendet. Er wird damit über den Translator aus
 Kapitel~\ref{ch:translating-methods-and-members} nach SQL übersetzt. Die Bausteine des
 Plugins greifen ineinander.
+
+\textbf{Zusammen mit Soft Delete.} Vor EF Core~10 hatte ein Entity-Typ genau einen
+Query-Filter: Ein zweites \code{Has\allowbreak{}Query\allowbreak{}Filter} ersetzte das erste,
+und \code{Ignore\allowbreak{}Query\allowbreak{}Filters(\allowbreak{})} schaltete alle auf einmal
+ab, den Mandantenfilter eingeschlossen. Mit benannten Filtern bleiben die eigenen Filter der
+Anwendung unabhängig von denen des Plugins:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/QueryTranslationTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Query\allowbreak{}Translation\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+m.Entity<Order>().HasQueryFilter("SoftDelete", o => !EF.Property<bool>(o, "IsDeleted"));
+
+// WHERE NOT (o."IsDeleted") AND o."TenantId" = nullif(current_setting(...), '')::uuid
+var both = ctx.Orders.ToQueryString();
+
+// Gelöschte Zeilen werden sichtbar, der Mandantenfilter bleibt
+var withDeleted = ctx.Orders.IgnoreQueryFilters(["SoftDelete"]).ToQueryString();
+
+// Nur der Mandantenfilter ist aus (mit RLS filtert die Datenbank weiter)
+var allTenants = ctx.Orders.IgnoreQueryFilters(["Acme.Tenancy"]).ToQueryString();
+\end{sourcecode}
+
+\begin{important}[Filter nur mit Namen abschalten]
+  Ein \code{Ignore\allowbreak{}Query\allowbreak{}Filters(\allowbreak{})} ohne Namen schaltet auch
+  den Mandantenfilter ab. Wo eine Anwendung gelöschte Datensätze zeigt, etwa in einem
+  Papierkorb, nennt sie ihren eigenen Filter:
+  \code{Ignore\allowbreak{}Query\allowbreak{}Filters(\allowbreak{}[\textquotedbl{}Soft\allowbreak{}Delete\textquotedbl{}])}.
+  \code{Acme.\allowbreak{}Tenancy} abzuschalten ist Support- oder Reporting-Rollen vorbehalten:
+  Mit RLS filtert die Datenbank weiter, ohne RLS (Cosmos DB,
+  Kapitel~\ref{ch:without-sql-what-carries-over}) sieht die Abfrage dann alle Mandanten.
+\end{important}
 
 \section{Endgültige Namen, egal wer sie setzt}
 
@@ -596,12 +691,23 @@ public class NoTenantIsolationAttributeConvention
 
 % ------------------------------------------------------------
 \chapter{Modellvalidierung}\label{ch:model-validation}
+\versionrisk{stable}
 
 Ein Plugin sollte Fehlkonfiguration erkennen, bevor sie zu falschem SQL oder Datenlecks
 führt. EF validiert Modelle über \code{IModel\allowbreak{}Validator}, den es aber nur einmal
 gibt und der dem Provider gehört. Für Plugins ist eine
 \code{IModel\allowbreak{}Finalized\allowbreak{}Convention} der bessere Ort: Sie läuft auf
 dem fertigen Modell und kollidiert mit niemandem.
+
+Der Zeitpunkt ist genauer, als der Name verrät. EF ruft die Finalized-Conventions erst
+\emph{nach} dem \code{IModel\allowbreak{}Validator} auf, wenn es aus dem fertigen Modell das
+schlanke Laufzeitmodell erzeugt. Diese Umwandlung ist selbst eine Finalized-Convention
+(\code{Runtime\allowbreak{}Model\allowbreak{}Convention}), und weil
+\code{Convention\allowbreak{}Set.\allowbreak{}Add} eigene Conventions ans Ende hängt, bekommt
+die Validierung des Plugins bereits das Laufzeitmodell. Sie liest deshalb nur Annotations,
+die dort erhalten bleiben (Kapitel~\ref{ch:property-level-fluent-api-and}). Mit einem
+Compiled Model läuft sie zur Laufzeit gar nicht mehr, sondern schon beim Erzeugen mit
+\code{dotnet ef dbcontext optimize}.
 
 \begin{sourcecode}[Conventions/\allowbreak{}Tenancy\allowbreak{}Model\allowbreak{}Validation\allowbreak{}Convention.\allowbreak{}cs (\allowbreak{}vereinfacht)]{csharp}
 public virtual IModel ProcessModelFinalized(IModel model)
@@ -634,6 +740,7 @@ können solche Warnungen gezielt in Fehler umwandeln
 
 % ------------------------------------------------------------
 \chapter{Type Mappings und Value Converter}\label{ch:type-mappings-and-value-converters}
+\versionrisk{medium}
 
 Ein Type Mapping verbindet einen CLR-Typ mit einem Datenbanktyp. Es bestimmt den Spaltentyp
 in Migrationen, wie Parameter gesetzt werden, wie Literale im SQL aussehen, wie Werte
@@ -655,7 +762,8 @@ Typen hat ein Plugin zwei Möglichkeiten:
 \section{Der Typ und sein Konverter}
 
 Der stark typisierte \code{Tenant\allowbreak{}Id} und sein Konverter liegen im Kernpaket.
-Der Konverter hat eine gemeinsame Instanz; warum, zeigt der Abschnitt über Compiled Models.
+Der Konverter hat eine gemeinsame Instanz; warum, zeigt der Hinweis zu Compiled Models am
+Ende des Kapitels.
 
 \begin{sourcecode}[Tenant\allowbreak{}Id.\allowbreak{}cs,\allowbreak{} Tenant\allowbreak{}Id\allowbreak{}Converter.\allowbreak{}cs (\allowbreak{}gekürzt, vereinfacht)]{csharp}
 public readonly record struct TenantId(Guid Value)
@@ -796,8 +904,8 @@ public sealed class TenantIdJsonReaderWriter : JsonValueReaderWriter<TenantId>
   Form
   \code{Tenant\allowbreak{}Id\allowbreak{}Type\allowbreak{}Mapping.\allowbreak{}Default.\allowbreak{}Clone(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}.
   Er verlangt eine \textbf{öffentliche, statische Property} namens \code{Default} auf einem
-  \textbf{öffentlichen} Typ und bricht sonst ab. Konverter und Reader/Writer übernimmt er
-  nur dann ohne zusätzlichen Code, wenn sie \emph{dieselbe Instanz} wie im Default-Mapping
+  \textbf{öffentlichen} Typ und bricht sonst ab. Konverter, Comparer und Reader/Writer
+  übernimmt er nur dann ohne zusätzlichen Code, wenn sie \emph{dieselbe Instanz} wie im Default-Mapping
   sind. Deshalb nutzt das Mapping die statischen Instanzen statt \code{new
   .\allowbreak{}.\allowbreak{}.\allowbreak{}(\allowbreak{})}. Ohne NativeAOT löst EF 10 Type
   Mappings stattdessen beim Start auf; ein Plugin sollte die Anforderungen trotzdem

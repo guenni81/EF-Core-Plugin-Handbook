@@ -13,6 +13,10 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="$(EFCoreVersion)" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="$(EFCoreVersion)" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="$(EFCoreVersion)" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Cosmos" Version="$(EFCoreVersion)" />
+    <!-- Tests only: the application test mode (UseAcmeTenancyForTesting) -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="$(EFCoreVersion)" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="$(EFCoreVersion)" />
   </ItemGroup>
 
   <!-- Security fixes for transitive packages that no responsible dependency carries yet
@@ -27,6 +31,10 @@
          4.14 -> Xml/Pkcs 9.0.0; 9.0.22 fixes the Xml advisories and brings Pkcs 9.0.22. Remove
          once the lower bound of EFCoreVersion pulls fixed MSBuild packages. -->
     <PackageVersion Include="System.Security.Cryptography.Xml" Version="9.0.22" />
+    <!-- Tests only: EF Core Sqlite 10.0.0 -> SQLitePCLRaw.bundle_e_sqlite3 2.1.11 ->
+         lib.e_sqlite3 2.1.11 (GHSA-2m69-gcr7-jv3q, fixed in 2.1.12). Remove once the lowest
+         supported EF Core Sqlite brings 2.1.12 or later. -->
+    <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.14" />
   </ItemGroup>
 
   <!-- Tooling and test dependencies, independent of the EF version -->
@@ -41,6 +49,10 @@
     <!-- 4.14.0 and later depend on SSH.NET 2026.0.0 (GHSA-q939-rpr3-3284, GHSA-mggc-4xg6-vcxf) -->
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.16.0" />
     <PackageVersion Include="Testcontainers.MsSql" Version="4.16.0" />
+    <PackageVersion Include="Testcontainers.CosmosDb" Version="4.16.0" />
+    <!-- Tests only: EF Core Cosmos 10.0.0 brings SDK 3.51, which cannot read every binary JSON
+         response of the current vNext emulator ("Unknown JsonNodeType") -->
+    <PackageVersion Include="Microsoft.Azure.Cosmos" Version="3.63.3" />
     <!-- Test only: checks that the plugin composes with a widely used convention plugin -->
     <PackageVersion Include="EFCore.NamingConventions" Version="10.0.1" />
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />

@@ -112,7 +112,9 @@ internal static class Contexts
         Action<DbContextOptionsBuilder>? configure = null)
     {
         var builder = new DbContextOptionsBuilder<TestContext>()
-            .UseNpgsql("Host=localhost;Database=unused")   // no connection is ever opened
+            // No connection is ever opened. The functions sample plugin runs next to the tenancy
+            // plugin, as an application would combine them (chapter "Custom SQL expression nodes")
+            .UseNpgsql("Host=localhost;Database=unused", npgsql => npgsql.UseAcmeFunctions())
             .UseAcmeTenancy(tenancy)
             .EnableServiceProviderCaching(cacheServiceProvider);
 

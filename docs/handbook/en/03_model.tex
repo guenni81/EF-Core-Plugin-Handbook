@@ -8,10 +8,11 @@
     \item Chapter~\ref{ch:type-mappings-and-value-converters}: Type mappings and value
     converters
   }}
-\part{The model}\label{part:III}
+\part{The model}\label{part:model}
 
 % ------------------------------------------------------------
 \chapter{Annotations and Fluent API}\label{ch:annotations-and-fluent-api}
+\versionrisk{stable}
 
 Annotations are EF's mechanism for extensible metadata: key-value pairs on every model
 element (model, entity type, property, index, ...). A plugin stores its configuration as
@@ -32,8 +33,10 @@ compiled models) can work with them.
   \code{Equals}. A record with a \code{string[]} would be compared by reference and
   constantly appear “changed”. \\
   \tablerule
-  Do not store default values & “Annotation missing” and “annotation has default” differ for
-  the differ and produce empty migrations. \\
+  Keep explicit configuration, normalize it for migrations & For the differ, “annotation
+  missing” and “annotation has default” differ and produce empty migrations. An explicit
+  \code{force:\allowbreak{} false} still stays in the model; the annotation provider leaves
+  the default out for migrations (see below). \\
   \tablerule
   One annotation per piece of configuration & Every policy has its own annotation, so the
   diff shows exactly which one changed. \\
@@ -81,10 +84,8 @@ public static class RlsEntityTypeBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         builder.Metadata.SetAnnotation(RlsAnnotationNames.Enabled, true);
 
-        if (force)
-            builder.Metadata.SetAnnotation(RlsAnnotationNames.Forced, true);
-        else
-            builder.Metadata.RemoveAnnotation(RlsAnnotationNames.Forced);   // no default!
+        // false too: an explicit decision beats the convention's FORCE default
+        builder.Metadata.SetAnnotation(RlsAnnotationNames.Forced, force);
 
         return builder;
     }
@@ -108,8 +109,17 @@ public static class RlsEntityTypeBuilderExtensions
 }
 \end{sourcecode}
 
+\code{Has\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{}force:\allowbreak{} false)}
+stores \code{false} and does not remove the annotation. Removed, it would be indistinguishable
+from “not configured”, and the isolation convention, which sets FORCE by default, would override
+the explicit decision. Two layers have different duties here: the model keeps every explicit
+configuration together with its configuration source, while the annotation provider normalizes
+for the migrations and treats \code{false} like a missing annotation: it does not pass it on to
+the relational model (chapter~\ref{ch:declarative-sql-from-annotations}). That way the user's decision wins, and a
+model without a change still produces no migration.
+
 Nested configuration such as \code{Has\allowbreak{}Policy} accepts an
-\code{Action<\allowbreak{}Policy\allowbreak{}Builder>}. The builder checks the database's
+\code{Action<\allowbreak{}Policy\allowbreak{}Builder>}. The builder checks PostgreSQL's
 rules already while the model is built. A mistake like “INSERT policy with USING” therefore
 surfaces on the application's first start, not when the migration runs in production:
 
@@ -117,10 +127,6 @@ surfaces on the application's first start, not when the migration runs in produc
 \begin{sourcecode}[Builders/\allowbreak{}Policy\allowbreak{}Builder.\allowbreak{}cs › Build]{csharp}
 internal RlsPolicy Build()
 {
-    if (_using is null && _withCheck is null)
-        throw new InvalidOperationException(
-            $"Policy '{_name}' requires USING or WITH CHECK.");
-
     if (_command == PolicyCommand.Insert && _using is not null)
         throw new InvalidOperationException(
             $"INSERT policy '{_name}' only allows WITH CHECK.");
@@ -133,6 +139,31 @@ internal RlsPolicy Build()
         _roles.Count > 0 ? [.. _roles] : null, _using, _withCheck);
 }
 \end{sourcecode}
+
+The builder adopts exactly the rules of \code{CREATE POLICY}, nothing more. Both clauses are
+optional in PostgreSQL; only which command allows which clause is restricted:
+
+\begin{datatable}{H{0.70}H{0.75}H{1.55}}
+  \textbf{Command} & \textbf{Allowed} & \textbf{Without an expression} \\
+  \tablehead
+  \code{ALL}, \code{UPDATE} & \code{USING}, \code{WITH CHECK} & Without \code{WITH CHECK},
+  \code{USING} also applies to new rows. \\
+  \tablerule
+  \code{SELECT}, \code{DELETE} & only \code{USING} & --- \\
+  \tablerule
+  \code{INSERT} & only \code{WITH CHECK} & --- \\
+  \tablerule
+  Neither clause & valid for every command & Permissive: grants no row, so it adds nothing to
+  the OR of the permissive policies. Restrictive: restricts nothing. \\
+\end{datatable}
+
+The PostgreSQL documentation does not state the last row explicitly; it is checked against
+PostgreSQL~17 (\code{Scaffolding\allowbreak{}Roundtrip\allowbreak{}Tests}). A policy
+\code{CREATE POLICY allow\_all ON t;} therefore grants nothing despite its name. The plugin used
+to be stricter here and required \code{USING} or \code{WITH CHECK}. That rule is gone: a valid
+policy from the database has to be representable as Fluent API again when scaffolding
+(chapter~\ref{ch:scaffolding-in-practice}). A stricter house rule belongs in a model test of its
+own, not in the builder.
 
 \section{Configuration sources}
 
@@ -196,6 +227,7 @@ entityType.SetAnnotation(RlsAnnotationNames.Enabled, true);
 
 % ------------------------------------------------------------
 \chapter{Conventions}\label{ch:conventions}
+\versionrisk{stable}
 
 Conventions change the model automatically. EF itself consists largely of conventions:
 discovering keys, finding relationships, deriving table names. A plugin adds its own to make
@@ -224,7 +256,8 @@ building. The most important ones:
   \code{IModel\allowbreak{}Finalizing\allowbreak{}Convention} & Model is being finalized
   (still mutable) & Everything that depends on the finished model \\
   \tablerule
-  \code{IModel\allowbreak{}Finalized\allowbreak{}Convention} & Model is finished (read-only)
+  \code{IModel\allowbreak{}Finalized\allowbreak{}Convention} & Model is finished and validated by
+  EF (read-only)
   & Validation \\
 \end{datatable}
 
@@ -342,7 +375,7 @@ public virtual void ProcessModelFinalizing(
         // Marked property or "TenantId" with ITenantOwned (core package,
         // chapter "Property-level Fluent API and runtime annotations")
         if (entityType.FindTenantPropertyCandidate() is not IConventionProperty property)
-            continue;                             // (+ type check, shortened)
+            continue;      // (ITenantOwned without a mapped TenantId: exception, shortened)
 
         if (entityType.IsRlsOptedOut())
         {
@@ -367,6 +400,21 @@ public virtual void ProcessModelFinalizing(
     }
 }
 \end{sourcecode}
+
+Before the convention annotates anything, it checks the tenant property. Both relational provider packages
+follow the same contract: a property marked with
+\code{Is\allowbreak{}Tenant\allowbreak{}Property(\allowbreak{})} wins, otherwise an
+\code{ITenant\allowbreak{}Owned} type needs a mapped property \code{Tenant\allowbreak{}Id} of
+type \code{Tenant\allowbreak{}Id}. If an \code{ITenant\allowbreak{}Owned} type has no such
+property, because \code{Ignore(\allowbreak{}e => e.\allowbreak{}Tenant\allowbreak{}Id)} removed
+it or because an explicit interface implementation is not a mapped property, the model throws an
+\code{Invalid\allowbreak{}Operation\allowbreak{}Exception}. That also applies to an entity
+excluded with \code{[No\allowbreak{}Tenant\allowbreak{}Isolation]}, since the interface
+promises a tenant column. Skipping the type silently would cost it the policy, the index and,
+because the runtime annotation would be missing, the check in
+\code{Save\allowbreak{}Changes}. Types without \code{ITenant\allowbreak{}Owned} and without a
+marked property are not tenant data and stay untouched. The Cosmos package rejects a missing
+tenant property the same way (chapter~\ref{ch:without-sql-what-carries-over}).
 
 % source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Conventions/TenantIsolationConvention.cs
 \begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Convention.\allowbreak{}cs › Apply\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security]{csharp}
@@ -408,7 +456,7 @@ RLS protects tables, not entities. The policy compares the tenant column of the 
 with the session setting. A table that holds tenant data but lacks this column cannot be
 protected by this policy. One entity can occupy several tables, and several entities can share
 one table. That is why \code{Tenant\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Validator}
-from the core package checks, before any annotation, that every table with tenant data contains
+from the relational package checks, before any annotation, that every table with tenant data contains
 the tenant column. Both provider packages call it, so the contract is the same for PostgreSQL and
 SQL Server:
 
@@ -450,7 +498,19 @@ SQL Server:
   \tablerule
   View, \code{To\allowbreak{}Sql\allowbreak{}Query}, keyless without a table & no table of
   its own & no policy; the base tables carry it \\
+  \tablerule
+  Temporal table (SQL Server, \code{Is\allowbreak{}Temporal}) & the current table and its
+  history table, which has no policy & rejected (SQL Server package) \\
 \end{datatable}
+
+The evidence: \code{Table\allowbreak{}Mapping\allowbreak{}Tests} checks the rows from TPH to the
+join entity on the model,
+\code{Sql\allowbreak{}Server\allowbreak{}Temporal\allowbreak{}Table\allowbreak{}Tests} the
+temporal table,
+\code{Mapping\allowbreak{}Isolation\allowbreak{}Tests} the protected rows against PostgreSQL, and
+\code{Sql\allowbreak{}Server\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Tests} the model and
+the DDL for SQL Server; the comparison on page~\pageref{sec:provider-comparison} shows what is
+verified per provider.
 
 Rejected means: the model throws an \code{Invalid\allowbreak{}Operation\allowbreak{}Exception}
 on the first access to \code{Model}, naming the table, the type and the way out. This happens
@@ -460,10 +520,19 @@ the rejection. TPC could be protected in principle, since every concrete table i
 tenant column. The plugin, however, supports exactly one table per hierarchy, and a half-done
 implementation must not pretend to be secure. The ways out are TPH or independent entities.
 
+Temporal tables fail for the same reason, although the history table has the tenant column. A
+SQL Server security policy protects exactly the tables it names, and the plugin names the current
+table only. Queries with \code{FOR SYSTEM\_TIME}, which EF issues for
+\code{Temporal\allowbreak{}All(\allowbreak{})} and its siblings, read the history table without
+the current table's predicate and so return old rows of every tenant. The SQL Server convention
+therefore rejects a tenant-owned entity mapped with \code{Is\allowbreak{}Temporal(\allowbreak{})};
+temporal tables without a tenant and excluded entities remain allowed. Protecting the history
+table as well would require predicates of its own on it, which the plugin does not generate.
+
 Deliberate exceptions remain possible: an entity excluded with
 \code{[No\allowbreak{}Tenant\allowbreak{}Isolation]} or
 \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})}
-is not checked, and the convention logs the exception as a warning. That way the model tells a
+is not checked by the table validator, and the convention logs the exception as a warning. That way the model tells a
 decision from an oversight. For the implicit join table the PostgreSQL package offers
 \code{Using\allowbreak{}Entity(\allowbreak{}j => j.\allowbreak{}Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{}))};
 the SQL Server package only knows the attribute and needs a join class for it. A tenant property
@@ -480,9 +549,7 @@ The SaveChanges interceptor fills the shadow property like any other tenant prop
 \code{Mapping\allowbreak{}Isolation\allowbreak{}Tests} checks both against a real PostgreSQL
 with a restricted role: a TPC model fails before a single table exists. In a model with TPH, an
 owned type, a JSON column and this join entity, every table has RLS, and without a tenant no row
-is visible in any table. \code{Table\allowbreak{}Mapping\allowbreak{}Tests} and
-\code{Sql\allowbreak{}Server\allowbreak{}Table\allowbreak{}Mapping\allowbreak{}Tests} cover
-every row of the matrix without a database.
+is visible in any table.
 
 \section{Structural changes: index and query filter}
 
@@ -523,6 +590,36 @@ Notably, the filter uses the plugin's own function
 \code{EF.\allowbreak{}Functions.\allowbreak{}Current\allowbreak{}Tenant(\allowbreak{})}. It
 is therefore translated to SQL by the translator from
 chapter~\ref{ch:translating-methods-and-members}. The plugin's building blocks interlock.
+
+\textbf{Combined with soft delete.} Before EF Core~10 an entity type had exactly one query
+filter: a second \code{Has\allowbreak{}Query\allowbreak{}Filter} replaced the first, and
+\code{Ignore\allowbreak{}Query\allowbreak{}Filters(\allowbreak{})} switched off all of them at
+once, the tenant filter included. With named filters the application's own filters stay
+independent of the plugin's:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/QueryTranslationTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Query\allowbreak{}Translation\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+m.Entity<Order>().HasQueryFilter("SoftDelete", o => !EF.Property<bool>(o, "IsDeleted"));
+
+// WHERE NOT (o."IsDeleted") AND o."TenantId" = nullif(current_setting(...), '')::uuid
+var both = ctx.Orders.ToQueryString();
+
+// Deleted rows become visible, the tenant filter stays
+var withDeleted = ctx.Orders.IgnoreQueryFilters(["SoftDelete"]).ToQueryString();
+
+// Only the tenant filter is off (with RLS the database still filters)
+var allTenants = ctx.Orders.IgnoreQueryFilters(["Acme.Tenancy"]).ToQueryString();
+\end{sourcecode}
+
+\begin{important}[Switch off filters by name only]
+  An \code{Ignore\allowbreak{}Query\allowbreak{}Filters(\allowbreak{})} without names also
+  switches off the tenant filter. Where an application shows deleted records, for example in a
+  recycle bin, it names its own filter:
+  \code{Ignore\allowbreak{}Query\allowbreak{}Filters(\allowbreak{}[\textquotedbl{}Soft\allowbreak{}Delete\textquotedbl{}])}.
+  Switching off \code{Acme.\allowbreak{}Tenancy} belongs to support or reporting roles only:
+  with RLS the database still filters, without it (Cosmos DB,
+  chapter~\ref{ch:without-sql-what-carries-over}) the query then sees every tenant.
+\end{important}
 
 \section{Final names, whoever sets them}
 
@@ -585,12 +682,23 @@ public class NoTenantIsolationAttributeConvention
 
 % ------------------------------------------------------------
 \chapter{Model validation}\label{ch:model-validation}
+\versionrisk{stable}
 
 A plugin should detect misconfiguration before it leads to wrong SQL or data leaks. EF
 validates models through \code{IModel\allowbreak{}Validator}, but there is only one, and it
 belongs to the provider. For plugins, an
 \code{IModel\allowbreak{}Finalized\allowbreak{}Convention} is the better place: it runs on
 the finished model and collides with nobody.
+
+The timing is more precise than the name suggests. EF calls the finalized conventions only
+\emph{after} the \code{IModel\allowbreak{}Validator}, when it creates the lean runtime model
+from the finished model. That conversion is itself a finalized convention
+(\code{Runtime\allowbreak{}Model\allowbreak{}Convention}), and because
+\code{Convention\allowbreak{}Set.\allowbreak{}Add} appends custom conventions at the end, the
+plugin's validation already receives the runtime model. It therefore only reads annotations
+that are kept there (chapter~\ref{ch:property-level-fluent-api-and}). With a compiled model
+it no longer runs at runtime at all, but already when the model is generated with
+\code{dotnet ef dbcontext optimize}.
 
 \begin{sourcecode}[Conventions/\allowbreak{}Tenancy\allowbreak{}Model\allowbreak{}Validation\allowbreak{}Convention.\allowbreak{}cs (\allowbreak{}simplified)]{csharp}
 public virtual IModel ProcessModelFinalized(IModel model)
@@ -622,6 +730,7 @@ warnings into errors selectively (chapter~\ref{ch:diagnostics-and-logging}).
 
 % ------------------------------------------------------------
 \chapter{Type mappings and value converters}\label{ch:type-mappings-and-value-converters}
+\versionrisk{medium}
 
 A type mapping connects a CLR type with a database type. It determines the column type in
 migrations, how parameters are set, what literals look like in SQL, how values are compared
@@ -642,7 +751,8 @@ options:
 \section{The type and its converter}
 
 The strongly typed \code{Tenant\allowbreak{}Id} and its converter live in the core package.
-The converter has a shared instance; the section on compiled models explains why.
+The converter has a shared instance; the note on compiled models at the end of the chapter
+explains why.
 
 \begin{sourcecode}[Tenant\allowbreak{}Id.\allowbreak{}cs,\allowbreak{} Tenant\allowbreak{}Id\allowbreak{}Converter.\allowbreak{}cs (\allowbreak{}shortened, simplified)]{csharp}
 public readonly record struct TenantId(Guid Value)
@@ -782,8 +892,8 @@ public sealed class TenantIdJsonReaderWriter : JsonValueReaderWriter<TenantId>
   code of the form
   \code{Tenant\allowbreak{}Id\allowbreak{}Type\allowbreak{}Mapping.\allowbreak{}Default.\allowbreak{}Clone(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}
   for every type mapping. It requires a \textbf{public static property} named \code{Default}
-  on a \textbf{public} type and aborts otherwise. It only takes over converters and
-  readers/writers without extra code when they are \emph{the same instance} as in the
+  on a \textbf{public} type and aborts otherwise. It only takes over converters,
+  comparers and readers/writers without extra code when they are \emph{the same instance} as in the
   default mapping. That is why the mapping uses the static instances rather than \code{new
   .\allowbreak{}.\allowbreak{}.\allowbreak{}(\allowbreak{})}. Without NativeAOT, EF 10
   resolves type mappings at startup instead; a plugin should still meet the requirements,
