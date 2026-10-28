@@ -27,6 +27,11 @@ its internal API surface shrinks from 13 to 10 Npgsql types.
 
 ### Added
 
+- `EnrichOpenTelemetry()` (PostgreSQL options builder, SQL Server provider builder, default:
+  off): a command interceptor from the relational package tags `Activity.Current` with
+  `tenant.id` before every command, only when an activity is recorded and a tenant is set.
+  Integration tests with an `ActivityListener`; handbook (both editions) chapter 19 explains
+  which span receives the tag with the EF Core instrumentation and with the driver's tracing.
 - Test mode for applications in the core package: `UseAcmeTenancyForTesting(sp)` lets business
   logic tests run on SQLite or InMemory with the application-side behavior of the plugin
   (TenantId mapped as a Guid, SaveChanges interceptor, `modelBuilder.HasTenantQueryFilters(this)`)

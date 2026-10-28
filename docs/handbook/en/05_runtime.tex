@@ -505,3 +505,68 @@ options.UseNpgsql(cs)
   \code{Configure\allowbreak{}Warnings}; others at least see them at startup. The plugin
   does not have to make this decision for everyone.
 \end{tip}
+
+\section{OpenTelemetry: the tenant on the trace}
+
+Distributed tracing with OpenTelemetry builds on
+\code{System.\allowbreak{}Diagnostics.\allowbreak{}Activity}. EF Core starts no activities
+itself. The spans of database commands come either from the OpenTelemetry instrumentation for
+EF Core, which listens to EF's \code{Diagnostic\allowbreak{}Source} events, or from the
+database driver: Npgsql and SqlClient have activity sources of their own. Both usually lack the
+tenant, the first question when a query is slow or fails in production. With
+\code{Enrich\allowbreak{}Open\allowbreak{}Telemetry(\allowbreak{})} the plugin adds it as the tag
+\code{tenant.\allowbreak{}id} (default: off):
+
+\begin{sourcecode}[Usage]{csharp}
+options.UseNpgsql(cs).UseAcmeTenancy(sp, t => t.EnrichOpenTelemetry());
+// SQL Server: UseSqlServer(cs, sql => sql.UseAcmeTenancy(sp).EnrichOpenTelemetry())
+\end{sourcecode}
+
+A command interceptor tags \code{Activity.\allowbreak{}Current} before every command. It is
+registered in the internal service provider, one instance for all contexts, and reads the
+tenant from the context of the command:
+
+% source: src/Acme.EntityFrameworkCore.Tenancy.Relational/Interceptors/TenantActivityEnrichmentInterceptor.cs
+\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Activity\allowbreak{}Enrichment\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+protected virtual void Enrich(CommandEventData eventData)
+{
+    // The cheap checks first: without a recorded activity there is nothing to do
+    if (Activity.Current is not { IsAllDataRequested: true } activity
+        || eventData.Context is not { } context)
+        return;
+
+    // The tenant provider of this context travels with its SaveChanges interceptor
+    var tenant = context.GetService<IDbContextOptions>()
+        .FindExtension<CoreOptionsExtension>()?.Interceptors?
+        .OfType<TenantSaveChangesInterceptor>().FirstOrDefault()?.Tenants.CurrentTenantId;
+
+    // Without a tenant no tag: an empty or placeholder value would be misleading
+    if (tenant is { } id)
+        activity.SetTag(TagName, id.Value.ToString("D"));
+}
+\end{sourcecode}
+
+Which activity receives the tag depends on the instrumentation:
+
+\begin{datatable}{H{0.85}H{1.15}}
+  \textbf{Instrumentation} & \textbf{Tagged activity} \\
+  \tablehead
+  OpenTelemetry instrumentation for EF Core & The command's own span: EF~10 raises its
+  \code{Command\allowbreak{}Executing} event, which starts the span, before it calls the
+  interceptors \\
+  \tablerule
+  Only the driver (Npgsql, SqlClient) & The enclosing span, typically the HTTP request: the
+  driver starts its span inside \code{Execute\allowbreak{}Reader}, after the interceptor \\
+  \tablerule
+  No listener & None; the interceptor returns after one check, without allocations \\
+\end{datatable}
+
+\code{Activity\allowbreak{}Enrichment\allowbreak{}Tests} checks the tag against PostgreSQL with an
+\code{Activity\allowbreak{}Listener}: set when enabled, missing when disabled and missing
+without a tenant.
+
+\begin{note}[Tenant IDs in telemetry]
+  A tenant ID is an identifier, not secret data, but traces often leave the application:
+  to a monitoring service, sometimes to another company. Whether tenant IDs may go there is a
+  data protection decision of the operator, which is why the option is off by default.
+\end{note}

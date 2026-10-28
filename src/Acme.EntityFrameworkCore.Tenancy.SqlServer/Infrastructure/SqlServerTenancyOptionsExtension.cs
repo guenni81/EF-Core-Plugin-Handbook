@@ -90,6 +90,11 @@ public class SqlServerTenancyOptionsExtension : IDbContextOptionsExtension
             new EntityFrameworkServicesBuilder(services)
                 .TryAdd<IInterceptor, TenantQueryExpressionInterceptor>();
 
+        // Optional tagging of traces, as in the PostgreSQL package
+        if (Settings.EnrichOpenTelemetry)
+            new EntityFrameworkServicesBuilder(services)
+                .TryAdd<IInterceptor, TenantActivityEnrichmentInterceptor>();
+
         // Single-instance services of the provider: replace them; the classes derive from the
         // SQL Server implementations, so all non-tenancy behaviour stays unchanged
         services.Replace(ServiceDescriptor
@@ -141,6 +146,7 @@ public class SqlServerTenancyOptionsExtension : IDbContextOptionsExtension
             debugInfo["Acme:Tenancy:SqlServer:PolicySchema"] = s.PolicySchema.GetHashCode().ToString();
             debugInfo["Acme:Tenancy:SqlServer:VerifyMaterialized"] = s.VerifyMaterializedTenants.ToString();
             debugInfo["Acme:Tenancy:SqlServer:ProtectBulkOperations"] = s.ProtectBulkOperations.ToString();
+            debugInfo["Acme:Tenancy:SqlServer:EnrichOpenTelemetry"] = s.EnrichOpenTelemetry.ToString();
         }
     }
 }

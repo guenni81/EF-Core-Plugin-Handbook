@@ -29,6 +29,12 @@ public sealed partial record SqlServerTenancySettings
     /// </summary>
     public bool ProtectBulkOperations { get; init; }
 
+    /// <summary>
+    /// Tag the current activity with <c>tenant.id</c> before every command (default: off).
+    /// Registers a command interceptor in the internal service provider.
+    /// </summary>
+    public bool EnrichOpenTelemetry { get; init; }
+
     // Stricter than SQL Server's identifier rules (only the 128-character limit matches): no
     // quotes, brackets or spaces that could break out of the nested EXEC(N'...') literals
     [GeneratedRegex(@"^[A-Za-z_][A-Za-z0-9_]{0,127}$")]

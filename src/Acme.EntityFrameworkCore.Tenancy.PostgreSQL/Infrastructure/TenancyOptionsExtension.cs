@@ -93,6 +93,12 @@ public class TenancyOptionsExtension : IDbContextOptionsExtension
             new EntityFrameworkServicesBuilder(services)
                 .TryAdd<IInterceptor, TenantQueryExpressionInterceptor>();
 
+        // Optional tagging of traces (chapter "Diagnostics and logging"); one instance for all
+        // contexts, the tenant comes from the context of each command
+        if (Settings.EnrichOpenTelemetry)
+            new EntityFrameworkServicesBuilder(services)
+                .TryAdd<IInterceptor, TenantActivityEnrichmentInterceptor>();
+
         // 3) Replace single services of the provider. Replace instead of TryAdd: Npgsql registers
         //    via TryAdd, so our service wins regardless of the order.
         services.Replace(ServiceDescriptor
@@ -147,6 +153,7 @@ public class TenancyOptionsExtension : IDbContextOptionsExtension
             debugInfo["Acme:Tenancy:VerifyMaterialized"] = s.VerifyMaterializedTenants.ToString();
             debugInfo["Acme:Tenancy:ProtectBulkOperations"] = s.ProtectBulkOperations.ToString();
             debugInfo["Acme:Tenancy:TransactionPooling"] = s.UseTransactionPooling.ToString();
+            debugInfo["Acme:Tenancy:EnrichOpenTelemetry"] = s.EnrichOpenTelemetry.ToString();
         }
     }
 }

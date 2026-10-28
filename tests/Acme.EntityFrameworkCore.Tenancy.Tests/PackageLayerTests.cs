@@ -42,4 +42,17 @@ public class PackageLayerTests
 
         Assert.IsType<NpgsqlQuerySqlGeneratorFactory>(ctx.GetService<IQuerySqlGeneratorFactory>());
     }
+
+    [Fact]
+    public void EnrichOpenTelemetry_registers_the_interceptor_only_when_enabled()
+    {
+        static int Count(bool enrich)
+        {
+            using var ctx = Contexts.Create(t => t.EnrichOpenTelemetry(enrich));
+            return ctx.GetService<IEnumerable<Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor>>()
+                .OfType<TenantActivityEnrichmentInterceptor>().Count();
+        }
+
+        Assert.Equal((0, 1), (Count(false), Count(true)));
+    }
 }

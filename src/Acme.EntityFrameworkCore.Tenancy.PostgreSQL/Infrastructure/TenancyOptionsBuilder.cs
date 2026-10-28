@@ -81,6 +81,16 @@ public class TenancyOptionsBuilder
         => With(s => s with { UseTransactionPooling = enabled });
 
     /// <summary>
+    /// Tags the current <see cref="System.Diagnostics.Activity"/> with the tenant
+    /// (<c>tenant.id</c>) before every command, for traces in OpenTelemetry (default: off).
+    /// Which activity that is depends on the instrumentation (chapter "Diagnostics and logging").
+    /// </summary>
+    /// <param name="enable">Whether to tag activities.</param>
+    /// <returns>The same builder for chaining.</returns>
+    public virtual TenancyOptionsBuilder EnrichOpenTelemetry(bool enable = true)
+        => With(s => s with { EnrichOpenTelemetry = enable });
+
+    /// <summary>
     /// Applies a change to the settings. Options extensions are immutable, so a modified copy
     /// replaces the registered extension.
     /// </summary>

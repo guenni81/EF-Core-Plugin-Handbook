@@ -20,6 +20,7 @@ public class SqlServerDebugInfoTests
     {
         Assert.Equal(
             [
+                "Acme:Tenancy:SqlServer:EnrichOpenTelemetry",
                 "Acme:Tenancy:SqlServer:PolicySchema",
                 "Acme:Tenancy:SqlServer:ProtectBulkOperations",
                 "Acme:Tenancy:SqlServer:SessionKey",

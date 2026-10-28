@@ -512,3 +512,69 @@ options.UseNpgsql(cs)
   \code{Configure\allowbreak{}Warnings} zu Fehlern; andere sehen sie zumindest beim Start.
   Das Plugin muss diese Entscheidung nicht für alle treffen.
 \end{tip}
+
+\section{OpenTelemetry: der Mandant im Trace}
+
+Verteiltes Tracing mit OpenTelemetry baut auf
+\code{System.\allowbreak{}Diagnostics.\allowbreak{}Activity} auf. EF Core startet selbst keine
+Activities. Die Spans der Datenbankbefehle kommen entweder von der OpenTelemetry-Instrumentierung
+für EF Core, die auf die \code{Diagnostic\allowbreak{}Source}-Ereignisse von EF hört, oder vom
+Datenbanktreiber: Npgsql und SqlClient haben eigene Activity-Quellen. Beiden fehlt meist der
+Mandant, die erste Frage, wenn eine Abfrage im Betrieb langsam ist oder scheitert. Mit
+\code{Enrich\allowbreak{}Open\allowbreak{}Telemetry(\allowbreak{})} ergänzt das Plugin ihn als
+Tag \code{tenant.\allowbreak{}id} (Standard: aus):
+
+\begin{sourcecode}[Aufruf]{csharp}
+options.UseNpgsql(cs).UseAcmeTenancy(sp, t => t.EnrichOpenTelemetry());
+// SQL Server: UseSqlServer(cs, sql => sql.UseAcmeTenancy(sp).EnrichOpenTelemetry())
+\end{sourcecode}
+
+Ein Command-Interceptor taggt vor jedem Befehl \code{Activity.\allowbreak{}Current}. Er ist im
+internen Service Provider registriert, eine Instanz für alle Contexts, und liest den Mandanten
+aus dem Context des Befehls:
+
+% source: src/Acme.EntityFrameworkCore.Tenancy.Relational/Interceptors/TenantActivityEnrichmentInterceptor.cs
+\begin{sourcecode}[Interceptors/\allowbreak{}Tenant\allowbreak{}Activity\allowbreak{}Enrichment\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+protected virtual void Enrich(CommandEventData eventData)
+{
+    // Billige Prüfungen zuerst: Ohne aufgezeichnete Activity gibt es nichts zu tun
+    if (Activity.Current is not { IsAllDataRequested: true } activity
+        || eventData.Context is not { } context)
+        return;
+
+    // Der Tenant-Provider dieses Contexts reist mit seinem SaveChanges-Interceptor
+    var tenant = context.GetService<IDbContextOptions>()
+        .FindExtension<CoreOptionsExtension>()?.Interceptors?
+        .OfType<TenantSaveChangesInterceptor>().FirstOrDefault()?.Tenants.CurrentTenantId;
+
+    // Ohne Mandant kein Tag: Ein leerer oder Platzhalterwert wäre irreführend
+    if (tenant is { } id)
+        activity.SetTag(TagName, id.Value.ToString("D"));
+}
+\end{sourcecode}
+
+Welche Activity das Tag erhält, hängt von der Instrumentierung ab:
+
+\begin{datatable}{H{0.85}H{1.15}}
+  \textbf{Instrumentierung} & \textbf{Getaggte Activity} \\
+  \tablehead
+  OpenTelemetry-Instrumentierung für EF Core & Der Span des Befehls selbst: EF~10 löst sein
+  \code{Command\allowbreak{}Executing}-Ereignis, das den Span startet, vor den Interceptors
+  aus \\
+  \tablerule
+  Nur der Treiber (Npgsql, SqlClient) & Der umgebende Span, meist der HTTP-Request: Der Treiber
+  startet seinen Span erst in \code{Execute\allowbreak{}Reader}, nach dem Interceptor \\
+  \tablerule
+  Kein Listener & Keine; der Interceptor kehrt nach einer Prüfung zurück, ohne Allokationen \\
+\end{datatable}
+
+\code{Activity\allowbreak{}Enrichment\allowbreak{}Tests} prüft das Tag gegen PostgreSQL mit einem
+\code{Activity\allowbreak{}Listener}: gesetzt, wenn eingeschaltet, fehlend, wenn
+ausgeschaltet, und fehlend ohne Mandant.
+
+\begin{note}[Mandanten-IDs in der Telemetrie]
+  Eine Mandanten-ID ist ein Bezeichner und kein Geheimnis, aber Traces verlassen oft die
+  Anwendung: zu einem Monitoring-Dienst, manchmal zu einem anderen Unternehmen. Ob
+  Mandanten-IDs dorthin dürfen, entscheidet der Betreiber nach Datenschutzgesichtspunkten,
+  deshalb ist die Option standardmäßig aus.
+\end{note}
