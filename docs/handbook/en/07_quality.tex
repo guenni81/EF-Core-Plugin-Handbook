@@ -11,6 +11,7 @@
 
 % ------------------------------------------------------------
 \chapter{Test strategy}\label{ch:test-strategy}
+\versionrisk{medium}
 
 Plugins can be tested to a surprising extent without a database. Model building, type
 mappings, SQL translation, migration SQL and snapshots only need a connection string, no
@@ -208,6 +209,7 @@ public async Task Database_rejects_rows_of_other_tenant()
 
 % ------------------------------------------------------------
 \chapter{Versioning and compatibility}\label{ch:versioning-and-compatibility}
+\versionrisk{medium}
 
 \section{Package version and supported EF version}
 
@@ -402,7 +404,8 @@ framework.
   below \\
   \tablerule
   3 & Investigate internal API & Compare the EF1001 inventory (below) against the sources of
-  both versions; every place individually, including those that still compile & Core: 0,
+  both versions; every place individually, including those that still compile; start with the
+  volatile chapters (page~\pageref{sec:version-dependency}) & Core: 0,
   PostgreSQL: 13, SQL Server: 2 internal types \\
   \tablerule
   4 & Compare registrations and lifetimes & Compare EF's service tables of both versions;
@@ -468,6 +471,24 @@ dotnet build -c Release 2>&1 | grep -oE "error [A-Z]+[0-9]+" | sort | uniq -c | 
 dotnet build -c Release --no-incremental -p:NoWarn=EF9100 2>&1 \
   | grep -oE "EF1001: [A-Za-z.]+" | sort | uniq -c | sort -rn
 \end{sourcecode}
+
+\phantomsection\label{sec:version-dependency}
+How much a chapter depends on the EF version is shown at its start. In a major upgrade,
+check the \textbf{volatile} chapters first: their code derives from or uses classes in
+\code{.Internal} namespaces (EF1001), and breaks there often only show at run time. The
+medium ones follow, the stable ones come last.
+
+\begin{datatable}{H{0.55}H{1.15}H{1.30}}
+  \textbf{Rating} & \textbf{Meaning} & \textbf{Chapters} \\
+  \tablehead
+  \textcolor{risk@volatile}{\textbf{volatile}} & Depends heavily on \code{.Internal}
+  namespaces (EF1001); check first in every major upgrade & \ref{ch:declarative-sql-from-annotations}, \ref{ch:design-time-services}, \ref{ch:custom-sql-expression-nodes}, \ref{ch:property-level-fluent-api-and}, \ref{ch:scaffolding-in-practice} \\
+  \tablerule
+  \textcolor{risk@medium}{\textbf{medium}} & Provider base classes or public API that changes
+  often & \ref{ch:ef-core-s-architecture-from}, \ref{ch:the-options-extension}, \ref{ch:registering-services}, \ref{ch:type-mappings-and-value-converters}, \ref{ch:the-query-pipeline}, \ref{ch:translating-methods-and-members}, \ref{ch:further-query-extension-points}, \ref{ch:custom-migration-operations}, \ref{ch:compiled-models-trimming-and-nativeaot}, \ref{ch:scaffolding-reverse-engineering}, \ref{ch:test-strategy}, \ref{ch:versioning-and-compatibility}, \ref{ch:bulk-operations-and-the-limits}, \ref{ch:the-update-pipeline}, \ref{ch:complex-types-and-json}, \ref{ch:aggregate-translators}, \ref{ch:a-second-provider-sql-server} \\
+  \tablerule
+  \textcolor{risk@stable}{\textbf{stable}} & Concepts and public API & all others \\
+\end{datatable}
 
 \begin{tip}[Explain deviations, do not test them away]
   If an SQL or behavior test fails after the upgrade, it is tempting to just adjust the
@@ -602,6 +623,7 @@ treats the audit warnings as errors on publish, so NativeAOT fails with EF Desig
 
 % ------------------------------------------------------------
 \chapter{Packaging and documentation}\label{ch:packaging-and-documentation}
+\versionrisk{stable}
 
 Shared settings live in \code{Directory.\allowbreak{}Build.\allowbreak{}props}, package
 versions centrally in \code{Directory.\allowbreak{}Packages.\allowbreak{}props} (Central
@@ -660,6 +682,7 @@ limitations apply (pooling) and which security assumptions hold (database roles)
 
 % ------------------------------------------------------------
 \chapter{The checklist from A to Z}\label{ch:the-checklist-from-a-to}
+\versionrisk{stable}
 
 For every new plugin, in the order of development. Each item sums up a rule; the reasoning is in the chapters named under each heading.
 

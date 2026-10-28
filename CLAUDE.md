@@ -45,6 +45,9 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD":/w -w /w texlive/t
   the handbook section of `README.md`. Inside the book never write a chapter or part number
   as plain text; check new text with
   `grep -nE "(Kapitel|chapter|Teil|part)~?\s?[0-9IVX]+" de/*.tex en/*.tex | grep -v '\\ref'`.
+- Every chapter starts with `\versionrisk{stable|medium|volatile}` after its `\chapter` line;
+  the table in the upgrade playbook (chapter 27, `sec:version-dependency`) lists the medium and
+  volatile chapters and must be updated when a rating changes or a chapter is added.
 - Book edition `\handbookversion` (`handbook.sty`) equals `VersionPrefix` in
   `Directory.Build.props`; raise both together at release time (current work: edition 1.2).
 

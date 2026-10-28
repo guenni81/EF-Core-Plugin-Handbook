@@ -23,6 +23,7 @@
 
 % ------------------------------------------------------------
 \chapter{Bulk operations and the limits of interceptors}\label{ch:bulk-operations-and-the-limits}
+\versionrisk{medium}
 
 A SaveChanges interceptor only sees what goes through \code{Save\allowbreak{}Changes}.
 \code{Execute\allowbreak{}Update} and \code{Execute\allowbreak{}Delete} write directly to
@@ -144,6 +145,7 @@ tests show an allowed and a rejected update against PostgreSQL.
 
 % ------------------------------------------------------------
 \chapter{Value generation}\label{ch:value-generation}
+\versionrisk{stable}
 
 EF generates key values either in the database (identity, sequences) or client-side via a
 \code{Value\allowbreak{}Generator}. For \code{Guid} keys EF does this by itself, for custom
@@ -210,6 +212,7 @@ that the factory appears in the generated code.
 
 % ------------------------------------------------------------
 \chapter{The update pipeline}\label{ch:the-update-pipeline}
+\versionrisk{medium}
 
 Chapter~\ref{ch:the-query-pipeline} describes the way from LINQ to SQL. Writing has its own
 pipeline, which plugins extend for bulk operations, database-side soft deletes or returned
@@ -249,6 +252,7 @@ ON CONFLICT} for upserts.
 
 % ------------------------------------------------------------
 \chapter{Complex types and JSON}\label{ch:complex-types-and-json}
+\versionrisk{medium}
 
 \section{Complex types}
 
@@ -315,6 +319,7 @@ System.Text.Json serialize independently of each other
 
 % ------------------------------------------------------------
 \chapter{Models per runtime context}\label{ch:models-per-runtime-context}
+\versionrisk{stable}
 
 EF builds the model once per context type and caches it
 (chapter~\ref{ch:ef-core-s-architecture-from}). If the model should depend on run-time data,
@@ -373,6 +378,7 @@ compared:
 
 % ------------------------------------------------------------
 \chapter{Advanced migrations}\label{ch:advanced-migrations}
+\versionrisk{stable}
 
 \section{Order of operations}
 
@@ -434,6 +440,7 @@ into a pipeline with separate roles.
 
 % ------------------------------------------------------------
 \chapter{Row Level Security in production}\label{ch:row-level-security-in-production}
+\versionrisk{stable}
 
 RLS is only as strong as its operating conditions. These pitfalls silently render the
 policies ineffective or unusable:
@@ -671,6 +678,7 @@ reporting role sees all tenants, it cannot write, and the app role cannot help i
 
 % ------------------------------------------------------------
 \chapter{Tenant-safe relationships}\label{ch:tenant-safe-relationships}
+\versionrisk{stable}
 
 Which table mappings the plugin protects and which it rejects while the model is built is set by
 the matrix on page~\pageref{sec:supported-table-mappings}; this chapter does not repeat it. It is
@@ -793,6 +801,7 @@ loaded entities; the rule in the database is what counts.
 
 % ------------------------------------------------------------
 \chapter{Retrofitting and operating multi-tenancy}\label{ch:retrofitting-and-operating}
+\versionrisk{stable}
 
 The previous chapters assume a new database. Usually, however, there already are tables with
 data, a running application and users who keep working during the change. This chapter shows the
@@ -1072,6 +1081,7 @@ an error after phase~3 is fixed forward with a new migration.
 
 % ------------------------------------------------------------
 \chapter{Plugin performance}\label{ch:plugin-performance}
+\versionrisk{stable}
 
 Plugin code runs at three frequencies. Knowing which code runs how often tells you where
 optimization pays off:
@@ -1294,6 +1304,7 @@ dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benc
 
 % ------------------------------------------------------------
 \chapter{Using the plugin in ASP.NET Core}\label{ch:using-the-plugin-in-asp}
+\versionrisk{stable}
 
 The sample \code{samples/\allowbreak{}Shop\allowbreak{}Api} shows the way from the plugin
 into a web API. The tenant comes from the claim \code{tenant\_\allowbreak{}id} of the
@@ -1446,6 +1457,7 @@ both sources in one provider: the claim first, otherwise the ambient tenant.
 
 % ------------------------------------------------------------
 \chapter{CI and API stability}\label{ch:ci-and-api-stability}
+\versionrisk{stable}
 
 \section{The workflow}
 

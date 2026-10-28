@@ -12,6 +12,7 @@
 
 % ------------------------------------------------------------
 \chapter{Annotations und Fluent API}\label{ch:annotations-and-fluent-api}
+\versionrisk{stable}
 
 Annotations sind EFs Mechanismus für erweiterbare Metadaten: Schlüssel-Wert-Paare an jedem
 Modellelement (Modell, Entity-Typ, Property, Index, ...). Ein Plugin speichert seine
@@ -198,6 +199,7 @@ entityType.SetAnnotation(RlsAnnotationNames.Enabled, true);
 
 % ------------------------------------------------------------
 \chapter{Conventions}\label{ch:conventions}
+\versionrisk{stable}
 
 Conventions verändern das Modell automatisch. EF selbst besteht zum größten Teil aus
 Conventions: Schlüssel erkennen, Beziehungen finden, Tabellennamen ableiten. Ein Plugin fügt
@@ -596,6 +598,7 @@ public class NoTenantIsolationAttributeConvention
 
 % ------------------------------------------------------------
 \chapter{Modellvalidierung}\label{ch:model-validation}
+\versionrisk{stable}
 
 Ein Plugin sollte Fehlkonfiguration erkennen, bevor sie zu falschem SQL oder Datenlecks
 führt. EF validiert Modelle über \code{IModel\allowbreak{}Validator}, den es aber nur einmal
@@ -634,6 +637,7 @@ können solche Warnungen gezielt in Fehler umwandeln
 
 % ------------------------------------------------------------
 \chapter{Type Mappings und Value Converter}\label{ch:type-mappings-and-value-converters}
+\versionrisk{medium}
 
 Ein Type Mapping verbindet einen CLR-Typ mit einem Datenbanktyp. Es bestimmt den Spaltentyp
 in Migrationen, wie Parameter gesetzt werden, wie Literale im SQL aussehen, wie Werte

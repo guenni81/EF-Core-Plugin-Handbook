@@ -15,6 +15,7 @@
 
 % ------------------------------------------------------------
 \chapter{Die Query-Pipeline}\label{ch:the-query-pipeline}
+\versionrisk{medium}
 
 Eine LINQ-Abfrage durchläuft in EF Core eine Reihe von Stufen, bevor SQL entsteht, und
 eine weitere, bevor Objekte zurückkommen. Jede Query-Erweiterung dieses Buchs sitzt an
@@ -328,6 +329,7 @@ Stufe zuordnen. Erst danach lohnt die Wahl des Mechanismus in der Entscheidungsh
 
 % ------------------------------------------------------------
 \chapter{Methoden und Member übersetzen}\label{ch:translating-methods-and-members}
+\versionrisk{medium}
 
 \section{Das EF.Functions-Muster}
 
@@ -560,6 +562,7 @@ public class TenancyMemberTranslatorPlugin : IMemberTranslatorPlugin
 
 % ------------------------------------------------------------
 \chapter{Clientseitige Auswertung verhindern}\label{ch:preventing-client-side-evaluation}
+\versionrisk{stable}
 
 Der erste Schritt der Pipeline, der Funcletizer, wertet jeden Teilausdruck vorab in .NET
 aus, der keinen Bezug zu Abfragedaten hat. Aus \code{o.\allowbreak{}Total > limit * 2} wird
@@ -639,6 +642,7 @@ public static class ShopDbFunctionsExtensions          // ohne [TenancyDbFunctio
 
 % ------------------------------------------------------------
 \chapter{Weitere Erweiterungspunkte der Abfrage}\label{ch:further-query-extension-points}
+\versionrisk{medium}
 
 Das Beispiel braucht Method- und Member-Translators. Komplexe Plugins greifen auf weitere
 Punkte zurück; hier ein Überblick mit Einordnung:
@@ -684,6 +688,7 @@ Punkte zurück; hier ein Überblick mit Einordnung:
 
 % ------------------------------------------------------------
 \chapter{Materialisierung: von Zeilen zu Objekten}\label{ch:materialization-from-rows-to-objects}
+\versionrisk{stable}
 
 Die bisherigen Kapitel dieses Teils beschreiben den Hinweg: aus LINQ wird SQL.
 Kapitel~\ref{ch:the-update-pipeline} beschreibt den Weg von Entitäten zu INSERT, UPDATE und

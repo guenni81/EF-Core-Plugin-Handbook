@@ -13,6 +13,7 @@
 
 % ------------------------------------------------------------
 \chapter{Die Options-Extension}\label{ch:the-options-extension}
+\versionrisk{medium}
 
 Der Einstiegspunkt jedes echten Plugins ist eine Klasse, die
 \code{IDb\allowbreak{}Context\allowbreak{}Options\allowbreak{}Extension} implementiert. Sie
@@ -198,6 +199,7 @@ public virtual void Validate(IDbContextOptions options)
 
 % ------------------------------------------------------------
 \chapter{Dienste registrieren}\label{ch:registering-services}
+\versionrisk{medium}
 
 \code{Apply\allowbreak{}Services} füllt den internen Service Provider. EF stellt dafür einen
 Builder bereit, der die Lebensdauer und Kardinalität jedes EF-Dienstes kennt:
@@ -594,6 +596,7 @@ Assertions für beide Aktivierungsreihenfolgen.
 
 % ------------------------------------------------------------
 \chapter{Öffentliche API und Integration in die Anwendung}\label{ch:public-api-and-integration-into}
+\versionrisk{stable}
 
 \section{Die Use-Methode}
 
@@ -743,6 +746,7 @@ Setting-Namen aus den Singleton-Options (Kapitel~\ref{ch:interceptors}).
 
 % ------------------------------------------------------------
 \chapter{Zustand, Lebensdauern und Thread-Safety}\label{ch:state-lifetimes-and-thread-safety}
+\versionrisk{stable}
 
 Fast jeder schwer zu findende Plugin-Fehler hat dieselbe Ursache: Zustand liegt an der
 falschen Stelle. Ein Mandant in einem Singleton, ein Wert im Hash, der dort nicht hingehört,

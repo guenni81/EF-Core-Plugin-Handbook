@@ -61,6 +61,7 @@ The chapter files only use the commands from `handbook.sty`:
 
 ```latex
 \chapter{Value Generation}\label{ch:value-generation}
+\versionrisk{stable}                           % stable, medium or volatile (EF1001); listed in chapter 27
 \section{...}                                  % sections are not numbered
 \code{IMethodCallTranslator}                   % inline code
 \begin{sourcecode}[Query/CurrentTenantTranslator.cs]{csharp}

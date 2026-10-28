@@ -17,6 +17,7 @@
 
 % ------------------------------------------------------------
 \chapter{How migrations work}\label{ch:how-migrations-work}
+\versionrisk{stable}
 
 Migrations compare two models and produce operations and SQL from them. A plugin can hook in
 at several points; to choose the right one you need to know the flow:
@@ -49,6 +50,7 @@ model, imperative for everything else.
 
 % ------------------------------------------------------------
 \chapter{Declarative SQL from annotations}\label{ch:declarative-sql-from-annotations}
+\versionrisk{volatile}
 
 \section{The annotation provider}
 
@@ -215,6 +217,7 @@ protected virtual void Statement(MigrationCommandListBuilder builder, string sql
 
 % ------------------------------------------------------------
 \chapter{Custom migration operations}\label{ch:custom-migration-operations}
+\versionrisk{medium}
 
 Some things do not belong in the model but in migrations: roles, grants, extensions, data
 backfills. For these the plugin offers its own operations. They consist of three parts: the
@@ -333,6 +336,7 @@ protected override void Down(MigrationBuilder migrationBuilder)
 
 % ------------------------------------------------------------
 \chapter{Design-time services}\label{ch:design-time-services}
+\versionrisk{volatile}
 
 The \code{dotnet ef} tools (adding migrations, writing snapshots, scaffolding, compiled
 models) use their own service provider with design-time services. A plugin extends it
@@ -459,6 +463,7 @@ The generator only affects the snapshot and designer files. The actual migration
 
 % ------------------------------------------------------------
 \chapter{Compiled models, trimming and NativeAOT}\label{ch:compiled-models-trimming-and-nativeaot}
+\versionrisk{medium}
 
 \code{dotnet ef dbcontext optimize} produces a \textbf{compiled model}: C\# code that builds
 the runtime model directly instead of computing it at startup through conventions. This
@@ -594,6 +599,7 @@ database is missing.
 
 % ------------------------------------------------------------
 \chapter{Scaffolding (reverse engineering)}\label{ch:scaffolding-reverse-engineering}
+\versionrisk{medium}
 
 \code{dotnet ef dbcontext scaffold} reads an existing database schema and generates entities
 and a context. A plugin that manages its own schema objects can recognize them during this

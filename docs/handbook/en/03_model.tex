@@ -12,6 +12,7 @@
 
 % ------------------------------------------------------------
 \chapter{Annotations and Fluent API}\label{ch:annotations-and-fluent-api}
+\versionrisk{stable}
 
 Annotations are EF's mechanism for extensible metadata: key-value pairs on every model
 element (model, entity type, property, index, ...). A plugin stores its configuration as
@@ -196,6 +197,7 @@ entityType.SetAnnotation(RlsAnnotationNames.Enabled, true);
 
 % ------------------------------------------------------------
 \chapter{Conventions}\label{ch:conventions}
+\versionrisk{stable}
 
 Conventions change the model automatically. EF itself consists largely of conventions:
 discovering keys, finding relationships, deriving table names. A plugin adds its own to make
@@ -585,6 +587,7 @@ public class NoTenantIsolationAttributeConvention
 
 % ------------------------------------------------------------
 \chapter{Model validation}\label{ch:model-validation}
+\versionrisk{stable}
 
 A plugin should detect misconfiguration before it leads to wrong SQL or data leaks. EF
 validates models through \code{IModel\allowbreak{}Validator}, but there is only one, and it
@@ -622,6 +625,7 @@ warnings into errors selectively (chapter~\ref{ch:diagnostics-and-logging}).
 
 % ------------------------------------------------------------
 \chapter{Type mappings and value converters}\label{ch:type-mappings-and-value-converters}
+\versionrisk{medium}
 
 A type mapping connects a CLR type with a database type. It determines the column type in
 migrations, how parameters are set, what literals look like in SQL, how values are compared

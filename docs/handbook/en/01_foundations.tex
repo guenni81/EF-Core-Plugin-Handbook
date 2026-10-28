@@ -75,6 +75,7 @@ edition use English comments and messages. Each snippet's label names the file.
 
 % ------------------------------------------------------------
 \chapter{What is an EF Core plugin?}\label{ch:what-is-an-ef-core}
+\versionrisk{stable}
 
 The term “plugin” is used for very different things. For this book, it helps to distinguish
 four levels that differ in how deeply they reach into EF Core:
@@ -164,6 +165,7 @@ book uses every one of these possibilities.
 
 % ------------------------------------------------------------
 \chapter{EF Core's architecture from a plugin's point of view}\label{ch:ef-core-s-architecture-from}
+\versionrisk{medium}
 
 \section{Two containers: the internal service provider}
 
@@ -342,6 +344,7 @@ many more of them.
 
 % ------------------------------------------------------------
 \chapter{The sample scenario}\label{ch:the-sample-scenario}
+\versionrisk{stable}
 
 The sample plugin \textbf{Acme.EntityFrameworkCore.Tenancy} makes EF Core multi-tenant with
 PostgreSQL. The database itself enforces tenant separation through \textbf{Row Level
@@ -470,6 +473,7 @@ Acme.EntityFrameworkCore.Tenancy.SqlServer     second provider
 
 % ------------------------------------------------------------
 \chapter{Choosing the right extension point}\label{ch:choosing-the-right-extension-point}
+\versionrisk{stable}
 
 The parts of this book follow EF Core's architecture: infrastructure, model, queries, run
 time, migrations. A concrete problem rarely does. “Every row belongs to a tenant” can be

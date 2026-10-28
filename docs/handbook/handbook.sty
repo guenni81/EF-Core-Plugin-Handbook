@@ -254,6 +254,17 @@
   {\endtabularx\par\vspace{2pt}\noindent{\color{rule}\rule{\linewidth}{0.6pt}}\par
    \vspace{10pt}}
 
+% Version dependency of a chapter, directly after \chapter: \versionrisk{stable|medium|volatile}.
+% stable: concepts and public API; medium: provider base classes or public API that changes
+% often; volatile: depends on .Internal namespaces (EF1001). The upgrade playbook in chapter
+% "Versioning and compatibility" lists the chapters per rating (\label{sec:version-dependency}).
+\colorlet{risk@stable}{tipfg}\colorlet{risk@medium}{importantfg}\colorlet{risk@volatile}{failurefg}
+\newcommand{\versionrisk}[1]{%
+  \ifcsdef{handbookrisk@#1}{}{\PackageError{handbook}{Unknown version risk `#1'}{}}%
+  \par\noindent{\small\color{muted}\handbookrisklabel:
+    \hyperref[sec:version-dependency]{\textcolor{risk@#1}{\bfseries\csuse{handbookrisk@#1}}}}%
+  \par\vspace{4pt}}
+
 % Table of contents right after the front matter: its heading is a \chapter*, which starts a
 % new page; without the page break the contents fill the page the front matter spills onto.
 \newcommand{\handbooktableofcontents}{{\let\clearpage\relax\tableofcontents}}
@@ -281,8 +292,14 @@
     \def\handbooknotetitle{Hinweis}\def\handbookeditionlabel{Ausgabe}%
     \def\handbookfailuretitle{Was passiert, wenn …?}%
     \decisionlabels{ja}{nein}%
+    \def\handbookrisklabel{Versionsabhängigkeit}%
+    \def\handbookrisk@stable{stabil}\def\handbookrisk@medium{mittel}%
+    \def\handbookrisk@volatile{volatil}%
     \def\handbookpagelabel{Seite \thepage\ von \pageref*{LastPage}}}{%
     \def\handbookimportanttitle{Important}\def\handbooktiptitle{Tip}%
     \def\handbooknotetitle{Note}\def\handbookeditionlabel{Edition}%
     \def\handbookfailuretitle{What happens if …?}%
+    \def\handbookrisklabel{Version dependency}%
+    \def\handbookrisk@stable{stable}\def\handbookrisk@medium{medium}%
+    \def\handbookrisk@volatile{volatile}%
     \def\handbookpagelabel{Page \thepage\ of \pageref*{LastPage}}}}

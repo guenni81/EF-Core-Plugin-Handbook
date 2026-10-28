@@ -14,6 +14,7 @@
 
 % ------------------------------------------------------------
 \chapter{The query pipeline}\label{ch:the-query-pipeline}
+\versionrisk{medium}
 
 A LINQ query passes through a series of stages in EF Core before SQL is produced, and
 through another one before objects come back. Every query extension in this book sits at
@@ -324,6 +325,7 @@ then is it worth choosing the mechanism in the decision guide
 
 % ------------------------------------------------------------
 \chapter{Translating methods and members}\label{ch:translating-methods-and-members}
+\versionrisk{medium}
 
 \section{The EF.Functions pattern}
 
@@ -551,6 +553,7 @@ public class TenancyMemberTranslatorPlugin : IMemberTranslatorPlugin
 
 % ------------------------------------------------------------
 \chapter{Preventing client-side evaluation}\label{ch:preventing-client-side-evaluation}
+\versionrisk{stable}
 
 The first stage of the pipeline, the funcletizer, evaluates every sub-expression in .NET up
 front that has no reference to query data. \code{o.\allowbreak{}Total > limit * 2} thus
@@ -628,6 +631,7 @@ public static class ShopDbFunctionsExtensions          // without [TenancyDbFunc
 
 % ------------------------------------------------------------
 \chapter{Further query extension points}\label{ch:further-query-extension-points}
+\versionrisk{medium}
 
 The sample needs method and member translators. Complex plugins use further points; here is
 an overview with classification:
@@ -672,6 +676,7 @@ an overview with classification:
 
 % ------------------------------------------------------------
 \chapter{Materialization: from rows to objects}\label{ch:materialization-from-rows-to-objects}
+\versionrisk{stable}
 
 The previous chapters of this part describe the way there: LINQ becomes SQL.
 Chapter~\ref{ch:the-update-pipeline} describes the way from entities to INSERT, UPDATE and

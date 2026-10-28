@@ -78,6 +78,7 @@ identisch. Das Label jedes Auszugs nennt die Datei.
 
 % ------------------------------------------------------------
 \chapter{Was ist ein EF-Core-Plugin?}\label{ch:what-is-an-ef-core}
+\versionrisk{stable}
 
 Der Begriff „Plugin“ wird für sehr unterschiedliche Dinge verwendet. Für dieses Buch hilft
 eine Einteilung in vier Stufen, die sich darin unterscheiden, wie tief sie in EF Core
@@ -171,6 +172,7 @@ eigene Ereignisse protokollieren, Migrationen um eigenes SQL ergänzen und die W
 
 % ------------------------------------------------------------
 \chapter{Die Architektur von EF Core aus Plugin-Sicht}\label{ch:ef-core-s-architecture-from}
+\versionrisk{medium}
 
 \section{Zwei Container: der interne Service Provider}
 
@@ -355,6 +357,7 @@ besteht aus genau diesen Teilen, nur aus sehr viel mehr davon.
 
 % ------------------------------------------------------------
 \chapter{Das Beispielszenario}\label{ch:the-sample-scenario}
+\versionrisk{stable}
 
 Das Beispiel-Plugin \textbf{Acme.EntityFrameworkCore.Tenancy} macht EF Core mit PostgreSQL
 mandantenfähig. Die Trennung der Mandanten erzwingt die Datenbank selbst über \textbf{Row
@@ -483,6 +486,7 @@ Acme.EntityFrameworkCore.Tenancy.SqlServer     zweiter Provider
 
 % ------------------------------------------------------------
 \chapter{Den passenden Erweiterungspunkt finden}\label{ch:choosing-the-right-extension-point}
+\versionrisk{stable}
 
 Die Teile dieses Buchs folgen der Architektur von EF Core: Infrastruktur, Modell, Abfragen,
 Laufzeit, Migrations. Ein konkretes Problem folgt ihr selten. „Jede Zeile gehört einem

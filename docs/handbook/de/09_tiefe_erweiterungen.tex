@@ -15,6 +15,7 @@
 
 % ------------------------------------------------------------
 \chapter{Eigene SQL-Ausdrucksknoten}\label{ch:custom-sql-expression-nodes}
+\versionrisk{volatile}
 
 Kapitel~\ref{ch:translating-methods-and-members} baut SQL aus vorhandenen Bausteinen:
 Funktionen, Konstanten, Casts. Das reicht für die meisten Plugins. Ein \textbf{eigener
@@ -399,6 +400,7 @@ Assert.Contains("SELECT (d.\"Embedding\" <=> @query) * 2.0 + 1.0", sql);
 
 % ------------------------------------------------------------
 \chapter{Aggregat-Translators}\label{ch:aggregate-translators}
+\versionrisk{medium}
 
 Aggregate wie \code{Sum} oder \code{string\_\allowbreak{}agg} fassen mehrere Zeilen
 zusammen, typischerweise nach \code{Group\allowbreak{}By}. Ein
@@ -473,6 +475,7 @@ deshalb liegt dieser im PostgreSQL-Paket.
 
 % ------------------------------------------------------------
 \chapter{Fluent API auf Property-Ebene und Laufzeit-Annotations}\label{ch:property-level-fluent-api-and}
+\versionrisk{volatile}
 
 \section{Property-Builder}
 
@@ -643,6 +646,7 @@ einer Überschreibung von \code{Generate(\allowbreak{}ITable,\allowbreak{}
 
 % ------------------------------------------------------------
 \chapter{Scaffolding in der Praxis}\label{ch:scaffolding-in-practice}
+\versionrisk{volatile}
 
 Beim Scaffolding (\code{dotnet ef dbcontext scaffold}) liest EF das Schema und erzeugt
 Entitäten und Context. Ein Plugin, das eigene Schema-Objekte verwaltet, sollte sie dabei
@@ -731,6 +735,7 @@ public void Scaffolding_reads_rls_and_policies()
 
 % ------------------------------------------------------------
 \chapter{Was in den Kern gehört}\label{ch:what-belongs-in-the-core}
+\versionrisk{stable}
 
 Ein zweiter Provider ist der Härtetest für die Paketarchitektur. Er zeigt, welche Teile
 wirklich provider-unabhängig sind. Die Faustregel: \textbf{Was keine SQL-Syntax und keinen
@@ -786,6 +791,7 @@ Provider-Typ kennt, gehört in den Kern.} Für das Beispiel ergibt sich:
 
 % ------------------------------------------------------------
 \chapter{Ein zweiter Provider: SQL Server}\label{ch:a-second-provider-sql-server}
+\versionrisk{medium}
 
 Das Paket
 \code{Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Sql\allowbreak{}Server}

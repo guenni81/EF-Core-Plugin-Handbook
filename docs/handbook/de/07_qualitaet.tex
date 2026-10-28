@@ -11,6 +11,7 @@
 
 % ------------------------------------------------------------
 \chapter{Teststrategie}\label{ch:test-strategy}
+\versionrisk{medium}
 
 Plugins lassen sich erstaunlich weit ohne Datenbank testen. Modellbau, Type Mappings,
 SQL-Übersetzung, Migrations-SQL und Snapshots brauchen nur einen Connection-String, keine
@@ -207,6 +208,7 @@ public async Task Database_rejects_rows_of_other_tenant()
 
 % ------------------------------------------------------------
 \chapter{Versionierung und Kompatibilität}\label{ch:versioning-and-compatibility}
+\versionrisk{medium}
 
 \section{Paketversion und unterstützte EF-Version}
 
@@ -404,7 +406,8 @@ Target-Framework ließe sich nicht einmal wiederherstellen.
   Überschreibungen (CS0115) & Befehl unten \\
   \tablerule
   3 & Interne API untersuchen & Das EF1001-Inventar (unten) gegen die Quellen beider
-  Versionen vergleichen; jede Stelle einzeln, auch die, die noch kompilieren &
+  Versionen vergleichen; jede Stelle einzeln, auch die, die noch kompilieren;
+  mit den volatilen Kapiteln beginnen (Seite~\pageref{sec:version-dependency}) &
   Kern: 0, PostgreSQL: 13, SQL Server: 2 interne Typen \\
   \tablerule
   4 & Registrierungen und Lebensdauern vergleichen & EFs Service-Tabellen beider Versionen
@@ -468,6 +471,24 @@ dotnet build -c Release 2>&1 | grep -oE "error [A-Z]+[0-9]+" | sort | uniq -c | 
 dotnet build -c Release --no-incremental -p:NoWarn=EF9100 2>&1 \
   | grep -oE "EF1001: [A-Za-z.]+" | sort | uniq -c | sort -rn
 \end{sourcecode}
+
+\phantomsection\label{sec:version-dependency}
+Wie stark ein Kapitel von der EF-Version abhängt, steht an seinem Anfang. Bei einem
+Major-Upgrade prüft man die \textbf{volatilen} Kapitel zuerst: Ihr Code leitet von Klassen
+aus \code{.Internal}-Namespaces ab oder nutzt sie direkt (EF1001), und Brüche dort zeigen
+sich oft erst zur Laufzeit. Danach folgen die mittleren, die stabilen zuletzt.
+
+\begin{datatable}{H{0.55}H{1.15}H{1.30}}
+  \textbf{Einstufung} & \textbf{Bedeutung} & \textbf{Kapitel} \\
+  \tablehead
+  \textcolor{risk@volatile}{\textbf{volatil}} & Stark von \code{.Internal}-Namespaces
+  abhängig (EF1001); bei jedem Major-Upgrade zuerst prüfen & \ref{ch:declarative-sql-from-annotations}, \ref{ch:design-time-services}, \ref{ch:custom-sql-expression-nodes}, \ref{ch:property-level-fluent-api-and}, \ref{ch:scaffolding-in-practice} \\
+  \tablerule
+  \textcolor{risk@medium}{\textbf{mittel}} & Provider-Basisklassen oder öffentliche, aber oft
+  geänderte API & \ref{ch:ef-core-s-architecture-from}, \ref{ch:the-options-extension}, \ref{ch:registering-services}, \ref{ch:type-mappings-and-value-converters}, \ref{ch:the-query-pipeline}, \ref{ch:translating-methods-and-members}, \ref{ch:further-query-extension-points}, \ref{ch:custom-migration-operations}, \ref{ch:compiled-models-trimming-and-nativeaot}, \ref{ch:scaffolding-reverse-engineering}, \ref{ch:test-strategy}, \ref{ch:versioning-and-compatibility}, \ref{ch:bulk-operations-and-the-limits}, \ref{ch:the-update-pipeline}, \ref{ch:complex-types-and-json}, \ref{ch:aggregate-translators}, \ref{ch:a-second-provider-sql-server} \\
+  \tablerule
+  \textcolor{risk@stable}{\textbf{stabil}} & Konzepte und öffentliche API & alle übrigen \\
+\end{datatable}
 
 \begin{tip}[Abweichungen erklären, nicht wegtesten]
   Schlägt nach dem Upgrade ein SQL- oder Verhaltenstest fehl, ist die Versuchung groß, nur
@@ -606,6 +627,7 @@ wertet die Audit-Warnungen beim Veröffentlichen als Fehler, sodass NativeAOT mi
 
 % ------------------------------------------------------------
 \chapter{Packaging und Dokumentation}\label{ch:packaging-and-documentation}
+\versionrisk{stable}
 
 Gemeinsame Einstellungen liegen in \code{Directory.\allowbreak{}Build.\allowbreak{}props},
 Paketversionen zentral in \code{Directory.\allowbreak{}Packages.\allowbreak{}props} (Central
@@ -665,6 +687,7 @@ welche Einschränkungen bestehen (Pooling) und welche Sicherheitsannahmen gelten
 
 % ------------------------------------------------------------
 \chapter{Die Checkliste von A bis Z}\label{ch:the-checklist-from-a-to}
+\versionrisk{stable}
 
 Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst eine Regel zusammen; die Begründung steht in den Kapiteln, die unter jeder Überschrift genannt sind.
 

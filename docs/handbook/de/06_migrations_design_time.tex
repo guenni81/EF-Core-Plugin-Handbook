@@ -17,6 +17,7 @@
 
 % ------------------------------------------------------------
 \chapter{Wie Migrations funktionieren}\label{ch:how-migrations-work}
+\versionrisk{stable}
 
 Migrations vergleichen zwei Modelle und erzeugen daraus Operationen und SQL. Ein Plugin kann
 sich an mehreren Stellen einklinken; um die richtige zu wählen, muss man den Ablauf kennen:
@@ -49,6 +50,7 @@ alles, was zum Modell gehört, imperativ für alles andere.
 
 % ------------------------------------------------------------
 \chapter{Deklaratives SQL aus Annotations}\label{ch:declarative-sql-from-annotations}
+\versionrisk{volatile}
 
 \section{Der Annotation-Provider}
 
@@ -218,6 +220,7 @@ protected virtual void Statement(MigrationCommandListBuilder builder, string sql
 
 % ------------------------------------------------------------
 \chapter{Eigene Migrations-Operationen}\label{ch:custom-migration-operations}
+\versionrisk{medium}
 
 Manches gehört nicht ins Modell, aber in Migrationen: Rollen, Rechte, Extensions,
 Daten-Backfills. Dafür bietet das Plugin eigene Operationen an. Sie bestehen aus drei
@@ -338,6 +341,7 @@ protected override void Down(MigrationBuilder migrationBuilder)
 
 % ------------------------------------------------------------
 \chapter{Design-Time-Services}\label{ch:design-time-services}
+\versionrisk{volatile}
 
 Die Werkzeuge von \code{dotnet ef} (Migrationen anlegen, Snapshots schreiben, Scaffolding,
 Compiled Models) verwenden einen eigenen Service Provider mit Design-Time-Diensten. Ein
@@ -466,6 +470,7 @@ behalten
 
 % ------------------------------------------------------------
 \chapter{Compiled Models, Trimming und NativeAOT}\label{ch:compiled-models-trimming-and-nativeaot}
+\versionrisk{medium}
 
 \code{dotnet ef dbcontext optimize} erzeugt ein \textbf{Compiled Model}: C\#-Code, der das
 Laufzeitmodell direkt aufbaut, statt es beim Start über Conventions zu berechnen. Das
@@ -604,6 +609,7 @@ einer echten Datenbank fehlt.
 
 % ------------------------------------------------------------
 \chapter{Scaffolding (Reverse Engineering)}\label{ch:scaffolding-reverse-engineering}
+\versionrisk{medium}
 
 \code{dotnet ef dbcontext scaffold} liest ein bestehendes Datenbankschema und erzeugt
 Entitäten und einen Context. Ein Plugin, das eigene Schema-Elemente verwaltet, kann sie

@@ -13,6 +13,7 @@
 
 % ------------------------------------------------------------
 \chapter{The options extension}\label{ch:the-options-extension}
+\versionrisk{medium}
 
 The entry point of every real plugin is a class implementing
 \code{IDb\allowbreak{}Context\allowbreak{}Options\allowbreak{}Extension}. It has three jobs:
@@ -196,6 +197,7 @@ public virtual void Validate(IDbContextOptions options)
 
 % ------------------------------------------------------------
 \chapter{Registering services}\label{ch:registering-services}
+\versionrisk{medium}
 
 \code{Apply\allowbreak{}Services} fills the internal service provider. EF provides a builder
 for this that knows the lifetime and cardinality of every EF service:
@@ -589,6 +591,7 @@ assertions for both activation orders.
 
 % ------------------------------------------------------------
 \chapter{Public API and integration into the application}\label{ch:public-api-and-integration-into}
+\versionrisk{stable}
 
 \section{The Use method}
 
@@ -740,6 +743,7 @@ the connection interceptor gets the setting name from the singleton options that
 
 % ------------------------------------------------------------
 \chapter{State, lifetimes and thread safety}\label{ch:state-lifetimes-and-thread-safety}
+\versionrisk{stable}
 
 Almost every hard-to-find plugin bug has the same cause: state in the wrong place. A tenant
 in a singleton, a value in the hash that does not belong there, a scoped service held by a

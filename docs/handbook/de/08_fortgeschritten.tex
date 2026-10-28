@@ -23,6 +23,7 @@
 
 % ------------------------------------------------------------
 \chapter{Massenoperationen und die Grenzen von Interceptors}\label{ch:bulk-operations-and-the-limits}
+\versionrisk{medium}
 
 Ein SaveChanges-Interceptor sieht nur, was über \code{Save\allowbreak{}Changes} läuft.
 \code{Execute\allowbreak{}Update} und \code{Execute\allowbreak{}Delete} schreiben direkt in
@@ -146,6 +147,7 @@ Integrationstests zeigen ein erlaubtes und ein abgelehntes Update gegen PostgreS
 
 % ------------------------------------------------------------
 \chapter{Value Generation}\label{ch:value-generation}
+\versionrisk{stable}
 
 EF erzeugt Schlüsselwerte entweder in der Datenbank (Identity, Sequenzen) oder clientseitig
 über einen \code{Value\allowbreak{}Generator}. Für \code{Guid}-Schlüssel macht EF das von
@@ -214,6 +216,7 @@ dass die Factory im erzeugten Code auftaucht.
 
 % ------------------------------------------------------------
 \chapter{Die Update-Pipeline}\label{ch:the-update-pipeline}
+\versionrisk{medium}
 
 Kapitel~\ref{ch:the-query-pipeline} beschreibt den Weg von LINQ zu SQL. Für das Schreiben
 gibt es eine eigene Pipeline, die Plugins für Bulk-Operationen, datenbankseitige
@@ -254,6 +257,7 @@ SQL selbst eine andere Form braucht, etwa \code{INSERT
 
 % ------------------------------------------------------------
 \chapter{Complex Types und JSON}\label{ch:complex-types-and-json}
+\versionrisk{medium}
 
 \section{Complex Types}
 
@@ -320,6 +324,7 @@ System.Text.Json unabhängig voneinander serialisieren
 
 % ------------------------------------------------------------
 \chapter{Modelle pro Laufzeitkontext}\label{ch:models-per-runtime-context}
+\versionrisk{stable}
 
 EF baut das Modell einmal pro Context-Typ und cached es
 (Kapitel~\ref{ch:ef-core-s-architecture-from}). Soll das Modell von Laufzeitdaten abhängen,
@@ -379,6 +384,7 @@ Ansätze im Vergleich:
 
 % ------------------------------------------------------------
 \chapter{Migrations für Fortgeschrittene}\label{ch:advanced-migrations}
+\versionrisk{stable}
 
 \section{Reihenfolge von Operationen}
 
@@ -441,6 +447,7 @@ Seite~\pageref{sec:deployment}.
 
 % ------------------------------------------------------------
 \chapter{Row Level Security in Produktion}\label{ch:row-level-security-in-production}
+\versionrisk{stable}
 
 RLS ist nur so stark wie seine Betriebsbedingungen. Diese Fallen machen die Policies
 stillschweigend wirkungslos oder unbrauchbar:
@@ -692,6 +699,7 @@ sich nicht selbst helfen.
 
 % ------------------------------------------------------------
 \chapter{Mandantensichere Beziehungen}\label{ch:tenant-safe-relationships}
+\versionrisk{stable}
 
 Welche Tabellenabbildungen das Plugin schützt und welche es beim Modellbau ablehnt, legt die
 Matrix auf Seite~\pageref{sec:supported-table-mappings} fest; dieses Kapitel wiederholt sie
@@ -818,6 +826,7 @@ für geladene Entitäten; maßgeblich ist die Regel in der Datenbank.
 
 % ------------------------------------------------------------
 \chapter{Mandantenfähigkeit nachrüsten und betreiben}\label{ch:retrofitting-and-operating}
+\versionrisk{stable}
 
 Die bisherigen Kapitel gehen von einer neuen Datenbank aus. Meist gibt es aber schon Tabellen
 mit Daten, eine laufende Anwendung und Nutzer, die während der Umstellung weiterarbeiten. Dieses
@@ -1106,6 +1115,7 @@ Phase~3 wird mit einer neuen Migration vorwärts behoben.
 
 % ------------------------------------------------------------
 \chapter{Performance von Plugins}\label{ch:plugin-performance}
+\versionrisk{stable}
 
 Plugin-Code läuft in drei Häufigkeiten. Wer weiß, welcher Code wie oft läuft, weiß, wo sich
 Optimierung lohnt:
@@ -1330,6 +1340,7 @@ dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benc
 
 % ------------------------------------------------------------
 \chapter{Einsatz in ASP.NET Core}\label{ch:using-the-plugin-in-asp}
+\versionrisk{stable}
 
 Das Beispiel \code{samples/\allowbreak{}Shop\allowbreak{}Api} zeigt den Weg vom Plugin in
 eine Web-API. Der Mandant kommt aus dem Claim \code{tenant\_\allowbreak{}id} des
@@ -1484,6 +1495,7 @@ zuerst der Claim, sonst der Ambient-Mandant.
 
 % ------------------------------------------------------------
 \chapter{CI und API-Stabilität}\label{ch:ci-and-api-stability}
+\versionrisk{stable}
 
 \section{Der Workflow}
 

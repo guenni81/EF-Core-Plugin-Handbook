@@ -7,6 +7,12 @@ version is given by the dependency range and the compatibility table in the READ
 
 ## [Unreleased]
 
+### Added
+
+- Handbook (both editions): every chapter shows its version dependency (stable, medium,
+  volatile) at its start; the upgrade playbook in chapter 27 lists the chapters per rating and
+  says to check the volatile ones (internal API, EF1001) first in a major upgrade.
+
 ### Changed
 
 - README: states up front that the repository is a handbook with a reference implementation,
