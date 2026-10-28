@@ -541,7 +541,10 @@ Migrationen in der Pipeline mit getrennten Rollen und Änderungen ohne Ausfallze
 
 Wer eine bestehende Entität einfach \code{ITenant\allowbreak{}Owned} implementieren lässt,
 bekommt eine einzige Migration: Spalte mit dem leeren Mandanten als Default, RLS, Policy, Index.
-Danach sieht niemand mehr die alten Zeilen. Auch ein Backfill in derselben Migration hilft nicht
+Der Generator ordnet die Policy hinter die neue Spalte
+(Kapitel~\ref{ch:declarative-sql-from-annotations}), die Migration läuft also durch;
+\code{Migration\allowbreak{}Order\allowbreak{}Tests} prüft das samt Down. Danach sieht aber
+niemand mehr die alten Zeilen. Auch ein Backfill in derselben Migration hilft nicht
 sicher: Mit \code{FORCE ROW LEVEL SECURITY} gilt die Policy auch für die Migrationsrolle, und
 ohne gesetzten Mandanten findet ihr \code{UPDATE} keine Zeile. Der Weg führt deshalb über zwei
 Migrationen, nach dem Muster Erweitern, Befüllen, Absichern:

@@ -159,8 +159,12 @@ protected override void Generate(
     AlterTableOperation operation, IModel? model, MigrationCommandListBuilder builder)
 {
     base.Generate(operation, model, builder);
-    GenerateRowLevelSecurity(operation.Name, operation.Schema, operation.OldTable,
-        operation, builder);
+    if (_moved.Contains(operation))
+        GenerateRowLevelSecurityState(Delimit(operation.Name, operation.Schema),
+            operation.OldTable, operation, builder);
+    else
+        GenerateRowLevelSecurity(operation.Name, operation.Schema, operation.OldTable,
+            operation, builder);
 }
 \end{sourcecode}
 
@@ -214,7 +218,53 @@ protected virtual void Statement(MigrationCommandListBuilder builder, string sql
   \tablerule
   DropTable, RenameTable & Nothing to do: PostgreSQL removes or moves policies together with
   the table. \\
+  \tablerule
+  \code{\_moved} & \code{Alter\allowbreak{}Table\allowbreak{}Operations} whose policy
+  statements were moved into operations of their own (next section); for them the generator
+  only emits ENABLE/DISABLE and FORCE. \\
 \end{datatable}
+
+\subsection*{Policies and column changes of the same table}
+
+A policy depends on the columns it names: \code{CREATE POLICY} needs them, and
+\code{DROP COLUMN} fails while a policy uses them. EF's differ, however, orders a table's
+\code{Alter\allowbreak{}Table\allowbreak{}Operation} before its new columns and after its dropped
+ones. When an existing table gets a tenant column and the isolation in one migration, it yields
+\code{Alter\allowbreak{}Table}, \code{Add\allowbreak{}Column}, \code{Create\allowbreak{}Index};
+the reverse yields \code{Drop\allowbreak{}Index}, \code{Drop\allowbreak{}Column},
+\code{Alter\allowbreak{}Table}. A generator that creates the policy right at the
+\code{Alter\allowbreak{}Table\allowbreak{}Operation} fails in both directions: PostgreSQL reports
+\code{column "TenantId" does not exist} or \code{cannot drop column TenantId \ldots{} because
+other objects depend on it}.
+
+The generator therefore also overrides \code{Generate} for the whole operation list.
+\code{Move\allowbreak{}Policy\allowbreak{}Changes} replaces the policy statements of every changed
+table with internal operations of their own: changed and removed policies are dropped before the
+table's first column change, new and changed ones are created after its last. For the migration
+above this gives:
+
+\begin{sourcecode}[Generated SQL (\allowbreak{}shortened)]{sql}
+ALTER TABLE "Products" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Products" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "Products" ADD "TenantId" uuid NOT NULL DEFAULT '00000000-...';
+CREATE POLICY tenant_isolation ON "Products" AS PERMISSIVE FOR ALL USING (...) ...;
+CREATE INDEX "IX_Products_TenantId" ON "Products" ("TenantId");
+\end{sourcecode}
+
+A renamed table keeps its identity; every statement uses the name that is valid at its position.
+All statements stay in the migration's transaction: if a later step fails, the rollback restores
+policy, RLS and column together, and the table is not left unprotected. The SQL Server package
+solves the same question more coarsely: it drops the policies of all affected tables before the
+first operation and recreates them after the last, because there \code{sp\_rename} and
+\code{ALTER COLUMN} already fail on the schema-bound policy. PostgreSQL moves policies along with
+renames itself; here the smaller window around the column changes is enough.
+
+Two limits remain. A column change that does not change the policy text, for example another
+type for the tenant column, produces no \code{Alter\allowbreak{}Table\allowbreak{}Operation};
+PostgreSQL refuses \code{ALTER COLUMN \ldots{} TYPE} for a column a policy names, and the policy
+has to be replaced by hand in the migration. And a custom operation with
+\code{suppress\allowbreak{}Transaction: true} between the column changes of a table splits the
+transaction; the rollback then only protects up to that operation.
 
 % ------------------------------------------------------------
 \chapter{Custom migration operations}\label{ch:custom-migration-operations}

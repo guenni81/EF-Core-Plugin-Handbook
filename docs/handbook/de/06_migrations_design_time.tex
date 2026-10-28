@@ -162,8 +162,12 @@ protected override void Generate(
     AlterTableOperation operation, IModel? model, MigrationCommandListBuilder builder)
 {
     base.Generate(operation, model, builder);
-    GenerateRowLevelSecurity(operation.Name, operation.Schema, operation.OldTable,
-        operation, builder);
+    if (_moved.Contains(operation))
+        GenerateRowLevelSecurityState(Delimit(operation.Name, operation.Schema),
+            operation.OldTable, operation, builder);
+    else
+        GenerateRowLevelSecurity(operation.Name, operation.Schema, operation.OldTable,
+            operation, builder);
 }
 \end{sourcecode}
 
@@ -217,7 +221,54 @@ protected virtual void Statement(MigrationCommandListBuilder builder, string sql
   \tablerule
   DropTable, RenameTable & Nichts zu tun: PostgreSQL entfernt bzw. verschiebt Policies mit
   der Tabelle. \\
+  \tablerule
+  \code{\_moved} & \code{Alter\allowbreak{}Table\allowbreak{}Operations}, deren
+  Policy-Statements in eigene Operationen verschoben wurden (nächster Abschnitt); für sie
+  erzeugt der Generator nur noch ENABLE/DISABLE und FORCE. \\
 \end{datatable}
+
+\subsection*{Policies und Spaltenänderungen derselben Tabelle}
+
+Eine Policy hängt an den Spalten, die sie nennt: \code{CREATE POLICY} braucht sie, und
+\code{DROP COLUMN} scheitert, solange eine Policy sie verwendet. EFs Differ ordnet die
+\code{Alter\allowbreak{}Table\allowbreak{}Operation} einer Tabelle aber vor ihre neuen und
+nach ihre gelöschten Spalten ein. Bekommt eine bestehende Tabelle Mandantenspalte und Isolation
+in einer Migration, liefert er \code{Alter\allowbreak{}Table}, \code{Add\allowbreak{}Column},
+\code{Create\allowbreak{}Index}; die Rückrichtung ergibt \code{Drop\allowbreak{}Index},
+\code{Drop\allowbreak{}Column}, \code{Alter\allowbreak{}Table}. Ein Generator, der die Policy
+direkt bei der \code{Alter\allowbreak{}Table\allowbreak{}Operation} erzeugt, scheitert in
+beiden Richtungen: PostgreSQL meldet \code{column \textquotedbl{}TenantId\textquotedbl{} does not
+exist} bzw. \code{cannot drop column TenantId \ldots{} because other objects depend on it}.
+
+Der Generator überschreibt deshalb auch \code{Generate} für die ganze Operationsliste.
+\code{Move\allowbreak{}Policy\allowbreak{}Changes} ersetzt die Policy-Statements jeder
+geänderten Tabelle durch eigene, interne Operationen: geänderte und entfernte Policies fallen vor
+der ersten Spaltenänderung der Tabelle weg, neue und geänderte entstehen nach ihrer letzten.
+Für die Migration von oben ergibt das:
+
+\begin{sourcecode}[Erzeugtes SQL (\allowbreak{}gekürzt)]{sql}
+ALTER TABLE "Products" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Products" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "Products" ADD "TenantId" uuid NOT NULL DEFAULT '00000000-...';
+CREATE POLICY tenant_isolation ON "Products" AS PERMISSIVE FOR ALL USING (...) ...;
+CREATE INDEX "IX_Products_TenantId" ON "Products" ("TenantId");
+\end{sourcecode}
+
+Eine umbenannte Tabelle behält dabei ihre Identität, jedes Statement nennt den Namen, der an
+seiner Stelle gilt. Alle Statements bleiben in der Transaktion der Migration: Scheitert ein
+späterer Schritt, stellt der Rollback Policy, RLS und Spalte gemeinsam wieder her, und die
+Tabelle ist nicht ungeschützt. Das SQL-Server-Paket löst dieselbe Frage gröber: Es entfernt die
+Policies aller betroffenen Tabellen vor der ersten Operation und legt sie nach der letzten neu
+an, weil dort schon \code{sp\_rename} und \code{ALTER COLUMN} an der schemagebundenen Policy
+scheitern. PostgreSQL verschiebt Policies bei Umbenennungen selbst; hier genügt der kleinere
+Abstand um die Spaltenänderungen.
+
+Zwei Grenzen bleiben. Eine Spaltenänderung, die den Policy-Text nicht ändert, etwa ein anderer
+Typ der Mandantenspalte, erzeugt keine \code{Alter\allowbreak{}Table\allowbreak{}Operation};
+PostgreSQL lehnt \code{ALTER COLUMN \ldots{} TYPE} für eine Spalte ab, die eine Policy nennt, und
+die Policy muss in der Migration von Hand ersetzt werden. Und eine eigene Operation mit
+\code{suppress\allowbreak{}Transaction: true} zwischen den Spaltenänderungen einer Tabelle teilt
+die Transaktion; der Rollback schützt dann nur bis zu dieser Operation.
 
 % ------------------------------------------------------------
 \chapter{Eigene Migrations-Operationen}\label{ch:custom-migration-operations}

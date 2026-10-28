@@ -80,6 +80,18 @@ version is given by the dependency range and the compatibility table in the READ
 
 ### Fixed
 
+- PostgreSQL: a migration that adds a tenant column to an existing table together with the
+  isolation failed with `column "TenantId" does not exist`, its Down with `cannot drop column
+  ... because other objects depend on it`: EF's differ orders the `AlterTableOperation` before
+  new and after dropped columns, and the generator emitted the policies right there. The
+  generator now overrides `Generate` for the whole operation list; `MovePolicyChanges` drops
+  changed policies before the table's first column change and creates new ones after its last,
+  using the table name valid at each position. New tests `MigrationOrderTests` (Up, Down,
+  failing migrations with rollback, renamed tenant column with another setting name, isolation
+  as the app role) and SQL order tests. Handbook (both editions): chapter "Declarative SQL from
+  annotations" explains the order and its limits; chapter "Test strategy" no longer claims that
+  the problem class does not arise on PostgreSQL.
+
 - Cosmos DB: an `ITenantOwned` entity without a mapped tenant property (`Ignore(e => e.TenantId)`
   or an explicit interface implementation without `IsTenantProperty()`) is now rejected while
   the model is built, as in the relational packages. Before, the convention skipped it silently:

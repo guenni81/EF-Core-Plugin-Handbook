@@ -1,6 +1,7 @@
 using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Operations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
 
 namespace Acme.EntityFrameworkCore.Tenancy.Tests;
 
@@ -59,6 +60,75 @@ public class MigrationSqlTests
         Assert.Contains("DROP POLICY tenant_isolation ON \"Orders\";", sql);
         Assert.Contains("ALTER TABLE \"Orders\" DISABLE ROW LEVEL SECURITY;", sql);
         Assert.Contains("ALTER TABLE \"Orders\" NO FORCE ROW LEVEL SECURITY;", sql);
+    }
+
+    private static readonly Action<ModelBuilder> SharedProducts = m => m.Entity<Product>();
+
+    private static readonly Action<ModelBuilder> TenantProducts =
+        m => m.Entity<Product>().Property<TenantId>("TenantId").IsTenantProperty();
+
+    private static List<string> Products(IReadOnlyList<string> sql)
+        => sql.Where(s => s.Contains("\"Products\"")).Select(s => s.Split(" (")[0].Split(" AS ")[0]).ToList();
+
+    [Fact]
+    public void Adding_tenant_column_and_isolation_creates_the_policy_after_the_column()
+    {
+        using var before = Contexts.Create(model: SharedProducts);
+        using var after = Contexts.Create(model: TenantProducts);
+
+        // EF's differ: AlterTable, AddColumn, CreateIndex. The policy names the new column.
+        Assert.Collection(Products(Contexts.MigrationSql(before, after)),
+            s => Assert.Equal("ALTER TABLE \"Products\" ENABLE ROW LEVEL SECURITY;", s),
+            s => Assert.Equal("ALTER TABLE \"Products\" FORCE ROW LEVEL SECURITY;", s),
+            s => Assert.StartsWith("ALTER TABLE \"Products\" ADD \"TenantId\"", s),
+            s => Assert.Equal("CREATE POLICY tenant_isolation ON \"Products\"", s),
+            s => Assert.StartsWith("CREATE INDEX", s));
+    }
+
+    [Fact]
+    public void Removing_tenant_column_and_isolation_drops_the_policy_before_the_column()
+    {
+        using var before = Contexts.Create(model: TenantProducts);
+        using var after = Contexts.Create(model: SharedProducts);
+
+        // EF's differ: DropIndex, DropColumn, AlterTable. DROP COLUMN fails while a policy uses it.
+        Assert.Collection(Products(Contexts.MigrationSql(before, after)),
+            s => Assert.Equal("DROP POLICY tenant_isolation ON \"Products\";", s),
+            s => Assert.Equal("ALTER TABLE \"Products\" DROP COLUMN \"TenantId\";", s),
+            s => Assert.Equal("ALTER TABLE \"Products\" DISABLE ROW LEVEL SECURITY;", s),
+            s => Assert.Equal("ALTER TABLE \"Products\" NO FORCE ROW LEVEL SECURITY;", s));
+    }
+
+    [Fact]
+    public void Renamed_table_and_column_with_changed_setting_use_the_names_valid_at_each_statement()
+    {
+        using var before = Contexts.Create();
+        using var after = Contexts.Create(t => t.UseSettingName("app.mandant_id"),
+            m => m.Entity<Order>().ToTable("Bestellungen").Property(o => o.TenantId).HasColumnName("Mandant"));
+
+        var sql = Contexts.MigrationSql(before, after);
+        var policies = sql.Where(s => s.Contains("POLICY") && s.Contains("Bestellungen")).ToList();
+
+        // Dropped before the column rename (after the table rename), created after it, once each
+        Assert.Collection(policies,
+            s => Assert.Equal("DROP POLICY tenant_isolation ON \"Bestellungen\";", s),
+            s => Assert.Contains("(\"Mandant\" = nullif(current_setting('app.mandant_id', true)", s));
+        Assert.True(sql.ToList().IndexOf(policies[0])
+                    < sql.ToList().FindIndex(s => s.Contains("RENAME COLUMN \"TenantId\" TO \"Mandant\"")));
+        Assert.True(sql.ToList().IndexOf(policies[1])
+                    > sql.ToList().FindIndex(s => s.Contains("RENAME COLUMN \"TenantId\" TO \"Mandant\"")));
+        Assert.DoesNotContain(sql, s => s.Contains("ON \"Orders\""));
+    }
+
+    [Fact]
+    public void Policy_changes_without_column_changes_keep_their_place()
+    {
+        using var before = Contexts.Create(t => t.UseSettingName("app.tenant_id"));
+        using var after = Contexts.Create(t => t.UseSettingName("app.mandant_id"));
+
+        var commands = Contexts.Diff(before, after);
+        Assert.All(commands, c => Assert.IsType<AlterTableOperation>(c));
+        Assert.Equal(2 * commands.Count, Contexts.Sql(after, commands).Count);   // DROP + CREATE per table
     }
 
     [Fact]

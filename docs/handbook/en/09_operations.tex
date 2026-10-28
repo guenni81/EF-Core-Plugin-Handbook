@@ -517,8 +517,10 @@ without downtime.
 \section{From a table without a tenant to RLS}
 
 Whoever simply lets an existing entity implement \code{ITenant\allowbreak{}Owned} gets a single
-migration: a column with the empty tenant as default, RLS, policy, index. After it nobody sees the
-old rows any more. A backfill in the same migration does not reliably help either: with
+migration: a column with the empty tenant as default, RLS, policy, index. The generator places the
+policy after the new column (chapter~\ref{ch:declarative-sql-from-annotations}), so the migration
+runs through; \code{Migration\allowbreak{}Order\allowbreak{}Tests} checks it together with its
+Down. But after it nobody sees the old rows any more. A backfill in the same migration does not reliably help either: with
 \code{FORCE ROW LEVEL SECURITY} the policy also applies to the migration role, and without a tenant
 set its \code{UPDATE} finds no row. The way therefore leads through two migrations, following the
 pattern expand, fill, protect:

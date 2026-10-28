@@ -155,7 +155,8 @@ auf SQLite und InMemory.
   \tablerule
   Keine Phantom-Migration & Unverändertes Modell erzeugt keine einzige Operation. \\
   \tablerule
-  Migrations-SQL & Initial, Änderung (DROP + CREATE), Opt-out, eigene Operationen. \\
+  Migrations-SQL & Initial, Änderung (DROP + CREATE), Opt-out, eigene Operationen,
+  Reihenfolge von Policy und Spaltenänderungen. \\
   \tablerule
   SaveChanges-Logik & Setzen, fremder Mandant, Umhängen, kein Mandant. \\
   \tablerule
@@ -261,8 +262,9 @@ eine ignorierte Mandanten-Property. Ein vollständiges kartesisches Produkt alle
 Migrations-Operationen und Einstellungen wäre groß und meist redundant. Die Tests decken deshalb
 eine kleine Matrix ab, ausgewählt nach einer Frage: Wo berühren zwei Funktionen dasselbe
 Datenbankobjekt? Bei SQL Server sind das die gemeinsame Predicate-Funktion und die
-schemagebundene Policy. Jeder Migrationsfall wird von EFs echtem Differ erzeugt, läuft Up und Down in
-einer Transaktion gegen SQL Server und liest und schreibt danach als App-Login für zwei
+schemagebundene Policy, bei PostgreSQL die Policy und die Spalten, die sie nennt. Jeder
+Migrationsfall wird von EFs echtem Differ erzeugt, läuft Up und Down in einer Transaktion gegen
+die echte Datenbank und liest und schreibt danach als eingeschränkte App-Rolle für zwei
 Mandanten:
 
 \begin{datatable}{H{1.05}H{0.95}H{1.00}}
@@ -282,15 +284,28 @@ Mandanten:
   Migration scheitert, nachdem Policy und Funktion gelöscht wurden & wie oben & Rollback:
   Tabelle, Policy und Funktion mit dem alten Schlüssel sind unverändert \\
   \tablerule
+  PostgreSQL: Mandantenspalte und Isolation in einer Migration hinzugefügt bzw. entfernt &
+  \code{Migration\allowbreak{}Order\allowbreak{}Tests} & Up und Down ohne Fehler, Isolation
+  als App-Rolle; Reihenfolge des SQL in \code{Migration\allowbreak{}Sql\allowbreak{}Tests} \\
+  \tablerule
+  PostgreSQL: Migration scheitert nach der Spaltenänderung bzw. nach \code{DROP POLICY} & wie
+  oben & Rollback: RLS, Policy und Spalte unverändert, Isolation weiter wirksam \\
+  \tablerule
+  PostgreSQL: Mandantenspalte umbenannt, Setting-Name geändert & wie oben & Up und Down,
+  Policy mit neuem Spaltennamen und Setting \\
+  \tablerule
   Temporal-Tabelle (nur SQL Server), ignorierte oder nicht gemappte Mandanten-Property & Modelltests beider
   relationaler Pakete & Beim Modellbau abgelehnt \\
 \end{datatable}
 
-Weiterhin ohne Test sind: Kombinationen bei PostgreSQL, wo Policies einer Umbenennung folgen und
-es keine gemeinsame Funktion gibt, die Fehlerklasse also nicht entsteht; ein geänderter
-Setting-Name des PostgreSQL-Pakets zusammen mit anderen Tabellenänderungen; mehrere Contexts,
-die dieselbe Datenbank gleichzeitig migrieren; und das Cosmos-Paket, das keine Migrations hat.
-Für diese Kombinationen wird nicht behauptet, dass sie funktionieren.
+Auch PostgreSQL kennt diese Fehlerklasse, obwohl Policies einer Umbenennung folgen und es keine
+gemeinsame Funktion gibt: Die Policy hängt an ihren Spalten, und EF ordnet die
+\code{Alter\allowbreak{}Table\allowbreak{}Operation} vor neue und nach gelöschte Spalten
+(Kapitel~\ref{ch:declarative-sql-from-annotations}). Weiterhin ohne Datenbanktest sind: eine
+umbenannte oder verschobene Tabelle zusammen mit geändertem Setting-Name bei PostgreSQL (nur das
+erzeugte SQL ist geprüft); mehrere Contexts, die dieselbe Datenbank gleichzeitig migrieren; und
+das Cosmos-Paket, das keine Migrations hat. Für diese Kombinationen wird nicht behauptet, dass
+sie funktionieren.
 
 % ------------------------------------------------------------
 \chapter{Versionierung und Kompatibilität}\label{ch:versioning-and-compatibility}
