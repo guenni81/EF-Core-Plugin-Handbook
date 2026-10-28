@@ -1,0 +1,366 @@
+% ============================================================
+\setpartpreamble{\partintro
+  {Which building blocks belong in a shared core, which in provider packages, and how a second
+  provider is built on the same core.}
+  {
+    \item Chapter~\ref{ch:what-belongs-in-the-core}: What belongs in the core
+    \item Chapter~\ref{ch:a-second-provider-sql-server}: A second provider: SQL Server
+  }}
+\part{Multiple providers}\label{part:providers}
+
+% ------------------------------------------------------------
+\chapter{What belongs in the core}\label{ch:what-belongs-in-the-core}
+\versionrisk{stable}
+
+A second provider is the acid test for the package architecture. It shows which parts are
+truly provider-independent. The rule of thumb: \textbf{whatever knows no SQL syntax and no
+provider type belongs in the core.} For the sample this yields:
+
+\begin{datatable}{H{1.21}H{0.45}H{1.34}}
+  \textbf{Building block} & \textbf{Location} & \textbf{Reason} \\
+  \tablehead
+  \code{Tenant\allowbreak{}Id}, converter, JSON reader/writer & Core & Pure .NET types \\
+  \tablerule
+  \code{ITenant\allowbreak{}Owned}, \code{ITenant\allowbreak{}Provider}, attributes & Core &
+  For entity assemblies without a provider dependency \\
+  \tablerule
+  \code{Is\allowbreak{}Tenant\allowbreak{}Property(\allowbreak{})}, candidate lookup & Core
+  & Metadata only \\
+  \tablerule
+  Runtime annotation, \code{Get\allowbreak{}Tenant\allowbreak{}Property\allowbreak{}Name} &
+  Core & Read by the provider-neutral interceptor \\
+  \tablerule
+  SaveChanges interceptor & Core & Works only with the change tracker \\
+  \tablerule
+  \code{Tenant\allowbreak{}Session\allowbreak{}Interceptor} (abstract) & Core & Same flow,
+  only the SQL command differs \\
+  \tablerule
+  Evaluatable filter with attribute & Core & Recognizes function classes of all packages \\
+  \tablerule
+  Check while loading (materialization interceptor) & Core & Only reads the model, the
+  context and the row's values \\
+  \tablerule
+  Value generation, logging, \code{Add\allowbreak{}Acme\allowbreak{}Tenancy} & Core & No SQL
+  involved \\
+  \tablerule
+  \code{Database.\allowbreak{}Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})} &
+  Core & Uses the provider's interceptor \\
+  \tablerule
+  Type mapping, translators, migrations, RLS conventions & Provider & Store types, SQL
+  syntax, schema objects \\
+  \tablerule
+  Custom SQL nodes, aggregates & Provider & Depend on syntax and provider factory \\
+\end{datatable}
+
+\begin{important}[Name collisions between provider packages]
+  Two provider packages that both define an extension method
+  \code{Use\allowbreak{}Acme\allowbreak{}Tenancy} on
+  \code{Db\allowbreak{}Context\allowbreak{}Options\allowbreak{}Builder} cannot be referenced
+  at the same time: the call would be ambiguous. The PostgreSQL package uses EF's builder,
+  the SQL Server package the provider's builder
+  (\code{Use\allowbreak{}Sql\allowbreak{}Server(\allowbreak{}cs,\allowbreak{} x =>
+  x.\allowbreak{}Use\allowbreak{}Acme\allowbreak{}Tenancy(\allowbreak{}))}). If you plan
+  several provider packages, use the provider builder consistently from the start, as the
+  NetTopologySuite plugin does.
+\end{important}
+
+% ------------------------------------------------------------
+\chapter{A second provider: SQL Server}\label{ch:a-second-provider-sql-server}
+\versionrisk{medium}
+
+The package
+\code{Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Sql\allowbreak{}Server}
+implements the same idea with SQL Server's means. The differences show what a plugin really
+has to solve anew per database:
+
+\begin{datatable}{H{0.81}H{1.00}H{1.19}}
+  \textbf{Aspect} & \textbf{PostgreSQL} & \textbf{SQL Server} \\
+  \tablehead
+  Tenant in the session & \code{set\_\allowbreak{}config(\allowbreak{}name,\allowbreak{}
+  value,\allowbreak{} false)} &
+  \code{sp\_\allowbreak{}set\_\allowbreak{}session\_\allowbreak{}context} \\
+  \tablerule
+  \code{Current\allowbreak{}Tenant(\allowbreak{})} in SQL &
+  \code{nullif(\allowbreak{}current\_\allowbreak{}setting(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}),\allowbreak{}
+  '')::uuid} & \code{CAST(\allowbreak{}SESSION\_\allowbreak{}CONTEXT(\allowbreak{}N'…') AS
+  uniqueidentifier)} \\
+  \tablerule
+  Column type & \code{uuid} & \code{uniqueidentifier} \\
+  \tablerule
+  RLS mechanism & \code{CREATE POLICY} per table & Predicate function + \code{CREATE
+  SECURITY POLICY} \\
+  \tablerule
+  Read / write & \code{USING} / \code{WITH CHECK} & \code{FILTER} / \code{BLOCK
+  .\allowbreak{}.\allowbreak{}.\allowbreak{} AFTER INSERT/\allowbreak{}UPDATE} \\
+  \tablerule
+  Table owner & Only bound with \code{FORCE} & No FORCE; predicates are part of the query \\
+  \tablerule
+  \code{DROP TABLE}, renaming & Policies disappear with it or follow & Policy must go first and be recreated afterwards (SCHEMABINDING) \\
+  \tablerule
+  DDL in batches & Transactional, freely combinable & \code{CREATE
+  FUNCTION/\allowbreak{}SCHEMA} alone in a batch:
+  \code{EXEC(\allowbreak{}N'.\allowbreak{}.\allowbreak{}.\allowbreak{}')} \\
+  \tablerule
+  Table mappings & \multicolumn{2}{>{\RaggedRight\arraybackslash}p{0.6\linewidth}}{Same
+  contract from the core package (chapter~\ref{ch:conventions}, page~\pageref{sec:supported-table-mappings})} \\
+  \tablerule
+  Deliberate exception & Attribute or
+  \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})}
+  & Attribute only \\
+\end{datatable}
+
+\section{Activation through the provider builder}
+
+\begin{sourcecode}[Usage and Infrastructure/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}shortened, simplified)]{csharp}
+services.AddAcmeTenancy<HttpTenantProvider>();                    // core package
+services.AddDbContext<ShopContext>((sp, o) => o
+    .UseSqlServer(connectionString, sql => sql.UseAcmeTenancy(sp)));
+
+public static SqlServerDbContextOptionsBuilder UseAcmeTenancy(
+    this SqlServerDbContextOptionsBuilder sqlServerOptionsBuilder,
+    string sessionKey = "TenantId",
+    string policySchema = "acme")
+{
+    // From the provider builder to the actual DbContextOptionsBuilder
+    var optionsBuilder =
+        ((IRelationalDbContextOptionsBuilderInfrastructure)sqlServerOptionsBuilder)
+        .OptionsBuilder;
+
+    var extension = optionsBuilder.Options.FindExtension<SqlServerTenancyOptionsExtension>()
+                    ?? new SqlServerTenancyOptionsExtension();
+    // ... validate and set settings ...
+    ((IDbContextOptionsBuilderInfrastructure)optionsBuilder)
+        .AddOrUpdateExtension(extension.WithSettings(settings));
+
+    return sqlServerOptionsBuilder;
+}
+\end{sourcecode}
+
+\section{Migrations: security policy instead of policy expression}
+
+For SQL Server, the convention only records the tenant column; the SQL is produced in the
+generator. The predicate function is the same for all tables and is created idempotently:
+
+\begin{sourcecode}[Migrations/\allowbreak{}Internal/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tenancy\allowbreak{}Migrations\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}excerpt, simplified)]{csharp}
+protected virtual void CreatePolicy(string table, string? schema, string column,
+    MigrationCommandListBuilder builder)
+{
+    var function = Delimit(PredicateFunctionName, Settings.PolicySchema);
+    var target = Delimit(table, schema);
+    var predicate = $"{function}({Delimit(column)})";
+
+    // CREATE SCHEMA/FUNCTION must be alone in a batch -> EXEC(N'...')
+    Statement(builder, $"IF SCHEMA_ID({Literal(Settings.PolicySchema)}) IS NULL "
+        + $"EXEC({Literal($"CREATE SCHEMA {Delimit(Settings.PolicySchema)}")})");
+
+    var functionSql =
+        $"CREATE FUNCTION {function}(@TenantId uniqueidentifier) "
+        + "RETURNS TABLE WITH SCHEMABINDING AS RETURN SELECT 1 AS [Allowed] "
+        + $"WHERE @TenantId = CAST(SESSION_CONTEXT({Literal(Settings.SessionKey)}) "
+        + "AS uniqueidentifier)";
+    Statement(builder, $"IF OBJECT_ID({Literal(function)}, N'IF') IS NULL "
+        + $"EXEC({Literal(functionSql)})");
+
+    Statement(builder,
+        $"CREATE SECURITY POLICY {PolicyName(table, schema ?? "dbo")} "
+        + $"ADD FILTER PREDICATE {predicate} ON {target}, "
+        + $"ADD BLOCK PREDICATE {predicate} ON {target} AFTER INSERT, "
+        + $"ADD BLOCK PREDICATE {predicate} ON {target} AFTER UPDATE "
+        + "WITH (STATE = ON)");
+}
+
+protected override void Generate(DropTableOperation operation, IModel? model,
+    MigrationCommandListBuilder builder, bool terminate = true)
+{
+    // SCHEMABINDING: the policy first, found by the table it binds
+    DropPolicy(operation.Name, TableSchema(operation.Schema, model), builder);
+    base.Generate(operation, model, builder, terminate);
+}
+\end{sourcecode}
+
+\code{SCHEMABINDING} only accepts two-part names. A table without an explicit schema is
+therefore qualified by the callers with the model's default schema or, failing that, with
+\code{dbo}; otherwise SQL Server rejects the security policy.
+
+\begin{important}[Nested SQL]
+  The \code{EXEC(\allowbreak{}N'.\allowbreak{}.\allowbreak{}.\allowbreak{}')} contains SQL
+  in a string literal that in turn contains literals. The nesting is produced exclusively
+  through the string mapping's \code{Generate\allowbreak{}Sql\allowbreak{}Literal}, which
+  doubles quotes correctly; identifiers go through \code{Delimit\allowbreak{}Identifier}.
+  Session key and schema are additionally validated during configuration.
+\end{important}
+
+\section{Schema changes on protected tables}\label{sec:sqlserver-schema-bound-changes}
+
+\code{SCHEMABINDING} protects the predicate function, but it also binds the table. SQL Server
+rejects \code{sp\_\allowbreak{}rename} for the table and the tenant column, \code{ALTER SCHEMA
+.\allowbreak{}.\allowbreak{}.\allowbreak{} TRANSFER}, \code{ALTER COLUMN} and \code{DROP COLUMN}
+as long as a security policy binds the table: “object participates in enforced dependencies”.
+This cannot be solved per operation. EF orders a migration's operations itself, and when the
+tenant column is renamed, the \code{Rename\allowbreak{}Column\allowbreak{}Operation} comes
+\emph{before} the \code{Alter\allowbreak{}Table\allowbreak{}Operation} that carries the changed
+annotation. A plain table rename produces no \code{Alter\allowbreak{}Table\allowbreak{}Operation}
+at all.
+
+The generator therefore overrides the entry point that receives the whole operation list. It
+finds all tables whose bound objects change, follows their renames and wraps the list. At the
+front it removes the policies of the affected tables under their old names. At the end it
+recreates them with the final table, schema and column names from the target model:
+
+\begin{sourcecode}[Generated SQL when renaming the tenant column (\allowbreak{}shortened)]{sql}
+DECLARE @policy nvarchar(400) = (SELECT TOP (1) ... FROM sys.security_policies AS p
+    WHERE EXISTS (SELECT 1 FROM sys.security_predicates AS s WHERE s.object_id = p.object_id
+        AND s.target_object_id = OBJECT_ID(N'[dbo].[Invoice]')
+        AND s.predicate_definition LIKE N'%[[]fn[_]tenant[_]predicate]%'));
+IF @policy IS NOT NULL EXEC(N'DROP SECURITY POLICY ' + @policy);
+EXEC sp_rename N'[Invoice].[TenantId]', N'Mandant', 'COLUMN';
+EXEC sp_rename N'[Invoice].[IX_Invoice_TenantId]', N'IX_Invoice_Mandant', 'INDEX';
+IF SCHEMA_ID(N'acme') IS NULL EXEC(N'CREATE SCHEMA [acme]');
+IF OBJECT_ID(N'[acme].[fn_tenant_predicate]', N'IF') IS NULL EXEC(N'CREATE FUNCTION ...');
+CREATE SECURITY POLICY [acme].[tenant_dbo_Invoice]
+    ADD FILTER PREDICATE [acme].[fn_tenant_predicate]([Mandant]) ON [dbo].[Invoice], ...
+\end{sourcecode}
+
+Three decisions are built into this:
+
+\begin{itemize}
+  \item \textbf{A transaction instead of switching off.} EF runs a migration's commands in a
+    transaction, and DDL is transactional in SQL Server. If a step fails, SQL Server also
+    rolls back the removal of the policy. A permanently removed policy, or one switched off
+    with \code{STATE = OFF}, cannot come about this way. The Down path is the same wrapping
+    with the names swapped.
+  \item \textbf{Removal by binding, not by name.} Only a policy whose predicate uses the
+    plugin's predicate function and that binds exactly this table is dropped. Policies of
+    others and tables without RLS stay untouched, and policies under an earlier name are
+    found all the same.
+  \item \textbf{Schema-qualified names.} Up to 1.0 the policy was called
+    \code{tenant\_\allowbreak{}Table}, so tables with the same name in two schemas collided.
+    New policies are called \code{tenant\_\allowbreak{}Schema\_\allowbreak{}Table}. Existing
+    installations keep the old name until the table is touched the next time; then the
+    generator replaces the policy. The remaining ambiguity (schema \code{a\_b} with table
+    \code{c} versus schema \code{a} with table \code{b\_c}) and names longer than 128
+    characters are rejected by the convention while the model is built.
+\end{itemize}
+
+Limits: restoring needs the target model. That is the normal case, since
+\code{dotnet ef migrations add} creates a designer file for every migration. If it is
+missing, or a changed table does not appear in it, the generator stops instead of dropping a
+policy. The application's own schema-bound objects (views with \code{SCHEMABINDING}, its own
+security policies) are not handled by the plugin; they still block the same operations. Data
+operations that EF sorts between the schema changes run inside the transaction without a
+policy, that is with the rights of the migration role.
+\code{Sql\allowbreak{}Server\allowbreak{}Migration\allowbreak{}Tests} checks with diffs
+generated by EF against a real SQL Server: create, rename column and table, move schema, every
+step back and drop, with read and write isolation through the app login after every step. In
+addition: tables with the same name in two schemas, a policy under the old name and someone
+else's policy on a table without RLS.
+
+\section{Changing the session key and the policy schema}\label{sec:sqlserver-session-settings}
+
+\code{session\allowbreak{}Key} and \code{policy\allowbreak{}Schema} are options, but they act
+in two places: at run time in the session interceptor, which sets the key, and in the database in
+the predicate function, which reads it. Up to 1.0 the generator read both values from the
+\emph{current} options and created the function only if it was missing. Switching from
+\code{TenantId} to \code{NewTenant} therefore produced no migration. The interceptor then set the
+new key, the function kept reading the old one, and no tenant saw any rows. Worse still: run
+again, for example for a new test database, an old migration would have created objects with the
+new values.
+
+Since 1.1 the package separates the two roles. The convention writes key and schema into the
+model as the model annotations
+\code{Acme:\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Rls:\allowbreak{}Session\allowbreak{}Key}
+and \code{Acme:\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Rls:\allowbreak{}Policy\allowbreak{}Schema},
+and so into the snapshot. The annotation provider passes them on to the relational model, and the
+differ produces an \code{Alter\allowbreak{}Database\allowbreak{}Operation} with the old and the
+new value when they change. The generator reads both values from the target model of the
+migration it is generating; the options only apply to models that do not record the values. That
+way every migration stays with the state it was generated from.
+
+\begin{datatable}{H{0.70}H{1.30}}
+  \textbf{Case} & \textbf{Behavior of the migration} \\
+  \tablehead
+  Unchanged & No operation, no phantom change \\
+  \tablerule
+  Key or schema changed, old value in the snapshot & In one transaction: remove the policies of
+  all protected tables, drop the old function, create the function with the new values,
+  recreate the policies. The Down path does the same in reverse. \\
+  \tablerule
+  First migration of a context, or the first after the upgrade from 1.0 (old value unknown) &
+  Nothing is dropped. An existing function must read the key that the model names, otherwise the
+  migration stops with \code{THROW 50000}. \\
+  \tablerule
+  Down to a snapshot before 1.1 & Function and policies stay as they are. \\
+\end{datatable}
+
+The third row is a deliberate limit. Without a recorded old value there is no proof that an
+existing function belongs to the plugin and not to another context. An existing installation
+therefore changes its key in two steps: first the first migration after the upgrade with the key
+unchanged, then the change in a migration of its own.
+
+The same check protects several contexts in one database. There is one function per policy
+schema, and every policy of the plugin checks the function's definition after creating it. If a
+second context configures another key in the same schema, its migration fails instead of binding
+its tables to a function that reads the wrong key. Contexts with different keys need different
+policy schemas.
+
+Run time and database can still drift apart briefly. If a new app version with a new key runs
+before the migration has been applied, the interceptor sets a key that the function does not
+read. The result is not a data leak but \emph{fail closed}: no rows, and writes fail on the BLOCK
+predicate. The migration therefore belongs before the new app version.
+\code{Sql\allowbreak{}Server\allowbreak{}Session\allowbreak{}Settings\allowbreak{}Tests} checks
+without a database the annotations, the snapshot, the empty diff, the detected change and the
+historical migration. Against a real SQL Server it checks changing key and schema with Up and
+Down, the upgrade of a 1.0 installation and the second context.
+
+\section{Run time: same flow, different command}
+
+% source: src/Acme.EntityFrameworkCore.Tenancy.SqlServer/Runtime/SqlServerTenantSessionInterceptor.cs
+\begin{sourcecode}[Runtime/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs]{csharp}
+public class SqlServerTenantSessionInterceptor : TenantSessionInterceptor
+{
+    public SqlServerTenantSessionInterceptor(ITenantProvider tenants)
+        : base(tenants)
+    {
+    }
+
+    protected override DbCommand CreateSessionCommand(
+        DbConnection connection, DbContext? context, TenantId? tenant)
+    {
+        var key = context?.GetService<ISqlServerTenancySingletonOptions>()
+                      .Settings.SessionKey
+                  ?? SqlServerTenancySettings.Default.SessionKey;
+
+        var command = connection.CreateCommand();
+        command.CommandText = "EXEC sp_set_session_context @key = @key, @value = @value";
+        AddParameter(command, "@key", key);
+        AddParameter(command, "@value", tenant?.Value);    // NULL: no rows visible
+        return command;
+    }
+}
+\end{sourcecode}
+
+\section{Deliberately not ported}
+
+The SQL Server package is a self-contained but leaner provider. Fluent API policies, the optional
+query filter, custom SQL nodes, aggregates, the snapshot code generator and scaffolding are
+missing there. That is a product decision, not a technical obstacle: each of these chapters
+can be transferred to SQL Server with the same patterns. The list belongs in the package's
+documentation so users know what to expect.
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests/SqlServerTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Sql\allowbreak{}Server.\allowbreak{}Tests/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
+[Fact]
+public async Task Block_predicate_rejects_rows_of_other_tenant()
+{
+    await using var db = ContextFor(TenantId.New());
+
+    var ex = await Assert.ThrowsAsync<SqlException>(() => db.Database.ExecuteSqlAsync(
+        $"INSERT INTO [Orders] ([TenantId], [Total]) VALUES ({Guid.NewGuid()}, 1)"));
+
+    Assert.Equal(33504, ex.Number);      // violation of a BLOCK PREDICATE
+}
+\end{sourcecode}
+
+As with PostgreSQL, the tests run on two levels: without a database for model, query and
+migration SQL, and with Testcontainers against a real SQL Server. There, the application
+connects with its own login instead of \code{sa} to reproduce the production situation.

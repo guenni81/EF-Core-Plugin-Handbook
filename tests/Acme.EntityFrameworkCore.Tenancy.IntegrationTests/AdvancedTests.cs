@@ -9,7 +9,7 @@ using Npgsql;
 
 namespace Acme.EntityFrameworkCore.Tenancy.IntegrationTests;
 
-/// <summary>Edge cases from part VIII of the handbook, against a real PostgreSQL.</summary>
+/// <summary>Edge cases from the advanced chapters of the handbook, against a real PostgreSQL.</summary>
 public class AdvancedTests : IClassFixture<PostgresFixture>
 {
     private readonly PostgresFixture _fixture;

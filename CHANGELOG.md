@@ -15,6 +15,11 @@ version is given by the dependency range and the compatibility table in the READ
 
 ### Changed
 
+- Handbook (both editions): new outline of the back parts without renumbering any chapter.
+  Part VIII "Advanced extension points" (chapters 30–35), new part IX "Operation and
+  integration" (36–41), part X "Deep extensions" (42–45), new part XI "Multiple providers"
+  (46–47, the place for further providers), appendices as part XII. Part labels are named
+  (`part:providers` instead of `part:IX`); the checklist in chapter 29 follows the new parts.
 - README: states up front that the repository is a handbook with a reference implementation,
   not a library; the quick start no longer reads as if there were a NuGet package. The
   repository layout describes `docs/handbook` correctly and lists `docs/deployment` and

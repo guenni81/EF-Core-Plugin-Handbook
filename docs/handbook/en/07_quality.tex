@@ -7,7 +7,7 @@
     \item Chapter~\ref{ch:packaging-and-documentation}: Packaging and documentation
     \item Chapter~\ref{ch:the-checklist-from-a-to}: The checklist from A to Z
   }}
-\part{Quality and delivery}\label{part:VII}
+\part{Quality and delivery}\label{part:quality}
 
 % ------------------------------------------------------------
 \chapter{Test strategy}\label{ch:test-strategy}
@@ -812,9 +812,9 @@ For every new plugin, in the order of development. Each item sums up a rule; the
     coexistence with a second plugin in both orders (chapter~\ref{ch:registering-services}).
 \end{checklist}
 
-\section{Advanced (part~\ref{part:VIII})}
+\section{Advanced extension points (part~\ref{part:advanced})}
 
-\noindent Details: chapters~\ref{ch:row-level-security-in-production}, \ref{ch:tenant-safe-relationships}, \ref{ch:retrofitting-and-operating}.
+\noindent Details: chapters~\ref{ch:bulk-operations-and-the-limits}, \ref{ch:value-generation}, \ref{ch:advanced-migrations}.
 
 \begin{checklist}
   \item Document paths that bypass interceptors (ExecuteUpdate, raw SQL).
@@ -822,6 +822,13 @@ For every new plugin, in the order of development. Each item sums up a rule; the
   \item Check conventions for complex types and JSON columns.
   \item Document and test the order of custom migration operations.
   \item Consider idempotent scripts and suppressTransaction.
+\end{checklist}
+
+\section{Operation and integration (part~\ref{part:operations})}
+
+\noindent Details: chapters~\ref{ch:row-level-security-in-production}, \ref{ch:tenant-safe-relationships}, \ref{ch:retrofitting-and-operating}.
+
+\begin{checklist}
   \item Document operational assumptions (roles, pooling, transaction pooling).
   \item Document context lifetimes: factories, background jobs, open connections.
   \item Cross-tenant access only through separate roles, never through app switches.
@@ -834,9 +841,9 @@ For every new plugin, in the order of development. Each item sums up a rule; the
     analyzer as errors.
 \end{checklist}
 
-\section{Deep extensions (part~\ref{part:IX})}
+\section{Deep extensions (part~\ref{part:deep-extensions})}
 
-\noindent Details: chapters~\ref{ch:custom-sql-expression-nodes}, \ref{ch:a-second-provider-sql-server}.
+\noindent Details: chapters~\ref{ch:custom-sql-expression-nodes}, \ref{ch:scaffolding-in-practice}.
 
 \begin{checklist}
   \item Custom SQL nodes: VisitChildren, Update, Quote, Print, Equals/GetHashCode.
@@ -844,5 +851,12 @@ For every new plugin, in the order of development. Each item sums up a rule; the
   \item Aggregates: handle predicates, DISTINCT and empty sets deliberately.
   \item Choose runtime annotations deliberately, filter design-time annotations.
   \item Scaffolding: read the plugin's schema objects from the database.
+\end{checklist}
+
+\section{Multiple providers (part~\ref{part:providers})}
+
+\noindent Details: chapters~\ref{ch:what-belongs-in-the-core}, \ref{ch:a-second-provider-sql-server}.
+
+\begin{checklist}
   \item Provider-neutral building blocks into the core, differences into provider packages.
 \end{checklist}

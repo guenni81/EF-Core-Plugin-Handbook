@@ -48,9 +48,11 @@ TeX Live allows in restricted shell-escape mode, so `-shell-escape` is not neede
 | `en/05_runtime.tex` · `de/05_laufzeit.tex` | Part V |
 | `en/06_migrations_design_time.tex` · `de/06_migrations_design_time.tex` | Part VI |
 | `en/07_quality.tex` · `de/07_qualitaet.tex` | Part VII |
-| `en/08_advanced.tex` · `de/08_fortgeschritten.tex` | Part VIII |
-| `en/09_deep_extensions.tex` · `de/09_tiefe_erweiterungen.tex` | Part IX |
-| `en/10_appendices.tex` · `de/10_anhaenge.tex` | Appendices A–F (exercises, sources), license |
+| `en/08_advanced.tex` · `de/08_fortgeschritten.tex` | Part VIII, advanced extension points |
+| `en/09_operations.tex` · `de/09_betrieb.tex` | Part IX, operation and integration |
+| `en/10_deep_extensions.tex` · `de/10_tiefe_erweiterungen.tex` | Part X, deep extensions |
+| `en/11_providers.tex` · `de/11_provider.tex` | Part XI, multiple providers |
+| `en/12_appendices.tex` · `de/12_anhaenge.tex` | Part XII: appendices A–F (exercises, sources), license |
 | `check_code.py`, `excerpts.py` | Line length of all code excerpts; bound excerpts against their source files |
 | `check_structure.py` | Both editions in sync per chapter, reference targets, datatable widths |
 | `fonts/` | DejaVu fonts (free license, see `LICENSE-DejaVu.txt`) |
@@ -93,7 +95,7 @@ The chapter files only use the commands from `handbook.sty`:
   labels; the file names differ by language. Any change to the content belongs in both
   `de/` and `en/`.
 * **Cross-references** use `\ref`: `Kapitel~\ref{ch:value-generation}`,
-  `chapter~\ref{ch:value-generation}`, `appendix~\ref{app:A}`, `part~\ref{part:VIII}`.
+  `chapter~\ref{ch:value-generation}`, `appendix~\ref{app:A}`, `part~\ref{part:advanced}`.
   Chapter labels are derived from the English title and are the same in both editions, so
   inserting a chapter renumbers all references automatically.
 * **Code comments name chapters by title, never by number**, because `\ref` does not work

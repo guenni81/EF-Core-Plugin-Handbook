@@ -7,7 +7,7 @@
     \item Kapitel~\ref{ch:packaging-and-documentation}: Packaging und Dokumentation
     \item Kapitel~\ref{ch:the-checklist-from-a-to}: Die Checkliste von A bis Z
   }}
-\part{Qualität und Auslieferung}\label{part:VII}
+\part{Qualität und Auslieferung}\label{part:quality}
 
 % ------------------------------------------------------------
 \chapter{Teststrategie}\label{ch:test-strategy}
@@ -819,9 +819,9 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
     (Kapitel~\ref{ch:registering-services}).
 \end{checklist}
 
-\section{Fortgeschritten (Teil~\ref{part:VIII})}
+\section{Fortgeschrittene Erweiterungspunkte (Teil~\ref{part:advanced})}
 
-\noindent Details: Kapitel~\ref{ch:row-level-security-in-production}, \ref{ch:tenant-safe-relationships}, \ref{ch:retrofitting-and-operating}.
+\noindent Details: Kapitel~\ref{ch:bulk-operations-and-the-limits}, \ref{ch:value-generation}, \ref{ch:advanced-migrations}.
 
 \begin{checklist}
   \item Wege dokumentieren, die Interceptors umgehen (ExecuteUpdate, rohes SQL).
@@ -829,6 +829,13 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
   \item Conventions für Complex Types und JSON-Spalten prüfen.
   \item Reihenfolge eigener Migrations-Operationen dokumentieren und testen.
   \item Idempotente Skripte und suppressTransaction berücksichtigen.
+\end{checklist}
+
+\section{Betrieb und Integration (Teil~\ref{part:operations})}
+
+\noindent Details: Kapitel~\ref{ch:row-level-security-in-production}, \ref{ch:tenant-safe-relationships}, \ref{ch:retrofitting-and-operating}.
+
+\begin{checklist}
   \item Betriebsannahmen dokumentieren (Rollen, Pooling, Transaction-Pooling).
   \item Context-Lebensdauern dokumentieren: Factories, Hintergrundjobs, offene Verbindungen.
   \item Mandantenübergreifender Zugriff nur über eigene Rollen, nie über App-Schalter.
@@ -841,9 +848,9 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
     Fehler.
 \end{checklist}
 
-\section{Tiefe Erweiterungen (Teil~\ref{part:IX})}
+\section{Tiefe Erweiterungen (Teil~\ref{part:deep-extensions})}
 
-\noindent Details: Kapitel~\ref{ch:custom-sql-expression-nodes}, \ref{ch:a-second-provider-sql-server}.
+\noindent Details: Kapitel~\ref{ch:custom-sql-expression-nodes}, \ref{ch:scaffolding-in-practice}.
 
 \begin{checklist}
   \item Eigene SQL-Knoten: VisitChildren, Update, Quote, Print, Equals/GetHashCode.
@@ -851,5 +858,12 @@ Für jedes neue Plugin, in der Reihenfolge der Entwicklung. Jeder Punkt fasst ei
   \item Aggregate: Prädikat, DISTINCT und leere Mengen bewusst behandeln.
   \item Laufzeit-Annotations bewusst wählen, Design-Time-Annotations filtern.
   \item Scaffolding: Schema-Objekte des Plugins aus der Datenbank lesen.
+\end{checklist}
+
+\section{Mehrere Provider (Teil~\ref{part:providers})}
+
+\noindent Details: Kapitel~\ref{ch:what-belongs-in-the-core}, \ref{ch:a-second-provider-sql-server}.
+
+\begin{checklist}
   \item Provider-neutrale Bausteine in den Kern, Unterschiede ins Provider-Paket.
 \end{checklist}
