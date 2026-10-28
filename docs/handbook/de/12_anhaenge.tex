@@ -387,6 +387,20 @@ internen Provider. Sie sind fast immer der erste Weg:
   \tablerule
   \code{Runtime/\allowbreak{}*} & sp\_set\_session\_context & \ref{ch:a-second-provider-sql-server} \\
   \tablerule
+  \textbf{Cosmos-DB-Paket} &  &  \\
+  \tablerule
+  \code{Conventions/\allowbreak{}Cosmos\allowbreak{}Tenant\allowbreak{}Partition\allowbreak{}Key\allowbreak{}Convention.\allowbreak{}cs}
+  & Mandant als Partition Key & \ref{ch:without-sql-what-carries-over} \\
+  \tablerule
+  \code{Metadata/\allowbreak{}Cosmos\allowbreak{}Tenancy\allowbreak{}Model\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs}
+  & Query-Filter auf den aktuellen Mandanten & \ref{ch:without-sql-what-carries-over} \\
+  \tablerule
+  \code{Storage/\allowbreak{}*}
+  & TenantId als String, Type-Mapping-Plugin & \ref{ch:without-sql-what-carries-over} \\
+  \tablerule
+  \code{Infrastructure/\allowbreak{}*}
+  & Options-Extension, UseAcmeTenancy & \ref{ch:without-sql-what-carries-over} \\
+  \tablerule
   \textbf{Funktionen-Beispielpaket (ohne Mandantenbezug)} &  &  \\
   \tablerule
   \code{Query/\allowbreak{}Expressions/\allowbreak{}*},

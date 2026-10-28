@@ -485,7 +485,8 @@ medium ones follow, the stable ones come last.
   namespaces (EF1001); check first in every major upgrade & \ref{ch:declarative-sql-from-annotations}, \ref{ch:design-time-services}, \ref{ch:custom-sql-expression-nodes}, \ref{ch:property-level-fluent-api-and}, \ref{ch:scaffolding-in-practice} \\
   \tablerule
   \textcolor{risk@medium}{\textbf{medium}} & Provider base classes or public API that changes
-  often & \ref{ch:ef-core-s-architecture-from}, \ref{ch:the-options-extension}, \ref{ch:registering-services}, \ref{ch:type-mappings-and-value-converters}, \ref{ch:the-query-pipeline}, \ref{ch:translating-methods-and-members}, \ref{ch:further-query-extension-points}, \ref{ch:custom-migration-operations}, \ref{ch:compiled-models-trimming-and-nativeaot}, \ref{ch:scaffolding-reverse-engineering}, \ref{ch:test-strategy}, \ref{ch:versioning-and-compatibility}, \ref{ch:bulk-operations-and-the-limits}, \ref{ch:the-update-pipeline}, \ref{ch:complex-types-and-json}, \ref{ch:aggregate-translators}, \ref{ch:a-second-provider-sql-server} \\
+  often & \ref{ch:ef-core-s-architecture-from}, \ref{ch:the-options-extension}, \ref{ch:registering-services}, \ref{ch:type-mappings-and-value-converters}, \ref{ch:the-query-pipeline}, \ref{ch:translating-methods-and-members}, \ref{ch:further-query-extension-points}, \ref{ch:custom-migration-operations}, \ref{ch:compiled-models-trimming-and-nativeaot}, \ref{ch:scaffolding-reverse-engineering}, \ref{ch:test-strategy}, \ref{ch:versioning-and-compatibility}, \ref{ch:bulk-operations-and-the-limits}, \ref{ch:the-update-pipeline}, \ref{ch:complex-types-and-json}, \ref{ch:aggregate-translators}, \ref{ch:a-second-provider-sql-server},
+  \ref{ch:without-sql-what-carries-over} \\
   \tablerule
   \textcolor{risk@stable}{\textbf{stable}} & Concepts and public API & all others \\
 \end{datatable}
@@ -855,8 +856,12 @@ For every new plugin, in the order of development. Each item sums up a rule; the
 
 \section{Multiple providers (part~\ref{part:providers})}
 
-\noindent Details: chapters~\ref{ch:what-belongs-in-the-core}, \ref{ch:a-second-provider-sql-server}.
+\noindent Details: chapters~\ref{ch:what-belongs-in-the-core}, \ref{ch:a-second-provider-sql-server}, \ref{ch:without-sql-what-carries-over}.
 
 \begin{checklist}
   \item Provider-neutral building blocks into the core, differences into provider packages.
+  \item Relational building blocks into a layer of their own, so that the core stays usable
+    without SQL.
+  \item Without row level security: document that the query filter is the only isolation,
+    and how raw access bypasses it.
 \end{checklist}

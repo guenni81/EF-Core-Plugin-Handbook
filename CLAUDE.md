@@ -3,7 +3,7 @@
 This repository is primarily a handbook ("The EF Core Plugin Handbook", German and English
 edition) with a reference implementation: a multi-tenancy plugin for EF Core 10
 (`src/Acme.EntityFrameworkCore.Tenancy` core for any EF provider, `.Relational` layer,
-`.PostgreSQL` and `.SqlServer` providers), plus the small sample plugin
+`.PostgreSQL`, `.SqlServer` and the lean `.Cosmos` provider packages), plus the small sample plugin
 `src/Acme.EntityFrameworkCore.Functions.PostgreSQL` (custom SQL node and aggregate, no tenancy).
 Code, comments and messages are written in English. Detailed editing rules for the book are
 in `docs/handbook/README.md`; contributor rules in `CONTRIBUTING.md`.
@@ -63,6 +63,7 @@ dotnet build
 dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Tests                # unit tests, no database
 dotnet test tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests     # PostgreSQL via Testcontainers (Docker)
 dotnet test tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests      # SQL Server via Testcontainers (Docker)
+dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Cosmos.Tests         # Cosmos DB emulator (Docker, preview)
 eng/consumer-test/run.sh --nativeaot   # packs, fresh app, dotnet-ef, compiled model, NativeAOT (Docker + clang)
 ```
 

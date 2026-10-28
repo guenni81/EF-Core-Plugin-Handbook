@@ -1,10 +1,11 @@
 % ============================================================
 \setpartpreamble{\partintro
-  {Welche Bausteine in einen gemeinsamen Kern gehören, welche in Provider-Pakete, und wie ein
-  zweiter Provider auf demselben Kern entsteht.}
+  {Welche Bausteine in einen gemeinsamen Kern gehören, welche in Provider-Pakete, wie ein
+  zweiter Provider auf demselben Kern entsteht und was bei einer Datenbank ohne SQL trägt.}
   {
     \item Kapitel~\ref{ch:what-belongs-in-the-core}: Was in den Kern gehört
     \item Kapitel~\ref{ch:a-second-provider-sql-server}: Ein zweiter Provider: SQL Server
+    \item Kapitel~\ref{ch:without-sql-what-carries-over}: Ohne SQL: Was bei Cosmos DB trägt
   }}
 \part{Mehrere Provider}\label{part:providers}
 
@@ -70,7 +71,8 @@ das Paket
 \code{Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Relational}
 ergänzt \code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Relational},
 und beide Provider-Pakete bauen darauf auf. \code{Package\allowbreak{}Layer\allowbreak{}Tests}
-stellt sicher, dass kein relationaler Typ in den Kern zurückwandert.
+stellt sicher, dass kein relationaler Typ in den Kern zurückwandert. Dass sich das lohnt, zeigt
+Kapitel~\ref{ch:without-sql-what-carries-over}: Das Cosmos-Paket baut allein auf dem Kern auf.
 
 \begin{note}[Die relationale Schicht von Anfang an trennen]
   Wer später einen nicht-relationalen Provider wie Cosmos DB unterstützen könnte, legt die
@@ -401,3 +403,187 @@ Die Tests laufen wie bei PostgreSQL in zwei Ebenen: ohne Datenbank für Modell, 
 Migrations-SQL und mit Testcontainers gegen einen echten SQL Server. Dort verbindet sich die
 Anwendung mit einem eigenen Login statt als \code{sa}, um die Produktionssituation
 nachzustellen.
+
+% ------------------------------------------------------------
+\chapter{Ohne SQL: Was bei Cosmos DB trägt}\label{ch:without-sql-what-carries-over}
+\versionrisk{medium}
+
+PostgreSQL und SQL Server teilen dieselbe Idee: Die Datenbank selbst verweigert fremde Zeilen,
+und das Plugin muss ihr nur den Mandanten mitteilen. Azure Cosmos DB hat weder SQL-DDL noch eine
+Session noch Row Level Security. Das Paket
+\code{Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Cosmos}
+ist deshalb bewusst ein schlankes Kontrastbeispiel, kein vollwertiger Provider: Es zeigt, welche
+Teile des Plugins ohne SQL tragen und was verloren geht. Es referenziert nur das Kernpaket aus
+Kapitel~\ref{ch:what-belongs-in-the-core}, ohne die relationale Schicht.
+
+\begin{datatable}{H{1.10}H{0.90}H{1.00}}
+  \textbf{Baustein} & \textbf{Im Cosmos-Paket} & \textbf{Anmerkung} \\
+  \tablehead
+  \code{Tenant\allowbreak{}Id}, \code{ITenant\allowbreak{}Owned},
+  \code{Add\allowbreak{}Acme\allowbreak{}Tenancy} & Wiederverwendet & Unverändert aus dem Kern \\
+  \tablerule
+  SaveChanges-Interceptor & Wiederverwendet & Setzt und prüft den Mandanten vor dem Speichern \\
+  \tablerule
+  Prüfung beim Laden & Wiederverwendet & Die einzige Prüfung hinter dem Query-Filter \\
+  \tablerule
+  Value Generation für \code{Tenant\allowbreak{}Id}-Schlüssel & Wiederverwendet & Convention
+  aus dem Kern \\
+  \tablerule
+  Type Mapping & Neu & \code{Tenant\allowbreak{}Id} als JSON-String \\
+  \tablerule
+  Partition-Key-Convention & Neu & Ersetzt die RLS-Convention \\
+  \tablerule
+  Query-Filter & Neu & Mandant als Abfrageparameter statt als Session-Wert \\
+  \tablerule
+  Session-Interceptor, Migrations, SQL-Knoten & Nicht portiert & Es gibt keine Session und kein
+  Schema \\
+\end{datatable}
+
+\section{Der Mandant als Partition Key}
+
+In Cosmos DB entscheidet der Partition Key, wo ein Dokument liegt und welche Partition eine
+Abfrage liest. Der Mandant ist der natürliche Kandidat: Jede Abfrage der Anwendung betrifft
+genau einen Mandanten. Eine Convention setzt ihn für jeden mandantenbezogenen Wurzeltyp, mit
+derselben Kandidatensuche wie die RLS-Conventions. Sie läuft mit Convention-Quelle, ein
+explizites \code{Has\allowbreak{}Partition\allowbreak{}Key} des Anwenders gewinnt also:
+
+% source: src/Acme.EntityFrameworkCore.Tenancy.Cosmos/Conventions/CosmosTenantPartitionKeyConvention.cs
+\begin{sourcecode}[Conventions/\allowbreak{}Cosmos\allowbreak{}Tenant\allowbreak{}Partition\allowbreak{}Key\allowbreak{}Convention.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+foreach (var entityType in modelBuilder.Metadata.GetEntityTypes())
+{
+    // Nur an der Wurzel einer Hierarchie; Owned Types stecken im Dokument des Besitzers
+    if (entityType.BaseType is not null || entityType.IsOwned()
+        || entityType.ClrType.IsDefined(typeof(NoTenantIsolationAttribute), inherit: true))
+        continue;
+
+    if (entityType.FindTenantPropertyCandidate() is not { } candidate)
+        continue;
+
+    entityType.Builder.HasAnnotation(TenancyAnnotationNames.TenantProperty, candidate.Name);
+
+    string[] partitionKey = [candidate.Name];
+    if (entityType.Builder.CanSetPartitionKey(partitionKey))
+        entityType.Builder.HasPartitionKey(partitionKey);
+}
+\end{sourcecode}
+
+Zwei Details unterscheiden sich von den relationalen Providern. Cosmos akzeptiert als Werte
+eines Partition Keys nur Strings, Zahlen und Booleans; der Konverter des Kerns auf
+\code{Guid} reicht nicht, deshalb bildet das Paket \code{Tenant\allowbreak{}Id} über ein
+\code{IType\allowbreak{}Mapping\allowbreak{}Source\allowbreak{}Plugin} auf einen String ab.
+Cosmos hat dafür keine eigene Plugin-Schnittstelle, seine Type-Mapping-Quelle fragt aber zuerst
+die Plugins des Kerns; das Mapping selbst baut auf
+\code{Cosmos\allowbreak{}Type\allowbreak{}Mapping} aus einem \code{.Internal}-Namespace auf.
+Außerdem hat ein Container genau einen Partition Key: Daten ohne Mandant, etwa gemeinsame
+Stammdaten, brauchen einen eigenen Container (\code{To\allowbreak{}Container}).
+
+\section{Der Query-Filter auf den aktuellen Mandanten}
+
+Der relationale Filter vergleicht mit
+\code{EF.\allowbreak{}Functions.\allowbreak{}Current\allowbreak{}Tenant(\allowbreak{})}, was in
+SQL zu \code{current\_\allowbreak{}setting(\allowbreak{})} wird: Die Datenbank kennt den Mandanten
+aus der Session. Cosmos kennt nichts; der Mandant muss mit jeder Abfrage mitreisen. Eine
+Convention kann das nicht leisten, weil sie keinen Zugriff auf den Context hat. Der Filter
+entsteht deshalb in \code{On\allowbreak{}Model\allowbreak{}Creating}, mit dem Context selbst:
+
+% source: src/Acme.EntityFrameworkCore.Tenancy.Cosmos/Metadata/CosmosTenancyModelBuilderExtensions.cs
+\begin{sourcecode}[Aufruf und Metadata/\allowbreak{}Cosmos\allowbreak{}Tenancy\allowbreak{}Model\allowbreak{}Builder\allowbreak{}Extensions.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+// OnModelCreating: modelBuilder.HasTenantQueryFilters(this);
+
+var currentTenant = Expression.Call(
+    typeof(CosmosTenancyModelBuilderExtensions).GetMethod(nameof(CurrentTenant))!,
+    Expression.Constant(context));
+
+// e => (TenantId?)EF.Property<TenantId>(e, "TenantId") == CurrentTenant(context)
+var parameter = Expression.Parameter(entityType.ClrType, "e");
+var body = Expression.Equal(
+    Expression.Convert(
+        Expression.Call(typeof(EF), nameof(EF.Property), [typeof(TenantId)],
+            parameter, Expression.Constant(property.Name)),
+        typeof(TenantId?)),
+    currentTenant);
+
+modelBuilder.Entity(entityType.ClrType)
+    .HasQueryFilter(QueryFilterKey, Expression.Lambda(body, parameter));
+\end{sourcecode}
+
+EF behandelt eine Context-Instanz in einem Query-Filter besonders: Es ersetzt sie durch den
+Context, der die Abfrage ausführt, und wertet
+\code{Current\allowbreak{}Tenant(\allowbreak{}context)} vor jeder Ausführung aus. Der Mandant
+wird so zum Abfrageparameter, und die kompilierte Abfrage bleibt für alle Mandanten im Cache.
+Weil der Filter den Partition Key mit diesem Parameter vergleicht, übernimmt EF Core ihn in die
+Anfrage: Die Abfrage geht an eine einzige Partition, statt sich über alle zu verteilen. Ein Test
+macht das über die Event-Daten sichtbar:
+
+% source: tests/Acme.EntityFrameworkCore.Tenancy.Cosmos.Tests/EmulatorTests.cs
+\begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Cosmos.\allowbreak{}Tests/\allowbreak{}Emulator\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
+await using var ctx = _fixture.CreateContext(
+    new MutableTenantProvider { CurrentTenantId = tenant },
+    configure: o => o.LogTo(
+        (id, _) => id == CosmosEventId.ExecutingSqlQuery,
+        e => partitions.Add(((CosmosQueryEventData)e).PartitionKeyValue.ToString())));
+
+await ctx.Orders.Where(o => o.Total > 0).ToListAsync();
+
+// EF übernimmt den Gleichheitsvergleich des Filters auf den Partition Key in die Anfrage
+var partition = Assert.Single(partitions);
+Assert.Contains(tenant.Value.ToString("D"), partition);
+\end{sourcecode}
+
+\begin{important}[Keine Row Level Security: Die Anwendung ist die einzige Verteidigungslinie]
+  Cosmos DB hat keine Row Level Security. Die Isolation ist genau so stark wie die
+  Anwendungsschicht: der Query-Filter, der SaveChanges-Interceptor und, falls eingeschaltet, die
+  Prüfung beim Laden (\code{Use\allowbreak{}Acme\allowbreak{}Tenancy(\allowbreak{}sp,\allowbreak{}
+  verify\allowbreak{}Materialized\allowbreak{}Tenants:\allowbreak{} true)}). Alles, was an EF
+  vorbeigeht, geht auch an der Isolation vorbei: Abfragen über das Cosmos-SDK, Skripte und
+  Werkzeuge mit dem Account-Schlüssel und \code{Ignore\allowbreak{}Query\allowbreak{}Filters}.
+  Rohe Abfragen mit \code{From\allowbreak{}Sql} behalten den Filter, laufen aber über alle
+  Partitionen. Das Bedrohungsmodell aus Kapitel~\ref{ch:row-level-security-in-production}
+  (Seite~\pageref{sec:threat-model}) gilt deshalb ohne seine datenbankseitige Hälfte. Wo
+  Mandanten durch die Datenbank getrennt sein müssen, muss die Architektur das leisten: ein
+  \textbf{Container pro Mandant} mit Zugriff über rollenbasierte Zugriffskontrolle oder ein
+  \textbf{Account pro Mandant}. Beides kostet mehr und gibt den gemeinsamen Container auf, aber
+  ein Leck braucht dann eine falsche Berechtigung, nicht nur eine falsche Abfrage.
+\end{important}
+
+\section{Vergleich der drei Provider}
+
+\begin{datatable}{H{0.80}H{1.05}H{1.05}H{1.10}}
+  \textbf{Aspekt} & \textbf{PostgreSQL} & \textbf{SQL Server} & \textbf{Cosmos DB} \\
+  \tablehead
+  Wer die Isolation erzwingt & Datenbank (RLS-Policies) & Datenbank (Security Policy) & Nur
+  die Anwendung (Query-Filter) \\
+  \tablerule
+  Mandant in der Anfrage & Session-Setting & \code{SESSION\_\allowbreak{}CONTEXT} &
+  Abfrageparameter, Partition Key \\
+  \tablerule
+  Schema-Objekte & Policies über Migrations & Prädikatfunktion, Security Policy & Keine \\
+  \tablerule
+  Rohe Abfragen & Weiter durch RLS gefiltert & Weiter durch die Policy gefiltert &
+  \code{From\allowbreak{}Sql} gefiltert, aber partitionsübergreifend; SDK ungefiltert \\
+  \tablerule
+  Genutzte Pakete & Kern, relational, Provider & Kern, relational, Provider & Kern, Provider \\
+  \tablerule
+  Interne API (EF1001) & 10 Typen & 2 Typen & 1 Typ
+  (\code{Cosmos\allowbreak{}Type\allowbreak{}Mapping}) \\
+  \tablerule
+  Tests & Testcontainers PostgreSQL & Testcontainers SQL Server & Linux-Emulator (Preview) \\
+\end{datatable}
+
+\section{Bewusst nicht portiert}
+
+Migrations und Scaffolding (Cosmos hat kein Schema), eigene SQL-Knoten und Aggregate, der
+Session-Interceptor und
+\code{Database.\allowbreak{}Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})} (es
+gibt keine Session) sowie der Schutz von Massen-Updates (EF Core~10 hat für Cosmos kein
+\code{Execute\allowbreak{}Update}). Cosmos unterstützt außerdem nur asynchrone I/O:
+\code{Save\allowbreak{}Changes(\allowbreak{})} und \code{To\allowbreak{}List(\allowbreak{})}
+werfen, Anwendung und Tests nutzen also durchgehend die asynchronen Varianten.
+
+\begin{note}[Tests gegen den Emulator]
+  Die Tests laufen gegen den Linux-Emulator von Cosmos DB (vNext), eine Preview. Der Image-Tag
+  ist festgenagelt, die Verbindung nutzt den Gateway-Modus über den HTTP-Client des Containers,
+  und das Testprojekt referenziert ein neueres Cosmos-SDK, als EF Core~10.0.0 mitbringt: Das
+  SDK~3.51 kann nicht jede binäre Antwort des aktuellen Emulators lesen. Weil der
+  Preview-Emulator gelegentlich hängt, blockiert der Cosmos-Job in der CI den Build noch nicht.
+\end{note}

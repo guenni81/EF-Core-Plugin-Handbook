@@ -29,7 +29,7 @@ backed by more than 100 tests.
 | English | [EF-Core-Plugin-Handbook.pdf](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/docs/handbook/out/EF-Core-Plugin-Handbook.pdf) | [`docs/handbook/en`](https://github.com/guenni81/EF-Core-Plugin-Handbook/tree/main/docs/handbook/en) |
 | Deutsch | [EF-Core-Plugin-Handbuch.pdf](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/docs/handbook/out/EF-Core-Plugin-Handbuch.pdf) | [`docs/handbook/de`](https://github.com/guenni81/EF-Core-Plugin-Handbook/tree/main/docs/handbook/de) |
 
-47 chapters in 11 parts plus 6 appendices (A–F), about 195 pages, for developers who already use
+48 chapters in 11 parts plus 6 appendices (A–F), about 200 pages, for developers who already use
 EF Core and want to extend it. The PDFs are typeset with LaTeX (LuaLaTeX) so that text and
 code excerpts are versioned together with the code. See [`docs/handbook/README.md`](https://github.com/guenni81/EF-Core-Plugin-Handbook/blob/main/docs/handbook/README.md)
 for how to build them.
@@ -130,6 +130,7 @@ per table (FILTER and BLOCK predicates) and `SESSION_CONTEXT`.
 | Scaffolding | RLS and policies are read back from the database | 45 |
 | Package layers | Core for any EF Core provider, relational layer (session interceptor, table mappings), provider packages | 46 |
 | Second provider | SQL Server: security policies and `SESSION_CONTEXT` on the same core | 47 |
+| Without SQL | Cosmos DB on the core alone: tenant as partition key, query filter as the only isolation, single-partition queries | 48 |
 | Debugging | Model debug view, resolved services, convention set, query trees, logging | App. D |
 
 ## Repository layout
@@ -140,6 +141,7 @@ src/
   Acme.EntityFrameworkCore.Tenancy.Relational   Relational layer (session interceptor, table mappings)
   Acme.EntityFrameworkCore.Tenancy.PostgreSQL   PostgreSQL implementation (complete)
   Acme.EntityFrameworkCore.Tenancy.SqlServer    SQL Server implementation (second provider)
+  Acme.EntityFrameworkCore.Tenancy.Cosmos       Cosmos DB contrast example (core only, no SQL)
   Acme.EntityFrameworkCore.Functions.PostgreSQL Sample plugin without tenancy: custom SQL node, aggregate
 samples/
   ShopSample                                    Console sample incl. migration workflow
@@ -148,6 +150,7 @@ tests/
   ...Tenancy.Tests                              Unit tests, no database required
   ...Tenancy.IntegrationTests                   Tests against PostgreSQL (Docker)
   ...Tenancy.SqlServer.Tests                    Unit and integration tests for SQL Server (Docker)
+  ...Tenancy.Cosmos.Tests                       Model tests and tests against the Cosmos DB emulator (Docker)
 benchmarks/
   ...Tenancy.Benchmarks                         BenchmarkDotNet micro benchmarks
 docs/handbook/                                  Handbook: LaTeX sources (de/, en/), check scripts (Python), PDFs (out/)
@@ -166,6 +169,7 @@ dotnet build
 dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Tests                # no database
 dotnet test tests/Acme.EntityFrameworkCore.Tenancy.IntegrationTests     # requires Docker
 dotnet test tests/Acme.EntityFrameworkCore.Tenancy.SqlServer.Tests      # requires Docker
+dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Cosmos.Tests         # requires Docker (emulator)
 ```
 
 The packages as a customer gets them (pack, fresh application, `dotnet-ef`, compiled model;

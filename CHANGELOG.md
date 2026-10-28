@@ -27,6 +27,12 @@ its internal API surface shrinks from 13 to 10 Npgsql types.
 
 ### Added
 
+- Handbook (both editions): new chapter 48 "Without SQL: what carries over to Cosmos DB" in part
+  XI, with an important box on the missing row level security (raw access through the SDK and
+  FromSql, architectural alternatives: container or account per tenant), a comparison of the
+  three providers and the list of what was deliberately not ported. Chapter 1 (levels),
+  chapter 3 (packages), chapter 27 (version dependency), chapter 29 (checklist), chapter 46 and
+  appendix B mention the Cosmos package.
 - Package `Acme.EntityFrameworkCore.Tenancy.Cosmos`, a deliberately lean contrast example on the
   core package alone: tenant as partition key by convention (stored as a string, as Cosmos
   requires), a named query filter on the current tenant via

@@ -95,7 +95,8 @@ four levels that differ in how deeply they reach into EF Core:
   plugin, EFCore.NamingConventions \\
   \tablerule
   4 · Providers & A complete database integration including connection, update pipeline and
-  SQL generation. & Npgsql, Pomelo (MySQL), SQLite, Cosmos \\
+  SQL generation. & Npgsql, Pomelo (MySQL), SQLite, Cosmos (chapter~\ref{ch:without-sql-what-carries-over}
+  builds a level~3 plugin on it) \\
 \end{datatable}
 
 This book covers \textbf{level 3} completely. Levels 1 and 2 need no book of their own: they
@@ -438,7 +439,10 @@ implementation this book uses to explain everything. The \textbf{SQL Server pack
 the same core and relational layer and shows in chapter~\ref{ch:a-second-provider-sql-server} what a second
 provider has to implement itself. A fifth, small package, \code{Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Functions.\allowbreak{}Postgre\allowbreak{}SQL}, holds the examples
 for custom SQL nodes and aggregates; they have nothing to do with multi-tenancy
-(chapter~\ref{ch:custom-sql-expression-nodes}).
+(chapter~\ref{ch:custom-sql-expression-nodes}). A sixth,
+\code{Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Cosmos},
+builds on the core alone and shows what carries over to a database without SQL
+(chapter~\ref{ch:without-sql-what-carries-over}).
 
 \begin{sourcecode}[Structure of the four packages]{text}
 Acme.EntityFrameworkCore.Tenancy               Core (EF Core only, any provider)

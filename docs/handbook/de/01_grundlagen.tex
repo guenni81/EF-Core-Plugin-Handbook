@@ -99,7 +99,8 @@ eingreifen:
   NodaTime-Plugin, EFCore.NamingConventions \\
   \tablerule
   4 · Provider & Komplette Datenbankanbindung inklusive Verbindung, Update-Pipeline und
-  SQL-Generierung. & Npgsql, Pomelo (MySQL), SQLite, Cosmos \\
+  SQL-Generierung. & Npgsql, Pomelo (MySQL), SQLite, Cosmos (Kapitel~\ref{ch:without-sql-what-carries-over}
+  baut darauf ein Plugin der Stufe~3) \\
 \end{datatable}
 
 Dieses Buch behandelt \textbf{Stufe 3} vollständig. Stufen 1 und 2 brauchen kein eigenes
@@ -452,7 +453,10 @@ Implementierung, an der dieses Buch alles erklärt. Das \textbf{SQL-Server-Paket
 denselben Kern und dieselbe relationale Schicht und zeigt in Kapitel~\ref{ch:a-second-provider-sql-server}, was ein zweiter
 Provider selbst umsetzen muss. Ein fünftes, kleines Paket, \code{Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Functions.\allowbreak{}Postgre\allowbreak{}SQL}, enthält die
 Beispiele für eigene SQL-Knoten und Aggregate; sie haben nichts mit Mandantenfähigkeit zu tun
-(Kapitel~\ref{ch:custom-sql-expression-nodes}).
+(Kapitel~\ref{ch:custom-sql-expression-nodes}). Ein sechstes,
+\code{Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Cosmos},
+baut allein auf dem Kern auf und zeigt, was bei einer Datenbank ohne SQL trägt
+(Kapitel~\ref{ch:without-sql-what-carries-over}).
 
 \begin{sourcecode}[Struktur der vier Pakete]{text}
 Acme.EntityFrameworkCore.Tenancy               Kern (nur EF Core, jeder Provider)
