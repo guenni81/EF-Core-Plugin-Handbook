@@ -1,12 +1,12 @@
 using System.Reflection;
-using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Expressions;
+using Acme.EntityFrameworkCore.Functions.PostgreSQL.Query.Expressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
 using Microsoft.EntityFrameworkCore.Storage;
 
-namespace Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query;
+namespace Acme.EntityFrameworkCore.Functions.PostgreSQL.Query;
 
 /// <summary>EF.Functions.Is[Not]DistinctFrom(a, b) -&gt; DistinctFromExpression.</summary>
 /// <remarks>
@@ -17,10 +17,10 @@ namespace Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query;
 public class DistinctFromTranslator : IMethodCallTranslator
 {
     private static readonly MethodInfo IsNotDistinctFromMethod =
-        typeof(TenancyPgDbFunctionsExtensions).GetMethod(nameof(TenancyPgDbFunctionsExtensions.IsNotDistinctFrom))!;
+        typeof(AcmePgDbFunctionsExtensions).GetMethod(nameof(AcmePgDbFunctionsExtensions.IsNotDistinctFrom))!;
 
     private static readonly MethodInfo IsDistinctFromMethod =
-        typeof(TenancyPgDbFunctionsExtensions).GetMethod(nameof(TenancyPgDbFunctionsExtensions.IsDistinctFrom))!;
+        typeof(AcmePgDbFunctionsExtensions).GetMethod(nameof(AcmePgDbFunctionsExtensions.IsDistinctFrom))!;
 
     private readonly ISqlExpressionFactory _sql;
     private readonly IRelationalTypeMappingSource _typeMappingSource;

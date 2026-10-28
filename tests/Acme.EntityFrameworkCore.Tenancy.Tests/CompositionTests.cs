@@ -459,7 +459,7 @@ public class CompositionMatrixTests
             .UseFakePlugin<NpgsqlQuerySqlGeneratorFactory>(s => s.Replace(ServiceDescriptor
                 .Singleton<IQuerySqlGeneratorFactory, NpgsqlQuerySqlGeneratorFactory>())));
 
-        // The tenancy plugin's node reaches a generator that does not know it
+        // The functions plugin's node reaches a generator that does not know it
         Assert.DoesNotContain("DISTINCT FROM", DistinctFromSql(ctx));
     }
 

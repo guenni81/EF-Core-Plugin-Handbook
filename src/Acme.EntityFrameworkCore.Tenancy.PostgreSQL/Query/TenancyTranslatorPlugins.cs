@@ -24,7 +24,6 @@ public class TenancyMethodCallTranslatorPlugin : IMethodCallTranslatorPlugin
         Translators =
         [
             new CurrentTenantTranslator(sql, typeMappingSource, options),
-            new DistinctFromTranslator(sql, typeMappingSource),
         ];
     }
 
@@ -44,20 +43,4 @@ public class TenancyMemberTranslatorPlugin : IMemberTranslatorPlugin
 
     /// <summary>The member translators contributed by the plugin.</summary>
     public virtual IEnumerable<IMemberTranslator> Translators { get; }
-}
-
-/// <summary>Supplies the plugin's aggregate translators (lifetime: scoped).</summary>
-public class TenancyAggregateMethodCallTranslatorPlugin : IAggregateMethodCallTranslatorPlugin
-{
-    /// <summary>Creates the plugin and its translators.</summary>
-    /// <param name="sql">The factory used to build SQL expression trees.</param>
-    /// <param name="typeMappingSource">Resolves type mappings for constants and results.</param>
-    public TenancyAggregateMethodCallTranslatorPlugin(
-        ISqlExpressionFactory sql, IRelationalTypeMappingSource typeMappingSource)
-    {
-        Translators = [new EveryAggregateTranslator(sql, typeMappingSource)];
-    }
-
-    /// <summary>The aggregate method call translators contributed by the plugin.</summary>
-    public virtual IEnumerable<IAggregateMethodCallTranslator> Translators { get; }
 }

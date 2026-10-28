@@ -1,18 +1,16 @@
-using Acme.EntityFrameworkCore.Tenancy;
-
 namespace Microsoft.EntityFrameworkCore;
 
 /// <summary>
-/// PostgreSQL-specific EF.Functions of the plugin. They live in the provider package because
-/// there is no meaningful translation for other databases.
+/// PostgreSQL-specific EF.Functions of the sample functions plugin: a custom SQL node and an
+/// aggregate (chapters "Custom SQL expression nodes" and "Aggregate translators").
 /// </summary>
 /// <remarks>
-/// The methods only serve as markers in LINQ expression trees and are never executed. The
-/// <see cref="TenancyDbFunctionsAttribute"/> keeps EF from evaluating them on the client
-/// (see chapter "Preventing client-side evaluation" of the handbook).
+/// The methods only serve as markers in LINQ expression trees and are never executed.
+/// FunctionsEvaluatableExpressionFilterPlugin keeps EF from evaluating them on the client
+/// (chapter "Preventing client-side evaluation"). Activated with
+/// <c>UseNpgsql(cs, o =&gt; o.UseAcmeFunctions())</c>.
 /// </remarks>
-[TenancyDbFunctions]
-public static class TenancyPgDbFunctionsExtensions
+public static class AcmePgDbFunctionsExtensions
 {
     /// <summary>
     /// Null-safe comparison: <c>a IS NOT DISTINCT FROM b</c>. Returns true if both values are

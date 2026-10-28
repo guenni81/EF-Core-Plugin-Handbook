@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Consumer test: packs the four libraries, builds a fresh application against the packages (not
-# the projects) and runs the real dotnet-ef tooling on it. Everything happens in a temporary
+# Consumer test: packs the tenancy libraries, builds a fresh application against the packages
+# (not the projects) and runs the real dotnet-ef tooling on it. Everything happens in a temporary
 # directory with its own NuGet cache, which is removed at the end.
 #
 #   eng/consumer-test/run.sh [--nativeaot] [EF Core version for dotnet-ef and the Design package]

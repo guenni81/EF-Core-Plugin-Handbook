@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
 using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Query;
 
-namespace Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query;
+namespace Acme.EntityFrameworkCore.Functions.PostgreSQL.Query;
 
 /// <summary>
 /// Aggregate: EF.Functions.Every(group.Select(x =&gt; x.Flag)) -&gt; COALESCE(bool_and(...), TRUE).
@@ -20,7 +20,7 @@ namespace Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query;
 public class EveryAggregateTranslator : IAggregateMethodCallTranslator
 {
     private static readonly MethodInfo EveryMethod =
-        typeof(TenancyPgDbFunctionsExtensions).GetMethod(nameof(TenancyPgDbFunctionsExtensions.Every))!;
+        typeof(AcmePgDbFunctionsExtensions).GetMethod(nameof(AcmePgDbFunctionsExtensions.Every))!;
 
     private readonly ISqlExpressionFactory _sql;
     private readonly IRelationalTypeMappingSource _typeMappingSource;

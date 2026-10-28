@@ -371,8 +371,8 @@ public class SqlServerTenantSessionInterceptor : TenantSessionInterceptor
 \section{Deliberately not ported}
 
 The SQL Server package is a self-contained but leaner provider. Fluent API policies, the optional
-query filter, custom SQL nodes, aggregates, the snapshot code generator and scaffolding are
-missing there. That is a product decision, not a technical obstacle: each of these chapters
+query filter, the snapshot code generator and scaffolding are missing there, and the custom
+SQL node and the aggregate of the functions sample package exist for PostgreSQL only. That is a product decision, not a technical obstacle: each of these chapters
 can be transferred to SQL Server with the same patterns. The list belongs in the package's
 documentation so users know what to expect.
 

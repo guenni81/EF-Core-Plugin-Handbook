@@ -378,8 +378,8 @@ public class SqlServerTenantSessionInterceptor : TenantSessionInterceptor
 \section{Bewusst nicht portiert}
 
 Das SQL-Server-Paket ist ein eigenständiger, aber schlankerer Provider. Fluent-API-Policies,
-der optionale Query-Filter, eigene SQL-Knoten, Aggregate, Snapshot-Code-Generator und
-Scaffolding fehlen dort. Das ist eine Produktentscheidung, kein technisches Hindernis: Jedes
+der optionale Query-Filter, Snapshot-Code-Generator und Scaffolding fehlen dort, und der
+eigene SQL-Knoten und das Aggregat des Funktionen-Beispielpakets gibt es nur für PostgreSQL. Das ist eine Produktentscheidung, kein technisches Hindernis: Jedes
 dieser Kapitel lässt sich mit denselben Mustern auf SQL Server übertragen. Die Liste gehört
 in die Dokumentation des Pakets, damit Nutzer wissen, was sie erwarten können.
 

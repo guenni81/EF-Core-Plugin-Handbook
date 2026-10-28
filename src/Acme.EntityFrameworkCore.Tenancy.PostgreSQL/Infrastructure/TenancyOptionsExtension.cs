@@ -1,7 +1,6 @@
 using Acme.EntityFrameworkCore.Tenancy.Diagnostics;
 using Acme.EntityFrameworkCore.Tenancy.Interceptors;
 using Acme.EntityFrameworkCore.Tenancy.Query;
-using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal;
 using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Conventions;
 using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Metadata.Internal;
 using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Migrations.Internal;
@@ -71,7 +70,6 @@ public class TenancyOptionsExtension : IDbContextOptionsExtension
             .TryAdd<IRelationalTypeMappingSourcePlugin, TenancyTypeMappingSourcePlugin>()
             .TryAdd<IMethodCallTranslatorPlugin, TenancyMethodCallTranslatorPlugin>()
             .TryAdd<IMemberTranslatorPlugin, TenancyMemberTranslatorPlugin>()
-            .TryAdd<IAggregateMethodCallTranslatorPlugin, TenancyAggregateMethodCallTranslatorPlugin>()
             .TryAdd<IEvaluatableExpressionFilterPlugin, TenancyEvaluatableExpressionFilterPlugin>()
             .TryAdd<IConventionSetPlugin, TenancyConventionSetPlugin>()
             .TryAdd<ISingletonOptions, ITenancySingletonOptions>(
@@ -101,14 +99,6 @@ public class TenancyOptionsExtension : IDbContextOptionsExtension
             .Scoped<IMigrationsSqlGenerator, TenancyMigrationsSqlGenerator>());
         services.Replace(ServiceDescriptor
             .Singleton<IRelationalAnnotationProvider, TenancyAnnotationProvider>());
-
-        // 4) Deep extension: custom SQL expression node (chapter "Custom SQL expression nodes").
-        //    It needs a SQL generator that writes it and a nullability processor that knows it.
-        services.Replace(ServiceDescriptor
-            .Singleton<IQuerySqlGeneratorFactory, TenancyNpgsqlQuerySqlGeneratorFactory>());
-        services.Replace(ServiceDescriptor
-            .Scoped<IRelationalParameterBasedSqlProcessorFactory,
-                TenancyNpgsqlParameterBasedSqlProcessorFactory>());
     }
 
     /// <summary>Ensures the plugin is combined with the Npgsql provider.</summary>

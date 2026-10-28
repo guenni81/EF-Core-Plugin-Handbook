@@ -124,8 +124,8 @@ per table (FILTER and BLOCK predicates) and `SESSION_CONTEXT`.
 | Retrofitting | From a table without a tenant to RLS, app versions during the change, retries and lost connections, deployment pipeline with separate roles (`docs/deployment`) | 38 |
 | Performance | BenchmarkDotNet project: overhead of the SaveChanges logic, of tenant verification on reading and of query compilation | 39 |
 | ASP.NET Core | `samples/ShopApi`, DbContext factories, background jobs | 40 |
-| Custom SQL nodes | `EF.Functions.IsNotDistinctFrom` with SQL generator and nullability processor; the pgvector operator `<=>` as a test example | 42 |
-| Aggregates | `EF.Functions.Every` (`bool_and`) with FILTER/DISTINCT support | 43 |
+| Custom SQL nodes | Separate sample package without tenancy (`Acme.EntityFrameworkCore.Functions.PostgreSQL`): `EF.Functions.IsNotDistinctFrom` with SQL generator and nullability processor; the pgvector operator `<=>` as a test example | 42 |
+| Aggregates | Same sample package: `EF.Functions.Every` (`bool_and`) with FILTER/DISTINCT support | 43 |
 | Runtime annotations | Tenant property in the compiled model, design-time annotations filtered | 44 |
 | Scaffolding | RLS and policies are read back from the database | 45 |
 | Package layers | Core for any EF Core provider, relational layer (session interceptor, table mappings), provider packages | 46 |
@@ -140,6 +140,7 @@ src/
   Acme.EntityFrameworkCore.Tenancy.Relational   Relational layer (session interceptor, table mappings)
   Acme.EntityFrameworkCore.Tenancy.PostgreSQL   PostgreSQL implementation (complete)
   Acme.EntityFrameworkCore.Tenancy.SqlServer    SQL Server implementation (second provider)
+  Acme.EntityFrameworkCore.Functions.PostgreSQL Sample plugin without tenancy: custom SQL node, aggregate
 samples/
   ShopSample                                    Console sample incl. migration workflow
   ShopApi                                       ASP.NET Core minimal API, tenant from a claim

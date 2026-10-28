@@ -3,7 +3,8 @@
 This repository is primarily a handbook ("The EF Core Plugin Handbook", German and English
 edition) with a reference implementation: a multi-tenancy plugin for EF Core 10
 (`src/Acme.EntityFrameworkCore.Tenancy` core for any EF provider, `.Relational` layer,
-`.PostgreSQL` and `.SqlServer` providers).
+`.PostgreSQL` and `.SqlServer` providers), plus the small sample plugin
+`src/Acme.EntityFrameworkCore.Functions.PostgreSQL` (custom SQL node and aggregate, no tenancy).
 Code, comments and messages are written in English. Detailed editing rules for the book are
 in `docs/handbook/README.md`; contributor rules in `CONTRIBUTING.md`.
 

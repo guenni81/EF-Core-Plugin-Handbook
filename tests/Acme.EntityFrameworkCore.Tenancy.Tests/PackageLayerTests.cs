@@ -1,4 +1,8 @@
 using Acme.EntityFrameworkCore.Tenancy.Interceptors;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Query;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Query.Internal;
 
 namespace Acme.EntityFrameworkCore.Tenancy.Tests;
 
@@ -22,5 +26,20 @@ public class PackageLayerTests
     {
         Assert.Equal("Acme.EntityFrameworkCore.Tenancy.Relational",
             typeof(TenantSessionInterceptor).Assembly.GetName().Name);
+    }
+
+    [Fact]
+    public void Tenancy_plugin_alone_keeps_the_sql_generator_of_npgsql()
+    {
+        // The custom SQL node lives in the functions sample plugin: the tenancy plugin replaces
+        // no exclusive query service and composes with any plugin that does
+        var options = new DbContextOptionsBuilder<TestContext>()
+            .UseNpgsql("Host=localhost;Database=unused")
+            .UseAcmeTenancy()
+            .EnableServiceProviderCaching(false)
+            .Options;
+        using var ctx = new TestContext(options, null);
+
+        Assert.IsType<NpgsqlQuerySqlGeneratorFactory>(ctx.GetService<IQuerySqlGeneratorFactory>());
     }
 }

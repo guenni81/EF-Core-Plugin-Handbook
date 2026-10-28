@@ -430,7 +430,7 @@ Damit das funktioniert, nutzt das Plugin jeden Erweiterungspunkt dieses Buchs:
   \tablerule
   \code{EF.\allowbreak{}Functions.\allowbreak{}Is\allowbreak{}Not\allowbreak{}Distinct\allowbreak{}From},
   \code{EF.\allowbreak{}Functions.\allowbreak{}Every} & Eigener SQL-Knoten,
-  Aggregat-Translator & \ref{ch:custom-sql-expression-nodes}--\ref{ch:aggregate-translators} \\
+  Aggregat-Translator; eigenes Beispielpaket ohne Mandantenbezug & \ref{ch:custom-sql-expression-nodes}--\ref{ch:aggregate-translators} \\
   \tablerule
   Mandanten-Property mit beliebigem Namen &
   \code{Is\allowbreak{}Tenant\allowbreak{}Property(\allowbreak{})}, Laufzeit-Annotation & \ref{ch:property-level-fluent-api-and}
@@ -450,7 +450,9 @@ dürfen, ohne einen Provider mitzuziehen; es funktioniert mit jedem EF-Core-Prov
 auf der Verbindung und die Prüfung der Tabellenabbildungen. Das \textbf{PostgreSQL-Paket} ist die vollständige
 Implementierung, an der dieses Buch alles erklärt. Das \textbf{SQL-Server-Paket} nutzt
 denselben Kern und dieselbe relationale Schicht und zeigt in Kapitel~\ref{ch:a-second-provider-sql-server}, was ein zweiter
-Provider selbst umsetzen muss.
+Provider selbst umsetzen muss. Ein fünftes, kleines Paket, \code{Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Functions.\allowbreak{}Postgre\allowbreak{}SQL}, enthält die
+Beispiele für eigene SQL-Knoten und Aggregate; sie haben nichts mit Mandantenfähigkeit zu tun
+(Kapitel~\ref{ch:custom-sql-expression-nodes}).
 
 \begin{sourcecode}[Struktur der vier Pakete]{text}
 Acme.EntityFrameworkCore.Tenancy               Kern (nur EF Core, jeder Provider)
@@ -472,7 +474,7 @@ Acme.EntityFrameworkCore.Tenancy.Relational    relationale Schicht (EF Core rela
 Acme.EntityFrameworkCore.Tenancy.PostgreSQL    vollständige Implementierung
 ├─ Infrastructure/   Options-Extension, Builder, Singleton-Options
 ├─ Storage/          TenantIdTypeMapping, Type-Mapping-Plugin
-├─ Query/            Translators, eigener SQL-Knoten, Aggregat, SQL-Generator
+├─ Query/            Translators (CurrentTenant, TenantId-Member)
 ├─ Metadata/         RLS-Annotations, RlsPolicy, Annotation-Provider
 ├─ Builders/         Fluent API (HasRowLevelSecurity, HasPolicy, ...)
 ├─ Conventions/      Isolation, Attribut, Validierung, Convention-Set-Plugin

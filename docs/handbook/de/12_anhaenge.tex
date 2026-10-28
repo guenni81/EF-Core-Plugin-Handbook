@@ -368,16 +368,6 @@ internen Provider. Sie sind fast immer der erste Weg:
   \code{Runtime/\allowbreak{}Tenant\allowbreak{}Connection\allowbreak{}Interceptor.\allowbreak{}cs}
   & Session-Setting setzen & \ref{ch:interceptors} \\
   \tablerule
-  \code{Query/\allowbreak{}Expressions/\allowbreak{}*},
-  \code{Query/\allowbreak{}Distinct\allowbreak{}From\allowbreak{}Translator.\allowbreak{}cs}
-  & Eigener SQL-Knoten & \ref{ch:custom-sql-expression-nodes} \\
-  \tablerule
-  \code{Query/\allowbreak{}Internal/\allowbreak{}*} & SQL-Generator, Nullability-Prozessor,
-  Factories & \ref{ch:custom-sql-expression-nodes} \\
-  \tablerule
-  \code{Query/\allowbreak{}Every\allowbreak{}Aggregate\allowbreak{}Translator.\allowbreak{}cs}
-  & Aggregat-Translator & \ref{ch:aggregate-translators} \\
-  \tablerule
   \code{Design/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}CSharp\allowbreak{}Runtime…Generator.\allowbreak{}cs}
   & Compiled-Model-Filter & \ref{ch:property-level-fluent-api-and} \\
   \tablerule
@@ -396,6 +386,18 @@ internen Provider. Sie sind fast immer der erste Weg:
   \code{Migrations/\allowbreak{}*} & Predicate-Funktion, Security Policy & \ref{ch:a-second-provider-sql-server} \\
   \tablerule
   \code{Runtime/\allowbreak{}*} & sp\_set\_session\_context & \ref{ch:a-second-provider-sql-server} \\
+  \tablerule
+  \textbf{Funktionen-Beispielpaket (ohne Mandantenbezug)} &  &  \\
+  \tablerule
+  \code{Query/\allowbreak{}Expressions/\allowbreak{}*},
+  \code{Query/\allowbreak{}Distinct\allowbreak{}From\allowbreak{}Translator.\allowbreak{}cs}
+  & Eigener SQL-Knoten & \ref{ch:custom-sql-expression-nodes} \\
+  \tablerule
+  \code{Query/\allowbreak{}Internal/\allowbreak{}*} & SQL-Generator, Nullability-Prozessor,
+  Factories & \ref{ch:custom-sql-expression-nodes} \\
+  \tablerule
+  \code{Query/\allowbreak{}Every\allowbreak{}Aggregate\allowbreak{}Translator.\allowbreak{}cs}
+  & Aggregat-Translator & \ref{ch:aggregate-translators} \\
   \tablerule
   \textbf{Weitere} &  &  \\
   \tablerule

@@ -15,6 +15,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Acme.EntityFrameworkCore.Tenancy.PostgreSQL\Acme.EntityFrameworkCore.Tenancy.PostgreSQL.csproj" />
+    <ProjectReference Include="..\..\src\Acme.EntityFrameworkCore.Functions.PostgreSQL\Acme.EntityFrameworkCore.Functions.PostgreSQL.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

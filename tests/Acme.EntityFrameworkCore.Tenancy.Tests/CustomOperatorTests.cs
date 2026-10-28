@@ -1,6 +1,6 @@
 using System.Linq.Expressions;
 using System.Reflection;
-using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal;
+using Acme.EntityFrameworkCore.Functions.PostgreSQL.Query.Internal;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -145,10 +145,10 @@ public class VectorTranslatorPlugin : IMethodCallTranslatorPlugin
 }
 
 /// <summary>
-/// Derives from the tenancy plugin's generator: both replace the same single service, so the
+/// Derives from the functions plugin's generator: both replace the same single service, so the
 /// second one has to inherit from the first (chapter "Custom SQL expression nodes").
 /// </summary>
-public class VectorQuerySqlGenerator : TenancyNpgsqlQuerySqlGenerator
+public class VectorQuerySqlGenerator : FunctionsNpgsqlQuerySqlGenerator
 {
     public VectorQuerySqlGenerator(QuerySqlGeneratorDependencies dependencies,
         IRelationalTypeMappingSource typeMappingSource,
@@ -204,7 +204,7 @@ public class VectorQuerySqlGeneratorFactory : IQuerySqlGeneratorFactory
             _npgsqlOptions.ReverseNullOrderingEnabled, _npgsqlOptions.PostgresVersion);
 }
 
-public class VectorSqlNullabilityProcessor : TenancyNpgsqlSqlNullabilityProcessor
+public class VectorSqlNullabilityProcessor : FunctionsNpgsqlSqlNullabilityProcessor
 {
     public VectorSqlNullabilityProcessor(RelationalParameterBasedSqlProcessorDependencies dependencies,
         RelationalParameterBasedSqlProcessorParameters parameters)
@@ -229,7 +229,7 @@ public class VectorSqlNullabilityProcessor : TenancyNpgsqlSqlNullabilityProcesso
     }
 }
 
-public class VectorParameterBasedSqlProcessor : TenancyNpgsqlParameterBasedSqlProcessor
+public class VectorParameterBasedSqlProcessor : FunctionsNpgsqlParameterBasedSqlProcessor
 {
     public VectorParameterBasedSqlProcessor(RelationalParameterBasedSqlProcessorDependencies dependencies,
         RelationalParameterBasedSqlProcessorParameters parameters)
@@ -283,7 +283,8 @@ public class CustomOperatorTests
     {
         var builder = new DbContextOptionsBuilder<VectorContext>();
         builder
-            .UseNpgsql("Host=localhost;Database=unused")    // no connection is ever opened
+            // No connection is ever opened
+            .UseNpgsql("Host=localhost;Database=unused", npgsql => npgsql.UseAcmeFunctions())
             .UseAcmeTenancy()
             .UseFakePlugin<VectorTranslatorPlugin>(services =>
                 new EntityFrameworkRelationalServicesBuilder(services)

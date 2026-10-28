@@ -416,7 +416,7 @@ To make this work, the plugin uses every extension point covered in this book:
   \tablerule
   \code{EF.\allowbreak{}Functions.\allowbreak{}Is\allowbreak{}Not\allowbreak{}Distinct\allowbreak{}From},
   \code{EF.\allowbreak{}Functions.\allowbreak{}Every} & Custom SQL node, aggregate
-  translator & \ref{ch:custom-sql-expression-nodes}--\ref{ch:aggregate-translators} \\
+  translator; a separate sample package without tenancy & \ref{ch:custom-sql-expression-nodes}--\ref{ch:aggregate-translators} \\
   \tablerule
   Tenant property with any name &
   \code{Is\allowbreak{}Tenant\allowbreak{}Property(\allowbreak{})}, runtime annotation & \ref{ch:property-level-fluent-api-and}
@@ -436,7 +436,9 @@ package} adds what every SQL database needs: the session interceptor on the conn
 check of the table mappings. The \textbf{PostgreSQL package} is the complete
 implementation this book uses to explain everything. The \textbf{SQL Server package} uses
 the same core and relational layer and shows in chapter~\ref{ch:a-second-provider-sql-server} what a second
-provider has to implement itself.
+provider has to implement itself. A fifth, small package, \code{Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Functions.\allowbreak{}Postgre\allowbreak{}SQL}, holds the examples
+for custom SQL nodes and aggregates; they have nothing to do with multi-tenancy
+(chapter~\ref{ch:custom-sql-expression-nodes}).
 
 \begin{sourcecode}[Structure of the four packages]{text}
 Acme.EntityFrameworkCore.Tenancy               Core (EF Core only, any provider)
@@ -458,7 +460,7 @@ Acme.EntityFrameworkCore.Tenancy.Relational    relational layer (EF Core relatio
 Acme.EntityFrameworkCore.Tenancy.PostgreSQL    complete implementation
 ├─ Infrastructure/   options extension, builder, singleton options
 ├─ Storage/          TenantIdTypeMapping, type mapping plugin
-├─ Query/            translators, custom SQL node, aggregate, SQL generator
+├─ Query/            translators (CurrentTenant, TenantId members)
 ├─ Metadata/         RLS annotations, RlsPolicy, annotation provider
 ├─ Builders/         Fluent API (HasRowLevelSecurity, HasPolicy, ...)
 ├─ Conventions/      isolation, attribute, validation, convention set plugin

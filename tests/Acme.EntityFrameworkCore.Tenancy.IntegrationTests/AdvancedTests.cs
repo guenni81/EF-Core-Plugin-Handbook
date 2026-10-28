@@ -125,7 +125,10 @@ public class AdvancedTests : IClassFixture<PostgresFixture>
             await db.SaveChangesAsync();
         }
 
-        await using var reader = ContextFor(tenant);
+        // The functions sample plugin next to the tenancy plugin
+        await using var reader = _fixture.CreateAppContext(
+            new MutableTenantProvider { CurrentTenantId = tenant },
+            configure: o => o.UseNpgsql(npgsql => npgsql.UseAcmeFunctions()));
 
         var same = await reader.Orders
             .CountAsync(o => EF.Functions.IsNotDistinctFrom(o.TenantId, EF.Functions.CurrentTenant()));

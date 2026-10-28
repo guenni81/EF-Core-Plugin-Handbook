@@ -16,8 +16,20 @@ Users of the PostgreSQL or SQL Server package need no change, both reference the
 Assemblies that reference only the core package and use relational APIs (`ToTable`,
 `HasColumnType`, ...) must now reference `Microsoft.EntityFrameworkCore.Relational` themselves.
 
+**Breaking change**: `EF.Functions.IsNotDistinctFrom`, `IsDistinctFrom` and `Every` moved from
+the PostgreSQL tenancy package into the new sample package
+`Acme.EntityFrameworkCore.Functions.PostgreSQL` (class `AcmePgDbFunctionsExtensions`, still in
+the namespace `Microsoft.EntityFrameworkCore`); activate it with
+`UseNpgsql(cs, o => o.UseAcmeFunctions())`. Calls to the functions compile unchanged. The tenancy
+plugin no longer replaces `IQuerySqlGeneratorFactory` and
+`IRelationalParameterBasedSqlProcessorFactory` and therefore combines with plugins that do;
+its internal API surface shrinks from 13 to 10 Npgsql types.
+
 ### Added
 
+- Package `Acme.EntityFrameworkCore.Functions.PostgreSQL` (see above); the handbook (both
+  editions) introduces it in chapters 42 and 43 with a note that the examples are deliberately
+  unrelated to tenancy, and lists it in chapter 3, appendix B and the README.
 - Package `Acme.EntityFrameworkCore.Tenancy.Relational` (see above); `PackageLayerTests` make
   sure the core stays free of relational types; the consumer test packs four packages.
 - Handbook (both editions): chapter 46 "What belongs in the core" distinguishes three layers

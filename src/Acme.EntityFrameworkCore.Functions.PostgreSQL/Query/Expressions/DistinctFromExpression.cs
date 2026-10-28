@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
 using Microsoft.EntityFrameworkCore.Storage;
 
-namespace Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Expressions;
+namespace Acme.EntityFrameworkCore.Functions.PostgreSQL.Query.Expressions;
 
 /// <summary>
 /// Custom SQL expression node: <c>left IS [NOT] DISTINCT FROM right</c>.

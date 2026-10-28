@@ -366,16 +366,6 @@ internal provider. They are almost always the first choice:
   \code{Runtime/\allowbreak{}Tenant\allowbreak{}Connection\allowbreak{}Interceptor.\allowbreak{}cs}
   & Set the session setting & \ref{ch:interceptors} \\
   \tablerule
-  \code{Query/\allowbreak{}Expressions/\allowbreak{}*},
-  \code{Query/\allowbreak{}Distinct\allowbreak{}From\allowbreak{}Translator.\allowbreak{}cs}
-  & Custom SQL node & \ref{ch:custom-sql-expression-nodes} \\
-  \tablerule
-  \code{Query/\allowbreak{}Internal/\allowbreak{}*} & SQL generator, nullability processor,
-  factories & \ref{ch:custom-sql-expression-nodes} \\
-  \tablerule
-  \code{Query/\allowbreak{}Every\allowbreak{}Aggregate\allowbreak{}Translator.\allowbreak{}cs}
-  & Aggregate translator & \ref{ch:aggregate-translators} \\
-  \tablerule
   \code{Design/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}CSharp\allowbreak{}Runtime…Generator.\allowbreak{}cs}
   & Compiled model filter & \ref{ch:property-level-fluent-api-and} \\
   \tablerule
@@ -394,6 +384,18 @@ internal provider. They are almost always the first choice:
   \code{Migrations/\allowbreak{}*} & Predicate function, security policy & \ref{ch:a-second-provider-sql-server} \\
   \tablerule
   \code{Runtime/\allowbreak{}*} & sp\_set\_session\_context & \ref{ch:a-second-provider-sql-server} \\
+  \tablerule
+  \textbf{Functions sample package (no tenancy)} &  &  \\
+  \tablerule
+  \code{Query/\allowbreak{}Expressions/\allowbreak{}*},
+  \code{Query/\allowbreak{}Distinct\allowbreak{}From\allowbreak{}Translator.\allowbreak{}cs}
+  & Custom SQL node & \ref{ch:custom-sql-expression-nodes} \\
+  \tablerule
+  \code{Query/\allowbreak{}Internal/\allowbreak{}*} & SQL generator, nullability processor,
+  factories & \ref{ch:custom-sql-expression-nodes} \\
+  \tablerule
+  \code{Query/\allowbreak{}Every\allowbreak{}Aggregate\allowbreak{}Translator.\allowbreak{}cs}
+  & Aggregate translator & \ref{ch:aggregate-translators} \\
   \tablerule
   \textbf{Further} &  &  \\
   \tablerule

@@ -1,10 +1,10 @@
 using System.Linq.Expressions;
-using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Expressions;
+using Acme.EntityFrameworkCore.Functions.PostgreSQL.Query.Expressions;
 using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Query.Internal;
 
-namespace Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal;
+namespace Acme.EntityFrameworkCore.Functions.PostgreSQL.Query.Internal;
 
 /// <summary>
 /// Teaches the nullability processor about the plugin's own node. Without this override, EF
@@ -14,12 +14,12 @@ namespace Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal;
 /// Derives from Npgsql's internal processor (namespace <c>...Query.Internal</c>, warning EF1001):
 /// the base class may change in any Npgsql release, so re-check it on every upgrade.
 /// </remarks>
-public class TenancyNpgsqlSqlNullabilityProcessor : NpgsqlSqlNullabilityProcessor
+public class FunctionsNpgsqlSqlNullabilityProcessor : NpgsqlSqlNullabilityProcessor
 {
     /// <summary>Creates the processor; parameters are passed through to Npgsql's processor.</summary>
     /// <param name="dependencies">EF's parameter object for parameter-based SQL processors.</param>
     /// <param name="parameters">Per-query parameters (e.g. whether relational nulls are used).</param>
-    public TenancyNpgsqlSqlNullabilityProcessor(
+    public FunctionsNpgsqlSqlNullabilityProcessor(
         RelationalParameterBasedSqlProcessorDependencies dependencies,
         RelationalParameterBasedSqlProcessorParameters parameters)
         : base(dependencies, parameters)
@@ -57,22 +57,22 @@ public class TenancyNpgsqlSqlNullabilityProcessor : NpgsqlSqlNullabilityProcesso
 /// chain (factory -&gt; processor -&gt; nullability processor) has to be replaced. Derives from
 /// Npgsql's internal processor (EF1001).
 /// </remarks>
-public class TenancyNpgsqlParameterBasedSqlProcessor : NpgsqlParameterBasedSqlProcessor
+public class FunctionsNpgsqlParameterBasedSqlProcessor : NpgsqlParameterBasedSqlProcessor
 {
     /// <summary>Creates the processor; parameters are passed through to Npgsql's processor.</summary>
     /// <param name="dependencies">EF's parameter object for parameter-based SQL processors.</param>
     /// <param name="parameters">Per-query parameters (e.g. whether relational nulls are used).</param>
-    public TenancyNpgsqlParameterBasedSqlProcessor(
+    public FunctionsNpgsqlParameterBasedSqlProcessor(
         RelationalParameterBasedSqlProcessorDependencies dependencies,
         RelationalParameterBasedSqlProcessorParameters parameters)
         : base(dependencies, parameters)
     {
     }
 
-    /// <summary>Runs <see cref="TenancyNpgsqlSqlNullabilityProcessor"/> instead of Npgsql's.</summary>
+    /// <summary>Runs <see cref="FunctionsNpgsqlSqlNullabilityProcessor"/> instead of Npgsql's.</summary>
     protected override Expression ProcessSqlNullability(
         Expression selectExpression, ParametersCacheDecorator parametersDecorator)
-        => new TenancyNpgsqlSqlNullabilityProcessor(Dependencies, Parameters)
+        => new FunctionsNpgsqlSqlNullabilityProcessor(Dependencies, Parameters)
             .Process(selectExpression, parametersDecorator);
 }
 
@@ -81,13 +81,13 @@ public class TenancyNpgsqlParameterBasedSqlProcessor : NpgsqlParameterBasedSqlPr
 /// A single service has exactly one implementation, so only one plugin can replace it.
 /// See chapter "Custom SQL expression nodes" of the handbook for the trade-offs of custom nodes.
 /// </remarks>
-public class TenancyNpgsqlParameterBasedSqlProcessorFactory : IRelationalParameterBasedSqlProcessorFactory
+public class FunctionsNpgsqlParameterBasedSqlProcessorFactory : IRelationalParameterBasedSqlProcessorFactory
 {
     private readonly RelationalParameterBasedSqlProcessorDependencies _dependencies;
 
     /// <summary>Creates the factory.</summary>
     /// <param name="dependencies">EF's parameter object, handed to every processor created.</param>
-    public TenancyNpgsqlParameterBasedSqlProcessorFactory(
+    public FunctionsNpgsqlParameterBasedSqlProcessorFactory(
         RelationalParameterBasedSqlProcessorDependencies dependencies)
     {
         ArgumentNullException.ThrowIfNull(dependencies);
@@ -95,10 +95,10 @@ public class TenancyNpgsqlParameterBasedSqlProcessorFactory : IRelationalParamet
         _dependencies = dependencies;
     }
 
-    /// <summary>Creates a <see cref="TenancyNpgsqlParameterBasedSqlProcessor"/>.</summary>
+    /// <summary>Creates a <see cref="FunctionsNpgsqlParameterBasedSqlProcessor"/>.</summary>
     /// <param name="parameters">Per-query parameters supplied by EF.</param>
     /// <returns>The processor for one query compilation.</returns>
     public virtual RelationalParameterBasedSqlProcessor Create(
         RelationalParameterBasedSqlProcessorParameters parameters)
-        => new TenancyNpgsqlParameterBasedSqlProcessor(_dependencies, parameters);
+        => new FunctionsNpgsqlParameterBasedSqlProcessor(_dependencies, parameters);
 }

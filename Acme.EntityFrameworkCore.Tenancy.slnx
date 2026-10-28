@@ -4,6 +4,7 @@
     <Project Path="src/Acme.EntityFrameworkCore.Tenancy.Relational/Acme.EntityFrameworkCore.Tenancy.Relational.csproj" />
     <Project Path="src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Acme.EntityFrameworkCore.Tenancy.PostgreSQL.csproj" />
     <Project Path="src/Acme.EntityFrameworkCore.Tenancy.SqlServer/Acme.EntityFrameworkCore.Tenancy.SqlServer.csproj" />
+    <Project Path="src/Acme.EntityFrameworkCore.Functions.PostgreSQL/Acme.EntityFrameworkCore.Functions.PostgreSQL.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/ShopSample/ShopSample.csproj" />

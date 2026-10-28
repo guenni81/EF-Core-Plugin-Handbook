@@ -1,12 +1,12 @@
 using System.Linq.Expressions;
-using Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Expressions;
+using Acme.EntityFrameworkCore.Functions.PostgreSQL.Query.Expressions;
 using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
 using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure.Internal;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Query.Internal;
 
-namespace Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal;
+namespace Acme.EntityFrameworkCore.Functions.PostgreSQL.Query.Internal;
 
 /// <summary>Writes the plugin's own expression nodes as SQL.</summary>
 /// <remarks>
@@ -14,14 +14,14 @@ namespace Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Query.Internal;
 /// write NO SQL: a silent failure with broken SQL. Derives from Npgsql's internal generator
 /// (namespace <c>...Query.Internal</c>, warning EF1001); re-check it on every Npgsql upgrade.
 /// </remarks>
-public class TenancyNpgsqlQuerySqlGenerator : NpgsqlQuerySqlGenerator
+public class FunctionsNpgsqlQuerySqlGenerator : NpgsqlQuerySqlGenerator
 {
     /// <summary>Creates the generator; parameters are passed through to Npgsql's generator.</summary>
     /// <param name="dependencies">EF's parameter object for SQL generators.</param>
     /// <param name="typeMappingSource">The provider's type mapping source.</param>
     /// <param name="reverseNullOrderingEnabled">Npgsql option for NULL ordering.</param>
     /// <param name="postgresVersion">The targeted PostgreSQL version.</param>
-    public TenancyNpgsqlQuerySqlGenerator(
+    public FunctionsNpgsqlQuerySqlGenerator(
         QuerySqlGeneratorDependencies dependencies,
         IRelationalTypeMappingSource typeMappingSource,
         bool reverseNullOrderingEnabled,
@@ -75,7 +75,7 @@ public class TenancyNpgsqlQuerySqlGenerator : NpgsqlQuerySqlGenerator
 /// Takes the same dependencies as Npgsql's factory. <see cref="INpgsqlSingletonOptions"/> is an
 /// internal Npgsql API (EF1001).
 /// </remarks>
-public class TenancyNpgsqlQuerySqlGeneratorFactory : IQuerySqlGeneratorFactory
+public class FunctionsNpgsqlQuerySqlGeneratorFactory : IQuerySqlGeneratorFactory
 {
     private readonly QuerySqlGeneratorDependencies _dependencies;
     private readonly IRelationalTypeMappingSource _typeMappingSource;
@@ -85,7 +85,7 @@ public class TenancyNpgsqlQuerySqlGeneratorFactory : IQuerySqlGeneratorFactory
     /// <param name="dependencies">EF's parameter object for SQL generators.</param>
     /// <param name="typeMappingSource">The provider's type mapping source.</param>
     /// <param name="npgsqlOptions">Npgsql's singleton options (NULL ordering, version).</param>
-    public TenancyNpgsqlQuerySqlGeneratorFactory(
+    public FunctionsNpgsqlQuerySqlGeneratorFactory(
         QuerySqlGeneratorDependencies dependencies,
         IRelationalTypeMappingSource typeMappingSource,
         INpgsqlSingletonOptions npgsqlOptions)
@@ -100,9 +100,9 @@ public class TenancyNpgsqlQuerySqlGeneratorFactory : IQuerySqlGeneratorFactory
     }
 
     /// <summary>Creates a new generator; generators hold state and are not reused.</summary>
-    /// <returns>A <see cref="TenancyNpgsqlQuerySqlGenerator"/>.</returns>
+    /// <returns>A <see cref="FunctionsNpgsqlQuerySqlGenerator"/>.</returns>
     public virtual QuerySqlGenerator Create()
-        => new TenancyNpgsqlQuerySqlGenerator(
+        => new FunctionsNpgsqlQuerySqlGenerator(
             _dependencies,
             _typeMappingSource,
             _npgsqlOptions.ReverseNullOrderingEnabled,

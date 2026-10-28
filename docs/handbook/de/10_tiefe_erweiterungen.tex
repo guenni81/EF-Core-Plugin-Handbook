@@ -35,8 +35,20 @@ mindestens eins davon zutrifft:
 
 Das Beispiel implementiert den null-sicheren Vergleich
 \code{EF.\allowbreak{}Functions.\allowbreak{}Is\allowbreak{}Not\allowbreak{}Distinct\allowbreak{}From(\allowbreak{}a,\allowbreak{}
-b)} und \code{Is\allowbreak{}Distinct\allowbreak{}From(\allowbreak{}a,\allowbreak{} b)}.
-Npgsql bietet ihn nicht als Funktion an; er erfüllt alle drei Gründe.
+b)} und \code{Is\allowbreak{}Distinct\allowbreak{}From(\allowbreak{}a,\allowbreak{} b)}
+in einem eigenen kleinen Paket, \code{Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Functions.\allowbreak{}Postgre\allowbreak{}SQL}, aktiviert mit \code{Use\allowbreak{}Npgsql(\allowbreak{}cs,\allowbreak{} o => o.\allowbreak{}Use\allowbreak{}Acme\allowbreak{}Functions(\allowbreak{}))}.
+Npgsql bietet den Vergleich nicht als Funktion an; er erfüllt alle drei Gründe.
+
+\begin{note}[Ein Lehrbeispiel, bewusst ohne Mandantenbezug]
+  Der Vergleich hat nichts mit Mandantenfähigkeit zu tun. Er liegt in einem eigenen
+  Beispielpaket, weil ein eigener Knoten ein Plugin zwingt, zwei exklusive Provider-Dienste zu
+  ersetzen: den SQL-Generator und den Nullability-Prozessor. Bis Ausgabe~1.1 tat das
+  Mandanten-Plugin das allein für dieses Beispiel und ließ sich dadurch schwerer mit anderen
+  Plugins kombinieren. Ein Mandanten-Plugin braucht keinen eigenen Knoten; Funktionskomposition
+  (Kapitel~\ref{ch:translating-methods-and-members}) reicht. Die Tests betreiben beide Plugins
+  nebeneinander, und das pgvector-Beispiel am Ende dieses Kapitels ergänzt ein drittes, das vom
+  Generator des Funktionen-Plugins ableitet.
+\end{note}
 
 \section{Anatomie eines Knotens}
 
@@ -63,7 +75,7 @@ zweites Plugin den Generator oder den Prozessor, fehlt das SQL des Knotens still
 Abfrage wirft. \code{Composition\allowbreak{}Matrix\allowbreak{}Tests} zeigt beides
 (Kapitel~\ref{ch:registering-services}).
 
-% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Query/Expressions/DistinctFromExpression.cs
+% source: src/Acme.EntityFrameworkCore.Functions.PostgreSQL/Query/Expressions/DistinctFromExpression.cs
 \begin{sourcecode}[Query/\allowbreak{}Expressions/\allowbreak{}Distinct\allowbreak{}From\allowbreak{}Expression.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
 public class DistinctFromExpression : SqlExpression
 {
@@ -121,7 +133,7 @@ Der Translator erzeugt den Knoten und gleicht dabei die Type Mappings beider Sei
 eine Seite ein Mapping (etwa eine Spalte), bekommt die andere dasselbe. So wird aus einer
 Konstante das passende Literal:
 
-% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Query/DistinctFromTranslator.cs
+% source: src/Acme.EntityFrameworkCore.Functions.PostgreSQL/Query/DistinctFromTranslator.cs
 \begin{sourcecode}[Query/\allowbreak{}Distinct\allowbreak{}From\allowbreak{}Translator.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 var definition = method.GetGenericMethodDefinition();
 if (definition != IsNotDistinctFromMethod && definition != IsDistinctFromMethod)
@@ -145,13 +157,13 @@ Der \code{Query\allowbreak{}Sql\allowbreak{}Generator} schreibt SQL per Visitor.
 Knoten gibt er an
 \code{Expression\allowbreak{}Visitor.\allowbreak{}Visit\allowbreak{}Extension} weiter, das
 nur die Kinder besucht. Ohne eigenen Override entsteht also kein Fehler, sondern \textbf{SQL
-ohne den Operator}. Das Plugin erbt vom Npgsql-Generator:
+ohne den Operator}. Das Funktionen-Plugin erbt vom Npgsql-Generator:
 
-% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Query/Internal/TenancyNpgsqlQuerySqlGenerator.cs
-\begin{sourcecode}[Query/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Npgsql\allowbreak{}Query\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
-public class TenancyNpgsqlQuerySqlGenerator : NpgsqlQuerySqlGenerator
+% source: src/Acme.EntityFrameworkCore.Functions.PostgreSQL/Query/Internal/FunctionsNpgsqlQuerySqlGenerator.cs
+\begin{sourcecode}[Query/\allowbreak{}Internal/\allowbreak{}Functions\allowbreak{}Npgsql\allowbreak{}Query\allowbreak{}Sql\allowbreak{}Generator.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+public class FunctionsNpgsqlQuerySqlGenerator : NpgsqlQuerySqlGenerator
 {
-    public TenancyNpgsqlQuerySqlGenerator(QuerySqlGeneratorDependencies dependencies,
+    public FunctionsNpgsqlQuerySqlGenerator(QuerySqlGeneratorDependencies dependencies,
         IRelationalTypeMappingSource typeMappingSource,
         bool reverseNullOrderingEnabled, Version postgresVersion)
         : base(dependencies, typeMappingSource, reverseNullOrderingEnabled, postgresVersion)
@@ -204,9 +216,9 @@ er NULL werden kann. Unbekannte Knoten landen in
 Basisimplementierung eine Exception wirft. Der Prozessor hängt an einer Kette aus drei
 Klassen, die alle ersetzt werden müssen:
 
-% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Query/Internal/TenancyNpgsqlSqlNullabilityProcessor.cs
-\begin{sourcecode}[Query/\allowbreak{}Internal/\allowbreak{}Tenancy\allowbreak{}Npgsql\allowbreak{}Sql\allowbreak{}Nullability\allowbreak{}Processor.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
-public class TenancyNpgsqlSqlNullabilityProcessor : NpgsqlSqlNullabilityProcessor
+% source: src/Acme.EntityFrameworkCore.Functions.PostgreSQL/Query/Internal/FunctionsNpgsqlSqlNullabilityProcessor.cs
+\begin{sourcecode}[Query/\allowbreak{}Internal/\allowbreak{}Functions\allowbreak{}Npgsql\allowbreak{}Sql\allowbreak{}Nullability\allowbreak{}Processor.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+public class FunctionsNpgsqlSqlNullabilityProcessor : NpgsqlSqlNullabilityProcessor
 {
     // Konstruktor: (…ProcessorDependencies, …ProcessorParameters) : base(...)
 
@@ -228,26 +240,26 @@ public class TenancyNpgsqlSqlNullabilityProcessor : NpgsqlSqlNullabilityProcesso
     }
 }
 
-public class TenancyNpgsqlParameterBasedSqlProcessor : NpgsqlParameterBasedSqlProcessor
+public class FunctionsNpgsqlParameterBasedSqlProcessor : NpgsqlParameterBasedSqlProcessor
 {
     protected override Expression ProcessSqlNullability(
         Expression selectExpression, ParametersCacheDecorator parametersDecorator)
-        => new TenancyNpgsqlSqlNullabilityProcessor(Dependencies, Parameters)
+        => new FunctionsNpgsqlSqlNullabilityProcessor(Dependencies, Parameters)
             .Process(selectExpression, parametersDecorator);
 }
 
-// + TenancyNpgsqlParameterBasedSqlProcessorFactory
+// + FunctionsNpgsqlParameterBasedSqlProcessorFactory
 //   : IRelationalParameterBasedSqlProcessorFactory
 \end{sourcecode}
 
-% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Infrastructure/TenancyOptionsExtension.cs
-\begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Apply\allowbreak{}Services (\allowbreak{}Ergänzung)]{csharp}
+% source: src/Acme.EntityFrameworkCore.Functions.PostgreSQL/Infrastructure/FunctionsOptionsExtension.cs
+\begin{sourcecode}[Infrastructure/\allowbreak{}Functions\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Apply\allowbreak{}Services (\allowbreak{}Ergänzung)]{csharp}
 // 4) Tiefe Erweiterung: eigener SQL-Ausdrucksknoten
 services.Replace(ServiceDescriptor
-    .Singleton<IQuerySqlGeneratorFactory, TenancyNpgsqlQuerySqlGeneratorFactory>());
+    .Singleton<IQuerySqlGeneratorFactory, FunctionsNpgsqlQuerySqlGeneratorFactory>());
 services.Replace(ServiceDescriptor
     .Scoped<IRelationalParameterBasedSqlProcessorFactory,
-        TenancyNpgsqlParameterBasedSqlProcessorFactory>());
+        FunctionsNpgsqlParameterBasedSqlProcessorFactory>());
 \end{sourcecode}
 
 \begin{important}[Der Preis eigener Knoten]
@@ -340,7 +352,7 @@ die DebugView zeigt, was die Datenbank liest.
 
 % source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/CustomOperatorTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Custom\allowbreak{}Operator\allowbreak{}Tests.\allowbreak{}cs ›\allowbreak{} Generator]{csharp}
-public class VectorQuerySqlGenerator : TenancyNpgsqlQuerySqlGenerator
+public class VectorQuerySqlGenerator : FunctionsNpgsqlQuerySqlGenerator
 {
     // ... Konstruktor, VisitExtension, VisitOperand
 
@@ -424,11 +436,12 @@ eines einzelnen Arguments eine \code{Enumerable\allowbreak{}Expression}, die bes
   \\
 \end{datatable}
 
-Das Beispiel ergänzt
+Das Funktionen-Beispielpaket aus Kapitel~\ref{ch:custom-sql-expression-nodes} ergänzt
 \code{EF.\allowbreak{}Functions.\allowbreak{}Every(\allowbreak{}values)} für PostgreSQLs
-\code{bool\_\allowbreak{}and}:
+\code{bool\_\allowbreak{}and}; wie der Vergleich ist es ein Lehrbeispiel ohne
+Mandantenbezug:
 
-% source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Query/EveryAggregateTranslator.cs
+% source: src/Acme.EntityFrameworkCore.Functions.PostgreSQL/Query/EveryAggregateTranslator.cs
 \begin{sourcecode}[Query/\allowbreak{}Every\allowbreak{}Aggregate\allowbreak{}Translator.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 public virtual SqlExpression? Translate(MethodInfo method, EnumerableExpression source,
     IReadOnlyList<SqlExpression> arguments,
