@@ -28,6 +28,9 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD":/w -w /w texlive/t
 ! grep -n 'undefined' out/aux/*.log   # CI fails on undefined references
 ```
 
+After `git checkout -- docs/handbook/out/` the PDFs are newer than the sources and `latexmk`
+skips the build silently; use `latexmk -g` to force it.
+
 ## Rules for the book
 
 - **German and English stay in sync.** Every content change is made in both `de/` and `en/`
