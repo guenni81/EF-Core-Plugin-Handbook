@@ -9,8 +9,9 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 namespace Acme.EntityFrameworkCore.Tenancy.PostgreSQL.Design;
 
 /// <summary>
-/// Design-time services for "dotnet ef". Loaded automatically via
-/// [DesignTimeServicesReference] in Properties/AssemblyInfo.cs.
+/// Design-time services for "dotnet ef". The application loads them with
+/// [DesignTimeServicesReference] in its startup project; the tooling reads the attribute only
+/// from the startup and the migrations assembly, not from referenced packages.
 /// </summary>
 /// <remarks>
 /// The registered generators derive from Npgsql types in *.Internal namespaces and the

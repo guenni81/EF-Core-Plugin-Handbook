@@ -77,7 +77,7 @@ done
 step "Build"
 dotnet build --nologo -v quiet --no-restore
 
-step "Migrations through dotnet-ef (design-time services found automatically)"
+step "Migrations through dotnet-ef (design-time services via the attribute in the app)"
 ef() { dotnet tool run dotnet-ef "$@" --no-build; }
 ef migrations add Initial --context PgContext -o Migrations/Pg >/dev/null
 ef migrations add Initial --context SqlContext -o Migrations/Sql >/dev/null
@@ -90,7 +90,7 @@ contains "$WORK/pg.sql" 'CREATE POLICY tenant_isolation ON "Orders"'
 contains "$WORK/pg.sql" 'CREATE INDEX "IX_Orders_TenantId"'
 contains "$WORK/sql.sql" 'CREATE SECURITY POLICY [acme].[tenant_dbo_Orders]'
 contains "$WORK/sql.sql" "SESSION_CONTEXT(N''TenantId'')"
-contains Migrations/Pg/PgContextModelSnapshot.cs '"Acme:Rls:Enabled", true'
+contains Migrations/Pg/PgContextModelSnapshot.cs 'RlsEntityTypeBuilderExtensions.HasRowLevelSecurity(b, true)'
 contains Migrations/Sql/SqlContextModelSnapshot.cs '"Acme:SqlServerRls:SessionKey", "TenantId"'
 echo "ok   RLS objects in both scripts and snapshots"
 
