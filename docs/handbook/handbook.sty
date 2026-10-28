@@ -254,6 +254,10 @@
   {\endtabularx\par\vspace{2pt}\noindent{\color{rule}\rule{\linewidth}{0.6pt}}\par
    \vspace{10pt}}
 
+% Table of contents right after the front matter: its heading is a \chapter*, which starts a
+% new page; without the page break the contents fill the page the front matter spills onto.
+\newcommand{\handbooktableofcontents}{{\let\clearpage\relax\tableofcontents}}
+
 % Structure counts for the title page, taken from the previous run's aux file (like \ref):
 % \appendix records the parts before the appendix part and the chapters, the end of the
 % document the appendices. "??" until the second run; latexmk reruns automatically.
