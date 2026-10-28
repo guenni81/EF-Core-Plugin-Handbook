@@ -252,6 +252,45 @@ public async Task Database_rejects_rows_of_other_tenant()
   NetTopologySuite-Plugin im EF-Repository zeigt, wie ein Plugin sie nutzt.
 \end{tip}
 
+\section{Kombinationen aus Migrationen und Isolation}
+
+Einzelne Funktionen sind gut abgedeckt; die Fehler, die ein Review fand, lagen in Kombinationen:
+ein geänderter Session-Schlüssel zusammen mit einer gelöschten Tabelle, eine Temporal-Tabelle,
+eine ignorierte Mandanten-Property. Ein vollständiges kartesisches Produkt aller
+Migrationsoperationen und Einstellungen wäre groß und meist redundant. Die Tests decken deshalb
+eine kleine Matrix ab, ausgewählt nach einer Frage: Wo berühren zwei Funktionen dasselbe
+Datenbankobjekt? Bei SQL Server sind das die gemeinsame Predicate-Funktion und die
+schemagebundene Policy. Jeder Migrationsfall wird von EFs echtem Differ erzeugt, läuft Up und Down in
+einer Transaktion gegen SQL Server und liest und schreibt danach als App-Login für zwei
+Mandanten:
+
+\begin{datatable}{H{1.05}H{0.95}H{1.00}}
+  \textbf{Kombination} & \textbf{Test} & \textbf{Prüft} \\
+  \tablehead
+  Session-Schlüssel oder Policy-Schema geändert, eine geschützte Tabelle gelöscht &
+  \code{Sql\allowbreak{}Server\allowbreak{}Session\allowbreak{}Settings\allowbreak{}Tests} &
+  Reihenfolge des SQL, Up und Down, Isolation der verbleibenden Tabelle \\
+  \tablerule
+  Session-Schlüssel geändert, Tabelle umbenannt &
+  \code{Sql\allowbreak{}Server\allowbreak{}Combined\allowbreak{}Migration\allowbreak{}Tests} &
+  Reihenfolge des SQL, Up und Down, Policy auf dem neuen Namen \\
+  \tablerule
+  Policy-Schema geändert, Spalte umbenannt, Tabelle umbenannt und verschoben & wie oben & Up
+  und Down, Funktion und Policy nur im neuen Schema \\
+  \tablerule
+  Migration scheitert, nachdem Policy und Funktion gelöscht wurden & wie oben & Rollback:
+  Tabelle, Policy und Funktion mit dem alten Schlüssel sind unverändert \\
+  \tablerule
+  Temporal-Tabelle, ignorierte oder nicht gemappte Mandanten-Property & Modelltests beider
+  relationaler Pakete & Beim Modellaufbau abgelehnt \\
+\end{datatable}
+
+Weiterhin ohne Test sind: Kombinationen bei PostgreSQL, wo Policies einer Umbenennung folgen und
+es keine gemeinsame Funktion gibt, die Fehlerklasse also nicht entsteht; ein geänderter
+Setting-Name des PostgreSQL-Pakets zusammen mit anderen Tabellenänderungen; mehrere Contexts,
+die dieselbe Datenbank gleichzeitig migrieren; und das Cosmos-Paket, das keine Migrations hat.
+Für diese Kombinationen wird nicht behauptet, dass sie funktionieren.
+
 % ------------------------------------------------------------
 \chapter{Versionierung und Kompatibilität}\label{ch:versioning-and-compatibility}
 \versionrisk{medium}

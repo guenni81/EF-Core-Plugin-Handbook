@@ -207,7 +207,7 @@ public class SqlServerTemporalTableTests
 
         Assert.True(ctx.Model.FindEntityType(typeof(AuditEntry))!.IsTemporal());
         Assert.Null(Table(ctx, "AuditEntry")[SqlServerRlsAnnotationNames.TenantColumn]);
-        Assert.Empty(Contexts.CreateSql(ctx).Where(s => s.Contains("SECURITY POLICY")));
+        Assert.DoesNotContain(Contexts.CreateSql(ctx), s => s.Contains("SECURITY POLICY"));
     }
 }
 

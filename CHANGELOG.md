@@ -21,6 +21,12 @@ version is given by the dependency range and the compatibility table in the READ
 - Tests: `UseTransaction` and an ambient `TransactionScope` with `UseTransactionPooling()` fail
   closed; the PostgreSQL package rejects an ignored `TenantId` and an explicit interface
   implementation without `IsTenantProperty()`.
+- Tests: combined SQL Server migrations through EF's differ, Up and Down, with reading and
+  writing for two tenants afterwards: session key change with a table rename, policy schema
+  change with a column rename and a schema move, and a failing migration whose rollback keeps
+  table, policy and predicate function. Handbook (both editions), chapter "Test strategy": new
+  section "Combinations of migrations and isolation" with the matrix and the combinations that
+  remain untested.
 
 ### Fixed
 
