@@ -37,6 +37,9 @@ version is given by the dependency range and the compatibility table in the READ
   for sequence`. As for tables, the default privileges apply to objects the migrating role
   creates later. API documentation and the handbook (both editions, chapter "Retrofitting and
   operating multi-tenancy") describe it.
+- Handbook (both editions), exercises appendix: the test command used `--filter
+  "Name~Inequality_with"`, which the xUnit adapter does not support; it ran no test and still
+  exited with 0. It now uses `FullyQualifiedName~Inequality_with`, which runs the intended test.
 
 ## [1.2.0] - 2026-10-28
 

@@ -761,7 +761,8 @@ modified, and what stops an attacker from sending the ID of a foreign order with
 Every check can be run with a filter, for example:
 
 \begin{sourcecode}[Shell]{text}
-dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Tests --filter "Name~Inequality_with"
+dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Tests \
+    --filter "FullyQualifiedName~Inequality_with"
 \end{sourcecode}
 
 % ------------------------------------------------------------

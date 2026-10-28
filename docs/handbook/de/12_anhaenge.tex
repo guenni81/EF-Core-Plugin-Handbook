@@ -763,7 +763,8 @@ fremden Bestellung mit dem eigenen Mandanten schickt?
 Ausführen lässt sich jede Prüfung mit einem Filter, zum Beispiel:
 
 \begin{sourcecode}[Shell]{text}
-dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Tests --filter "Name~Inequality_with"
+dotnet test tests/Acme.EntityFrameworkCore.Tenancy.Tests \
+    --filter "FullyQualifiedName~Inequality_with"
 \end{sourcecode}
 
 % ------------------------------------------------------------
