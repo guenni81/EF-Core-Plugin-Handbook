@@ -471,11 +471,14 @@ explizites \code{Has\allowbreak{}Partition\allowbreak{}Key} des Anwenders gewinn
 foreach (var entityType in modelBuilder.Metadata.GetEntityTypes())
 {
     // Nur an der Wurzel einer Hierarchie; Owned Types stecken im Dokument des Besitzers
-    if (entityType.BaseType is not null || entityType.IsOwned()
-        || entityType.ClrType.IsDefined(typeof(NoTenantIsolationAttribute), inherit: true))
+    if (entityType.BaseType is not null || entityType.IsOwned())
         continue;
 
+    // ITenantOwned ohne gemappte TenantId: Exception wie in den relationalen Paketen
     if (entityType.FindTenantPropertyCandidate() is not { } candidate)
+        continue;      // (gekürzt)
+
+    if (entityType.ClrType.IsDefined(typeof(NoTenantIsolationAttribute), inherit: true))
         continue;
 
     entityType.Builder.HasAnnotation(TenancyAnnotationNames.TenantProperty, candidate.Name);
@@ -615,12 +618,11 @@ gilt) und \emph{nicht verifiziert} (kein Test; nicht darauf verlassen).
   \code{ITenant\allowbreak{}Owned} ohne gemappte Mandanten-Property & Beim Modellaufbau
   abgelehnt (\code{Tenant\allowbreak{}Property\allowbreak{}Tests}) & Beim Modellaufbau abgelehnt
   (\code{Sql\allowbreak{}Server\allowbreak{}Tenant\allowbreak{}Property\allowbreak{}Validation\allowbreak{}Tests})
-  & Nicht validiert: Der Typ erhält stillschweigend weder Partition Key noch Filter \\
+  & Beim Modellaufbau abgelehnt (\code{Model\allowbreak{}Tests}) \\
   \tablerule
   Bewusste Ausnahme & Attribut oder
   \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})},
-  als Warnung protokolliert; getestet & Attribut; getestet & Attribut; an einem
-  mandantenbezogenen Typ nicht verifiziert \\
+  als Warnung protokolliert; getestet & Attribut; getestet & Attribut; getestet \\
   \tablerule
   Transaktionen & \code{Begin\allowbreak{}Transaction}, \code{Save\allowbreak{}Changes} und
   \code{Transaction\allowbreak{}Scope} unterstützt und getestet;

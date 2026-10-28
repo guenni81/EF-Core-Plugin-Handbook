@@ -21,6 +21,9 @@ public class CosmosTenantPartitionKeyConvention : IModelFinalizingConvention
     /// <summary>Configures the partition key of all tenant-owned root entity types.</summary>
     /// <param name="modelBuilder">The builder for the model.</param>
     /// <param name="context">Additional information associated with convention execution.</param>
+    /// <exception cref="InvalidOperationException">
+    /// An <see cref="ITenantOwned"/> type has no mapped tenant property.
+    /// </exception>
     public virtual void ProcessModelFinalizing(
         IConventionModelBuilder modelBuilder,
         IConventionContext<IConventionModelBuilder> context)
@@ -31,11 +34,24 @@ public class CosmosTenantPartitionKeyConvention : IModelFinalizingConvention
         {
             // Cosmos only accepts the partition key on the root of a hierarchy; owned types are
             // embedded in their owner's document
-            if (entityType.BaseType is not null || entityType.IsOwned()
-                || entityType.ClrType.IsDefined(typeof(NoTenantIsolationAttribute), inherit: true))
+            if (entityType.BaseType is not null || entityType.IsOwned())
                 continue;
 
+            // Same contract as the relational packages: an ITenantOwned type whose TenantId is
+            // ignored or not mapped (explicit interface implementation) must not silently lose
+            // its partition key, its query filter and the SaveChanges check
             if (entityType.FindTenantPropertyCandidate() is not { } candidate)
+            {
+                if (typeof(ITenantOwned).IsAssignableFrom(entityType.ClrType))
+                    throw new InvalidOperationException(
+                        $"'{entityType.DisplayName()}' implements {nameof(ITenantOwned)}, but the "
+                        + $"property '{nameof(ITenantOwned.TenantId)}' is not mapped. "
+                        + "With an explicit interface implementation, mark the mapped property "
+                        + "with IsTenantProperty().");
+                continue;
+            }
+
+            if (entityType.ClrType.IsDefined(typeof(NoTenantIsolationAttribute), inherit: true))
                 continue;
 
             entityType.Builder.HasAnnotation(TenancyAnnotationNames.TenantProperty, candidate.Name);

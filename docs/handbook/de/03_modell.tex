@@ -393,7 +393,8 @@ eine \code{Invalid\allowbreak{}Operation\allowbreak{}Exception}. Das gilt auch f
 verspricht eine Mandantenspalte. Den Typ stillschweigend zu überspringen, kostete ihn die
 Policy, den Index und, weil die Laufzeit-Annotation fehlte, die Prüfung in
 \code{Save\allowbreak{}Changes}. Typen ohne \code{ITenant\allowbreak{}Owned} und ohne
-markierte Property sind keine Mandantendaten und bleiben unberührt.
+markierte Property sind keine Mandantendaten und bleiben unberührt. Das Cosmos-Paket lehnt eine
+fehlende Mandanten-Property ebenso ab (Kapitel~\ref{ch:without-sql-what-carries-over}).
 
 % source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Conventions/TenantIsolationConvention.cs
 \begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Convention.\allowbreak{}cs › Apply\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security]{csharp}

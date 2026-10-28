@@ -249,9 +249,8 @@ the very top of `Up()`.
   protected (chapter "Conventions", section "Which table mappings are protected").
   SQL Server temporal tables are rejected for tenant-owned types too: the security policy
   covers the current table, not its history table, so `TemporalAll()` would return other
-  tenants' old rows. An `ITenantOwned` type without a mapped `TenantId` is rejected by both
-  relational packages. The Cosmos package does not validate this: such a type gets neither
-  partition key nor query filter. The contract with its evidence per provider is in chapter
+  tenants' old rows. An `ITenantOwned` type without a mapped `TenantId` is rejected by all
+  three provider packages. The contract with its evidence per provider is in chapter
   "Without SQL: what carries over to Cosmos DB", section "Comparison of the three providers".
 * With `UseTransactionPooling()` the tenant exists only in transactions that EF begins
   (`BeginTransaction`, `SaveChanges`). `UseTransaction()` with a transaction of your own and an

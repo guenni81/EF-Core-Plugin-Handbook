@@ -393,7 +393,8 @@ excluded with \code{[No\allowbreak{}Tenant\allowbreak{}Isolation]}, since the in
 promises a tenant column. Skipping the type silently would cost it the policy, the index and,
 because the runtime annotation would be missing, the check in
 \code{Save\allowbreak{}Changes}. Types without \code{ITenant\allowbreak{}Owned} and without a
-marked property are not tenant data and stay untouched.
+marked property are not tenant data and stay untouched. The Cosmos package rejects a missing
+tenant property the same way (chapter~\ref{ch:without-sql-what-carries-over}).
 
 % source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Conventions/TenantIsolationConvention.cs
 \begin{sourcecode}[Conventions/\allowbreak{}Tenant\allowbreak{}Isolation\allowbreak{}Convention.\allowbreak{}cs › Apply\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security]{csharp}

@@ -462,11 +462,14 @@ candidate lookup as the RLS conventions. It runs with convention source, so an e
 foreach (var entityType in modelBuilder.Metadata.GetEntityTypes())
 {
     // Only on the root of a hierarchy; owned types live in their owner's document
-    if (entityType.BaseType is not null || entityType.IsOwned()
-        || entityType.ClrType.IsDefined(typeof(NoTenantIsolationAttribute), inherit: true))
+    if (entityType.BaseType is not null || entityType.IsOwned())
         continue;
 
+    // ITenantOwned without a mapped TenantId: exception, as in the relational packages
     if (entityType.FindTenantPropertyCandidate() is not { } candidate)
+        continue;      // (shortened)
+
+    if (entityType.ClrType.IsDefined(typeof(NoTenantIsolationAttribute), inherit: true))
         continue;
 
     entityType.Builder.HasAnnotation(TenancyAnnotationNames.TenantProperty, candidate.Name);
@@ -602,12 +605,11 @@ in the repository checks the behavior), \emph{rejected while the model is built}
   \code{ITenant\allowbreak{}Owned} without a mapped tenant property & Rejected while the model is
   built (\code{Tenant\allowbreak{}Property\allowbreak{}Tests}) & Rejected while the model is built
   (\code{Sql\allowbreak{}Server\allowbreak{}Tenant\allowbreak{}Property\allowbreak{}Validation\allowbreak{}Tests})
-  & Not validated: the type silently gets neither partition key nor filter \\
+  & Rejected while the model is built (\code{Model\allowbreak{}Tests}) \\
   \tablerule
   Deliberate exception & Attribute or
   \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})},
-  logged as a warning; tested & Attribute; tested & Attribute; on a tenant-owned type not
-  verified \\
+  logged as a warning; tested & Attribute; tested & Attribute; tested \\
   \tablerule
   Transactions & \code{Begin\allowbreak{}Transaction}, \code{Save\allowbreak{}Changes} and
   \code{Transaction\allowbreak{}Scope} supported and tested; \code{Use\allowbreak{}Transaction}

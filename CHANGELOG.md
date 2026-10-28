@@ -65,6 +65,11 @@ version is given by the dependency range and the compatibility table in the READ
 
 ### Fixed
 
+- Cosmos DB: an `ITenantOwned` entity without a mapped tenant property (`Ignore(e => e.TenantId)`
+  or an explicit interface implementation without `IsTenantProperty()`) is now rejected while
+  the model is built, as in the relational packages. Before, the convention skipped it silently:
+  no partition key, no query filter, no tenant check in `SaveChanges`. Handbook (both editions)
+  and README updated.
 - SQL Server: a tenant-owned entity mapped to a temporal table (`IsTemporal()`) is now rejected
   while the model is built. The security policy protected only the current table, so
   `TemporalAll()` and the other `FOR SYSTEM_TIME` queries returned other tenants' rows from the
