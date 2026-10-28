@@ -123,7 +123,7 @@ per table (FILTER and BLOCK predicates) and `SESSION_CONTEXT`.
 | Operations | RLS pitfalls, threat model, PgBouncer (`UseTransactionPooling()`), legitimate cross-tenant access | 36 |
 | Relationships | Composite foreign keys with the tenant, unique per tenant, shared master data, delete rules | 37 |
 | Retrofitting | From a table without a tenant to RLS, app versions during the change, retries and lost connections, deployment pipeline with separate roles (`docs/deployment`) | 38 |
-| Performance | BenchmarkDotNet project: overhead of the SaveChanges logic, of tenant verification on reading and of query compilation | 39 |
+| Performance | BenchmarkDotNet project: overhead of the SaveChanges logic, of the session round trip, of tenant verification on reading and of query compilation | 39 |
 | ASP.NET Core | `samples/ShopApi`, DbContext factories, background jobs | 40 |
 | Custom SQL nodes | Separate sample package without tenancy (`Acme.EntityFrameworkCore.Functions.PostgreSQL`): `EF.Functions.IsNotDistinctFrom` with SQL generator and nullability processor; the pgvector operator `<=>` as a test example | 42 |
 | Aggregates | Same sample package: `EF.Functions.Every` (`bool_and`) with FILTER/DISTINCT support | 43 |
@@ -182,7 +182,8 @@ eng/consumer-test/run.sh --nativeaot
 ```
 
 Micro benchmarks (BenchmarkDotNet): SaveChanges logic and query compilation without a
-database, materialization against PostgreSQL via Testcontainers (needs Docker). `--filter`
+database, materialization and the session round trip (opening per query versus a connection
+held open for the unit of work) against PostgreSQL via Testcontainers (needs Docker). `--filter`
 selects classes, `--job dry` is a quick smoke test:
 
 ```bash

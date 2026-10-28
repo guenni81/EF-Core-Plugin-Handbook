@@ -9,6 +9,14 @@ version is given by the dependency range and the compatibility table in the READ
 
 ### Added
 
+- Benchmarks: `SessionRoundtripBenchmark` against PostgreSQL (Testcontainers) compares a unit
+  of work of 1, 5 or 20 equal queries with opening per query and with a connection held open,
+  each with the connection interceptor and with a baseline whose login gets the same tenant as a
+  role default, so that the difference is the `set_config` round trip alone; same tenant, SQL,
+  rows and options, restricted role under RLS, contexts and query compilation outside the
+  measurement. Handbook (both editions), chapter "Plugin performance": new section "The session
+  round trip" with procedure, environment, example results and limits.
+
 - Tests: SQL Server isolation of the supported mappings in the database
   (`SqlServerMappingIsolationTests`): TPH with two types, owned reference, table splitting, JSON
   collection and an explicit join entity get a security policy each; two tenants write through

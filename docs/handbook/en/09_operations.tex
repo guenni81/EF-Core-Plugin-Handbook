@@ -995,6 +995,92 @@ trip per open (chapter~\ref{ch:interceptors}) therefore weighs far more than the
 logic. That is the kind of insight a benchmark provides: it shows where optimizing is
 worthwhile and where it is not.
 
+\section{The session round trip}
+
+The connection interceptor sends a \code{set\_config} to the database on every opening. What
+that costs is measured by \code{Session\allowbreak{}Roundtrip\allowbreak{}Benchmark} against
+PostgreSQL in Docker: a unit of work of several equal queries, once with opening and closing per
+query, as EF does by default, and once with a connection that stays open for the unit of work.
+Tenant, SQL, amount of data and options are the same in all variants; all read as a restricted
+role under RLS.
+
+% source: benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/SessionRoundtripBenchmark.cs
+\begin{sourcecode}[benchmarks/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Session\allowbreak{}Roundtrip\allowbreak{}Benchmark.\allowbreak{}cs (\allowbreak{}shortened)]{csharp}
+[Params(1, 5, 20)]
+public int Operations { get; set; }
+
+[Benchmark(Baseline = true)]
+public Task<int> PerQueryOpen_RoleDefault() => PerQueryAsync(_withRoleDefault);
+
+[Benchmark]
+public Task<int> PerQueryOpen_Interceptor() => PerQueryAsync(_withInterceptor);
+
+[Benchmark]
+public Task<int> UnitOfWorkOpen_RoleDefault() => UnitOfWorkAsync(_withRoleDefault);
+
+[Benchmark]
+public Task<int> UnitOfWorkOpen_Interceptor() => UnitOfWorkAsync(_withInterceptor);
+
+private async Task<int> UnitOfWorkAsync(BenchmarkContext db)
+{
+    await db.Database.OpenConnectionAsync();
+    try
+    {
+        return await PerQueryAsync(db);       // the same query, Operations times
+    }
+    finally
+    {
+        await db.Database.CloseConnectionAsync();
+    }
+}
+\end{sourcecode}
+
+The baseline isolates the contribution of the session initialization. Its login has the tenant
+as a role default (\code{ALTER ROLE \ldots{} SET app.tenant\_id}), which every new session and every
+reset by the pool restores: the same rows under RLS, but no session command. The difference
+between a variant and its baseline is therefore the \code{set\_config} round trip alone; a role
+default is no replacement for the interceptor, because it sets the same tenant for all sessions
+of the role. Contexts are created and queries compiled in the \code{Global\allowbreak{}Setup};
+the setup also checks that both logins read the same rows. Neither query compilation nor context
+creation is measured, and BenchmarkDotNet warms up before measuring.
+
+\begin{sourcecode}[Running the benchmark]{text}
+dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks \
+    -- --filter '*SessionRoundtrip*'
+\end{sourcecode}
+
+\begin{datatable}{H{1.45}H{0.85}H{0.85}H{0.85}}
+  \textbf{Variant} & \textbf{1 query} & \textbf{5 queries} & \textbf{20 queries} \\
+  \tablehead
+  Opening per query, role default (baseline) & 208 µs & 1067 µs & 3946 µs \\
+  \tablerule
+  Opening per query, interceptor & 298 µs (1.44) & 1391 µs (1.32) & 5376 µs (1.37) \\
+  \tablerule
+  Open for the unit of work, role default & 210 µs (1.02) & 1020 µs (0.97) & 3501 µs (0.89) \\
+  \tablerule
+  Open for the unit of work, interceptor & 279 µs (1.35) & 1010 µs (0.96) & 3429 µs (0.87) \\
+\end{datatable}
+
+Example results (default job of BenchmarkDotNet~0.15.8, .NET~10.0.6, Ubuntu~24.04, Intel Core
+i9-11900H, PostgreSQL~17 in a Docker container on the same machine; in parentheses the ratio to
+the baseline). When EF opens per query, the session command costs about 70 to 90~µs per query
+here, about 1.4~ms for 20 queries. When the connection stays open, it is paid once: visible with
+one query, lost in the measurement noise from five queries on. Allocations grow by about 2~KB
+per opening. Some variants scatter widely (BenchmarkDotNet reports a bimodal distribution for
+the baseline); the differences between the rows are reliable, not the third digit.
+
+The measurement has limits. Database and benchmark run on the same machine; the latency of a
+connection over the network is many times higher, and it is exactly what sets the price of every
+additional round trip. The values therefore hold for this setup, not for a deployment; only the
+shape carries over: one round trip more per opening, or one per unit of work when the connection
+stays open. Npgsql's pool is on (the default); whatever it does when a connection is returned and reused is
+contained in variant and baseline alike. With PgBouncer or \code{No Reset On Close} the picture
+can differ. And
+keeping the connection open requires a fixed tenant per context: the open connection keeps the
+tenant it was opened with (chapter~\ref{ch:interceptors}). Whoever changes the tenant within a
+unit of work has to call \code{Apply\allowbreak{}Tenant\allowbreak{}Session} and pays the round trip
+there.
+
 \section{Reading and query compilation}
 
 Two more benchmarks cover the other frequencies.

@@ -1031,6 +1031,94 @@ der zusätzliche Roundtrip des Connection-Interceptors pro Öffnen
 (Kapitel~\ref{ch:interceptors}) wiegt daher weit schwerer als die SaveChanges-Logik. Genau
 diese Art Erkenntnis liefert ein Benchmark: Er zeigt, wo sich Optimieren lohnt und wo nicht.
 
+\section{Der Session-Roundtrip}
+
+Der Connection-Interceptor schickt bei jedem Öffnen ein \code{set\_config} an die Datenbank.
+Wie viel das kostet, misst \code{Session\allowbreak{}Roundtrip\allowbreak{}Benchmark} gegen
+PostgreSQL in Docker: eine Arbeitseinheit aus mehreren gleichen Abfragen, einmal mit Öffnen
+und Schließen pro Abfrage, wie EF es standardmäßig tut, und einmal mit einer Verbindung, die
+für die Arbeitseinheit offen bleibt. Mandant, SQL, Datenmenge und Optionen sind in allen
+Varianten gleich; alle lesen als eingeschränkte Rolle unter RLS.
+
+% source: benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks/SessionRoundtripBenchmark.cs
+\begin{sourcecode}[benchmarks/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Session\allowbreak{}Roundtrip\allowbreak{}Benchmark.\allowbreak{}cs (\allowbreak{}gekürzt)]{csharp}
+[Params(1, 5, 20)]
+public int Operations { get; set; }
+
+[Benchmark(Baseline = true)]
+public Task<int> PerQueryOpen_RoleDefault() => PerQueryAsync(_withRoleDefault);
+
+[Benchmark]
+public Task<int> PerQueryOpen_Interceptor() => PerQueryAsync(_withInterceptor);
+
+[Benchmark]
+public Task<int> UnitOfWorkOpen_RoleDefault() => UnitOfWorkAsync(_withRoleDefault);
+
+[Benchmark]
+public Task<int> UnitOfWorkOpen_Interceptor() => UnitOfWorkAsync(_withInterceptor);
+
+private async Task<int> UnitOfWorkAsync(BenchmarkContext db)
+{
+    await db.Database.OpenConnectionAsync();
+    try
+    {
+        return await PerQueryAsync(db);       // Operations-mal dieselbe Abfrage
+    }
+    finally
+    {
+        await db.Database.CloseConnectionAsync();
+    }
+}
+\end{sourcecode}
+
+Die Baseline isoliert den Beitrag der Session-Initialisierung. Ihr Login hat den Mandanten als
+Rollen-Voreinstellung (\code{ALTER ROLE \ldots{} SET app.tenant\_id}), die jede neue Session und
+jedes Zurücksetzen durch den Pool wiederherstellt: dieselben Zeilen unter RLS, aber kein
+Session-Befehl. Die Differenz zwischen einer Variante und ihrer Baseline ist also der
+\code{set\_config}-Roundtrip allein; eine Rollen-Voreinstellung ist kein Ersatz für den
+Interceptor, weil sie für alle Sessions der Rolle denselben Mandanten setzt. Contexts entstehen
+und Abfragen kompilieren im \code{Global\allowbreak{}Setup}; der Setup prüft auch, dass beide
+Logins dieselben Zeilen lesen. Gemessen werden weder Abfragekompilierung noch Context-Erzeugung,
+und BenchmarkDotNet wärmt vor der Messung auf.
+
+\begin{sourcecode}[Benchmark ausführen]{text}
+dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benchmarks \
+    -- --filter '*SessionRoundtrip*'
+\end{sourcecode}
+
+\begin{datatable}{H{1.45}H{0.85}H{0.85}H{0.85}}
+  \textbf{Variante} & \textbf{1 Abfrage} & \textbf{5 Abfragen} & \textbf{20 Abfragen} \\
+  \tablehead
+  Öffnen pro Abfrage, Rollen-Voreinstellung (Baseline) & 208 µs & 1067 µs & 3946 µs \\
+  \tablerule
+  Öffnen pro Abfrage, Interceptor & 298 µs (1,44) & 1391 µs (1,32) & 5376 µs (1,37) \\
+  \tablerule
+  Offen für die Arbeitseinheit, Rollen-Voreinstellung & 210 µs (1,02) & 1020 µs (0,97) &
+  3501 µs (0,89) \\
+  \tablerule
+  Offen für die Arbeitseinheit, Interceptor & 279 µs (1,35) & 1010 µs (0,96) & 3429 µs (0,87) \\
+\end{datatable}
+
+Beispielergebnisse (Default Job von BenchmarkDotNet~0.15.8, .NET~10.0.6, Ubuntu~24.04, Intel
+Core i9-11900H, PostgreSQL~17 im Docker-Container auf demselben Rechner; in Klammern das
+Verhältnis zur Baseline). Öffnet EF pro Abfrage, kostet der Session-Befehl hier rund 70 bis
+90~µs je Abfrage, bei 20 Abfragen zusammen etwa 1,4~ms. Bleibt die Verbindung offen, fällt er
+einmal an: bei einer Abfrage sichtbar, ab fünf Abfragen im Rauschen der Messung. Die
+Allokationen steigen pro Öffnen um rund 2~KB. Die Streuung einzelner Varianten ist groß
+(BenchmarkDotNet meldet für die Baseline eine bimodale Verteilung); belastbar sind die
+Unterschiede zwischen den Zeilen, nicht die dritte Stelle.
+
+Die Messung hat Grenzen. Datenbank und Benchmark laufen auf demselben Rechner; die Latenz einer
+Verbindung über das Netz ist um ein Vielfaches höher, und genau sie bestimmt den Preis jedes
+zusätzlichen Roundtrips. Die Werte gelten also für diesen Aufbau, nicht für ein Deployment;
+übertragbar ist nur die Form: Pro Öffnen kommt ein Roundtrip hinzu, beim Offenhalten einer pro
+Arbeitseinheit. Der Pool von Npgsql ist eingeschaltet (Standard); was er beim Zurückgeben und Wiederverwenden
+einer Verbindung tut, steckt in Variante und Baseline gleichermaßen. Mit PgBouncer oder
+\code{No Reset On Close} kann das Bild anders aussehen. Und das Offenhalten setzt einen festen Mandanten
+pro Context voraus: Die offene Verbindung behält den Mandanten, mit dem sie geöffnet wurde
+(Kapitel~\ref{ch:interceptors}). Wer den Mandanten in einer Arbeitseinheit wechselt, muss
+\code{Apply\allowbreak{}Tenant\allowbreak{}Session} aufrufen und zahlt den Roundtrip dann dort.
+
 \section{Lesen und Abfragekompilierung}
 
 Zwei weitere Benchmarks decken die anderen Häufigkeiten ab.
