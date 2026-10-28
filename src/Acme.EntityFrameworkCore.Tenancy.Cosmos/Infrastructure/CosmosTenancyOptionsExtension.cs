@@ -103,7 +103,9 @@ public class CosmosTenancyOptionsExtension : IDbContextOptionsExtension
         public override bool ShouldUseSameServiceProvider(DbContextOptionsExtensionInfo other)
             => other is ExtensionInfo o && o.Extension.Settings == Extension.Settings;
 
+        // One entry per setting, like the relational packages
         public override void PopulateDebugInfo(IDictionary<string, string> debugInfo)
-            => debugInfo["Acme:Tenancy:Cosmos"] = Extension.Settings.GetHashCode().ToString();
+            => debugInfo["Acme:Tenancy:Cosmos:VerifyMaterialized"] =
+                Extension.Settings.VerifyMaterializedTenants.ToString();
     }
 }

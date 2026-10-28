@@ -58,6 +58,8 @@ its internal API surface shrinks from 13 to 10 Npgsql types.
 
 ### Changed
 
+- SQL Server and Cosmos packages: `PopulateDebugInfo` writes one entry per setting, like the
+  PostgreSQL package, so that EF can name the option that differs between two contexts.
 - The materialization check's error message no longer assumes row level security; it names the
   checks for relational providers and for Cosmos DB.
 - Handbook (both editions): new outline of the back parts without renumbering any chapter.
