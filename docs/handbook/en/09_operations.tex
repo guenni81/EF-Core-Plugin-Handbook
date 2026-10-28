@@ -879,6 +879,54 @@ dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benc
   compiled model support rather than merely claim it.
 \end{tip}
 
+\section{Second-level caches}
+
+A second-level cache (for example \code{EFCore\allowbreak{}Second\allowbreak{}Level\allowbreak{}Cache\allowbreak{}Interceptor},
+or results kept in Redis or \code{IMemory\allowbreak{}Cache}) is the obvious next step when
+queries are too slow. With multi-tenancy it is also the shortest way to a data leak. The cache
+identifies a result by the SQL text or the normalized LINQ expression, and with row level
+security the tenant appears in neither: the policy reads it from the session.
+
+\begin{datatable}{H{0.85}H{1.15}}
+  \textbf{Step} & \textbf{What happens} \\
+  \tablehead
+  Tenant A queries & The database filters by the session value, the cache stores the rows
+  of A under the SQL text \\
+  \tablerule
+  Tenant B runs the same query & Same SQL text, same key: the cache returns the rows of A.
+  The database is never asked, so the policies never run \\
+\end{datatable}
+
+The plugin's other safeguards do not help either. The SaveChanges interceptor only sees
+saving. The materialization check (chapter~\ref{ch:materialization-from-rows-to-objects})
+only runs when EF builds entities from rows; a cache that stores the entities or DTOs hands
+them out without that step. A filter with the tenant as a query parameter (Cosmos DB, test
+mode) puts the tenant into the key only if the cache includes parameter values, which not
+every cache does.
+
+\begin{important}[The tenant belongs in every cache key]
+  A cache in front of a tenant-owned query is only safe if its key contains the current
+  tenant, set by the application, not derived from the SQL. Without a tenant nothing is cached.
+  Most cache libraries have a hook for the key or a key prefix; where they have none, the cache
+  does not belong in front of tenant data. A test with two tenants and the same query shows
+  whether the hook works.
+\end{important}
+
+\begin{sourcecode}[Example]{csharp}
+// Wherever query results are cached: the tenant belongs in every key
+public sealed class TenantCacheKeys
+{
+    private readonly ITenantProvider _tenants;
+
+    public TenantCacheKeys(ITenantProvider tenants) => _tenants = tenants;
+
+    public string For(string queryKey)
+        => _tenants.CurrentTenantId is { } tenant
+            ? $"tenant:{tenant}:{queryKey}"
+            : throw new InvalidOperationException("No tenant: do not cache the result.");
+}
+\end{sourcecode}
+
 % ------------------------------------------------------------
 \chapter{Using the plugin in ASP.NET Core}\label{ch:using-the-plugin-in-asp}
 \versionrisk{stable}

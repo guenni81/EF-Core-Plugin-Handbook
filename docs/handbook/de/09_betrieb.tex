@@ -909,6 +909,55 @@ dotnet run -c Release --project benchmarks/Acme.EntityFrameworkCore.Tenancy.Benc
   die Compiled-Model-Fähigkeit zu testen statt nur zu behaupten.
 \end{tip}
 
+\section{Second-Level-Caches}
+
+Ein Second-Level-Cache (etwa \code{EFCore\allowbreak{}Second\allowbreak{}Level\allowbreak{}Cache\allowbreak{}Interceptor}
+oder Ergebnisse in Redis oder \code{IMemory\allowbreak{}Cache}) ist der naheliegende nächste
+Schritt, wenn Abfragen zu langsam sind. Mit Mandantenfähigkeit ist er auch der kürzeste Weg zu
+einem Datenleck. Der Cache erkennt ein Ergebnis am SQL-Text oder am normalisierten
+LINQ-Ausdruck, und bei Row Level Security steht der Mandant in keinem von beiden: Die Policy
+liest ihn aus der Session.
+
+\begin{datatable}{H{0.85}H{1.15}}
+  \textbf{Schritt} & \textbf{Was passiert} \\
+  \tablehead
+  Mandant A fragt ab & Die Datenbank filtert nach dem Session-Wert, der Cache speichert die
+  Zeilen von A unter dem SQL-Text \\
+  \tablerule
+  Mandant B stellt dieselbe Abfrage & Gleicher SQL-Text, gleicher Schlüssel: Der Cache liefert
+  die Zeilen von A. Die Datenbank wird nie gefragt, die Policies laufen nie \\
+\end{datatable}
+
+Die übrigen Schutzmechanismen des Plugins helfen hier auch nicht. Der SaveChanges-Interceptor
+sieht nur das Speichern. Die Prüfung beim Laden
+(Kapitel~\ref{ch:materialization-from-rows-to-objects}) läuft nur, wenn EF Entitäten aus Zeilen
+baut; ein Cache, der Entitäten oder DTOs speichert, gibt sie ohne diesen Schritt heraus. Ein
+Filter mit dem Mandanten als Abfrageparameter (Cosmos DB, Testmodus) bringt den Mandanten nur
+dann in den Schlüssel, wenn der Cache Parameterwerte einbezieht, und das tut nicht jeder.
+
+\begin{important}[Der Mandant gehört in jeden Cache-Schlüssel]
+  Ein Cache vor einer mandantenbezogenen Abfrage ist nur sicher, wenn sein Schlüssel den
+  aktuellen Mandanten enthält, gesetzt von der Anwendung und nicht aus dem SQL abgeleitet. Ohne
+  Mandant wird nichts gecacht. Die meisten Cache-Bibliotheken haben einen Haken für den
+  Schlüssel oder ein Schlüsselpräfix; wo er fehlt, gehört der Cache nicht vor Mandantendaten.
+  Ein Test mit zwei Mandanten und derselben Abfrage zeigt, ob der Haken wirkt.
+\end{important}
+
+\begin{sourcecode}[Beispiel]{csharp}
+// Überall, wo Abfrageergebnisse gecacht werden: Der Mandant gehört in jeden Schlüssel
+public sealed class TenantCacheKeys
+{
+    private readonly ITenantProvider _tenants;
+
+    public TenantCacheKeys(ITenantProvider tenants) => _tenants = tenants;
+
+    public string For(string queryKey)
+        => _tenants.CurrentTenantId is { } tenant
+            ? $"tenant:{tenant}:{queryKey}"
+            : throw new InvalidOperationException("No tenant: do not cache the result.");
+}
+\end{sourcecode}
+
 % ------------------------------------------------------------
 \chapter{Einsatz in ASP.NET Core}\label{ch:using-the-plugin-in-asp}
 \versionrisk{stable}

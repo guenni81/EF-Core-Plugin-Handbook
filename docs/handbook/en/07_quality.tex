@@ -884,6 +884,7 @@ For every new plugin, in the order of development. Each item sums up a rule; the
   \item Tenant-safe relationships: composite foreign keys, unique per tenant.
   \item Retrofit existing tables in two migrations with a guard.
   \item Measure hot paths (interceptors), do not guess.
+  \item Second-level caches: the tenant in every cache key, no caching without a tenant.
   \item CI with a patch channel, a preview channel only as an early warning, public API
     analyzer as errors.
 \end{checklist}
