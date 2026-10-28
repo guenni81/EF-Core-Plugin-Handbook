@@ -7,6 +7,12 @@ version is given by the dependency range and the compatibility table in the READ
 
 ## [Unreleased]
 
+### Fixed
+
+- Handbook (both editions): the title page gave 45 chapters and 4 appendices; the structure
+  counts are now taken from the document itself (47 chapters, appendices A–F), and the
+  versions name the SQL Server provider as well.
+
 ## [1.1.0] - 2026-10-28
 
 Packages 1.1.0, handbook edition 1.1. Package versions now equal the handbook edition; the

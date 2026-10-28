@@ -254,6 +254,22 @@
   {\endtabularx\par\vspace{2pt}\noindent{\color{rule}\rule{\linewidth}{0.6pt}}\par
    \vspace{10pt}}
 
+% Structure counts for the title page, taken from the previous run's aux file (like \ref):
+% \appendix records the parts before the appendix part and the chapters, the end of the
+% document the appendices. "??" until the second run; latexmk reruns automatically.
+\newcommand{\handbook@count}[1]{\ifcsdef{handbook@#1}{\csuse{handbook@#1}}{??}}
+\newcommand{\handbookparts}{\handbook@count{parts}}
+\newcommand{\handbookchapters}{\handbook@count{chapters}}
+\newcommand{\handbookappendices}{\handbook@count{appendices}}
+\newcommand{\handbooklastappendix}{\handbook@count{lastappendix}}
+\pretocmd{\appendix}{%
+  \immediate\write\@auxout{\gdef\string\handbook@parts{\the\numexpr\value{part}-1\relax}}%
+  \immediate\write\@auxout{\gdef\string\handbook@chapters{\the\value{chapter}}}}
+  {}{\PackageError{handbook}{Cannot patch \string\appendix}{}}
+\AtEndDocument{%
+  \immediate\write\@auxout{\gdef\string\handbook@appendices{\the\value{chapter}}}%
+  \immediate\write\@auxout{\gdef\string\handbook@lastappendix{\Alph{chapter}}}}
+
 % ---------------------------------------------------------------- Language texts
 \newcommand{\handbooklanguage}[1]{%
   \ifstrequal{#1}{ngerman}{%
