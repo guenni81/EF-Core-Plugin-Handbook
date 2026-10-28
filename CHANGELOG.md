@@ -27,6 +27,12 @@ version is given by the dependency range and the compatibility table in the READ
   table, policy and predicate function. Handbook (both editions), chapter "Test strategy": new
   section "Combinations of migrations and isolation" with the matrix and the combinations that
   remain untested.
+- Handbook: `docs/handbook/check_examples.py` runs the listings marked with `% run:` and the new
+  CI job `handbook-examples` calls it: the exercise's test command (it reads the TRX counters and
+  requires at least one executed and no failed test, so a filter that matches nothing fails) and
+  the ShopApi session, now shown in chapter "Using the plugin in ASP.NET Core", against
+  PostgreSQL in a temporary container. Both editions and `docs/handbook/README.md` describe
+  which listings are executed and which are shortened or simplified.
 
 ### Changed
 

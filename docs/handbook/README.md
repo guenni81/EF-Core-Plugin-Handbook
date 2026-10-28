@@ -19,6 +19,7 @@ With a TeX Live installation (2025 or newer, including `latexmk` and `minted`):
 cd docs/handbook
 python3 check_code.py                  # line length, excerpts against the source files
 python3 check_structure.py             # editions in sync, references, table widths
+python3 check_examples.py              # run the listings marked with "% run:" (.NET SDK, Docker)
 latexmk EF-Core-Plugin-Handbook.tex    # -> out/EF-Core-Plugin-Handbook.pdf
 latexmk EF-Core-Plugin-Handbuch.tex    # -> out/EF-Core-Plugin-Handbuch.pdf
 latexmk -c                             # remove auxiliary files (out/aux/)
@@ -55,6 +56,7 @@ TeX Live allows in restricted shell-escape mode, so `-shell-escape` is not neede
 | `en/12_appendices.tex` · `de/12_anhaenge.tex` | Part XII: appendices A–F (exercises, sources), license |
 | `check_code.py`, `excerpts.py` | Line length of all code excerpts; bound excerpts against their source files |
 | `check_structure.py` | Both editions in sync per chapter, reference targets, datatable widths |
+| `check_examples.py` | Runs the listings marked with `% run:`: the exercise's test command (TRX counters, at least one test executed) and the ShopApi session against PostgreSQL in Docker |
 | `fonts/` | DejaVu fonts (free license, see `LICENSE-DejaVu.txt`) |
 
 ## Building blocks
@@ -110,6 +112,13 @@ The chapter files only use the commands from `handbook.sty`:
   `...` lines are ignored, so the German excerpts translate comments and excerpts may be
   shortened; line breaks may differ. Add ` (strings)` when messages are translated. An
   excerpt that rewrites code says so in its title ("vereinfacht" / "simplified").
+* **Executable examples.** A comment line `% run: <kind>` directly before a shell listing makes
+  `check_examples.py` (and the CI job `handbook-examples`) run it; the commands must be identical
+  in both editions, only comments after `#` may be translated. Kinds: `dotnet-test` (every line
+  a `dotnet test` command; at least one test must run, none fail) and `shopapi` (the ShopApi
+  session: database and sample are started by the script, the curl requests come from the
+  listing). Only these listings are executed; C# excerpts are bound with `% source:` or marked
+  as simplified, other listings are shortened and never compiled.
 * **Both editions have the same structure.** `check_structure.py` compares sections,
   listings, `% source:` bindings, tables and callouts per chapter; the relative widths of a
   `datatable` must add up to its number of columns.

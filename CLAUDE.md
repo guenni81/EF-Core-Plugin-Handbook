@@ -23,6 +23,7 @@ The local TeX Live (2023, no `latexmk`) is too old; build with the Docker image 
 cd docs/handbook
 python3 check_code.py         # line length <= 94, bound excerpts match the source files
 python3 check_structure.py    # editions in sync, \ref targets exist, datatable widths
+python3 check_examples.py     # runs the listings marked "% run:" (needs .NET SDK and Docker)
 docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD":/w -w /w texlive/texlive:latest \
   sh -c 'latexmk EF-Core-Plugin-Handbuch.tex && latexmk EF-Core-Plugin-Handbook.tex'
 ! grep -n 'undefined' out/aux/*.log   # CI fails on undefined references

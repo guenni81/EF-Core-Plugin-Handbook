@@ -70,6 +70,20 @@ jobs:
       - name: Consumer test (packages, tooling, compiled model, NativeAOT)
         run: eng/consumer-test/run.sh --nativeaot
 
+  # Runs the listings of the handbook marked with "% run:" (docs/handbook/check_examples.py):
+  # the exercise's test command, which must execute at least one test, and the ShopApi session
+  # against PostgreSQL in Docker. Debug build, as a reader would run the commands.
+  handbook-examples:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Executable examples of the handbook
+        run: python3 docs/handbook/check_examples.py
+
   # Builds both editions of the handbook with LuaLaTeX. Fails if a code excerpt exceeds
   # the maximum line length, a reference is undefined or the LaTeX sources are broken.
   handbook:

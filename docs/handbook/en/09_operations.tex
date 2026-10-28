@@ -1019,6 +1019,25 @@ app.MapGet("/orders", async (ShopApiContext db) =>
     await db.Orders.OrderBy(o => o.Id).ToListAsync());
 \end{sourcecode}
 
+In the development environment the sample creates its database, the tables with RLS and the
+app role on startup, and the header \code{X-\allowbreak{}Demo-\allowbreak{}Tenant} simulates
+the claim. With the database from \code{docker-compose.\allowbreak{}yml} the whole sample runs
+like this:
+
+% run: shopapi
+\begin{sourcecode}[Shell]{text}
+docker compose up -d
+dotnet run --project samples/ShopApi
+
+curl -X POST -H "X-Demo-Tenant: 0199f0d2-0000-7000-8000-00000000000a" \
+    "http://localhost:5000/orders?total=10"
+curl -X POST -H "X-Demo-Tenant: 0199f0d2-0000-7000-8000-00000000000b" \
+    "http://localhost:5000/orders?total=99"
+curl -H "X-Demo-Tenant: 0199f0d2-0000-7000-8000-00000000000a" \
+    "http://localhost:5000/orders"        # only the order of tenant ...0a
+curl "http://localhost:5000/orders"       # without a tenant: []
+\end{sourcecode}
+
 \begin{important}[Where the tenant comes from]
   The tenant must come from a trustworthy source: a claim from a signed token. A header or
   query parameter that the client sets freely undermines the entire isolation. The sample
@@ -1192,6 +1211,10 @@ jobs:
   consumer:                            # check the packages as a consumer
     steps:
       - run: eng/consumer-test/run.sh --nativeaot
+
+  handbook-examples:                   # run the listings marked with "% run:"
+    steps:
+      - run: python3 docs/handbook/check_examples.py
 \end{sourcecode}
 
 Code excerpts go stale silently when the code changes. A comment line
@@ -1204,6 +1227,20 @@ whose title names a file of the repository and that is not bound must be called 
 \code{check\_\allowbreak{}structure.\allowbreak{}py} checks that both editions have the same
 sections, listings, bindings, tables and callouts per chapter, that every reference target exists
 and that the column widths of every table add up.
+
+Both scripts read the book; neither runs anything. A command that ends successfully without doing
+its job, such as a test filter that matches no test, would pass them. A few listings are therefore
+\emph{executed}: a comment line \code{\% run: <kind>} marks them, and
+\code{check\_\allowbreak{}examples.\allowbreak{}py} runs them in the CI job
+\code{handbook-\allowbreak{}examples}, in temporary directories and containers that it removes
+again. Currently these are two listings: the test command in the exercises appendix, for which
+the script reads the counters from a TRX result file and requires at least one executed and no
+failed test, and the session of \code{Shop\allowbreak{}Api} in
+chapter~\ref{ch:using-the-plugin-in-asp}, whose curl requests run against the sample and
+PostgreSQL and must show the isolation. Every other listing is not executed: C\# excerpts are
+bound with \code{\% source:} or marked as simplified, workflow and configuration excerpts are
+shortened, and listings with elisions are not programs. The packages as a whole, the
+\code{dotnet ef} tooling and NativeAOT are covered by the consumer test, not by this script.
 
 The sample builds against stable versions only (.NET 10, EF Core 10). A second workflow,
 \code{compatibility.\allowbreak{}yml}, runs weekly and tests against the newest stable 10.0.x

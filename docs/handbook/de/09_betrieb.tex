@@ -1052,6 +1052,25 @@ app.MapGet("/orders", async (ShopApiContext db) =>
     await db.Orders.OrderBy(o => o.Id).ToListAsync());
 \end{sourcecode}
 
+In der Entwicklungsumgebung legt das Beispiel beim Start seine Datenbank, die Tabellen mit RLS
+und die App-Rolle selbst an, und der Header \code{X-\allowbreak{}Demo-\allowbreak{}Tenant}
+simuliert den Claim. Mit der Datenbank aus \code{docker-compose.\allowbreak{}yml} läuft das
+ganze Beispiel so:
+
+% run: shopapi
+\begin{sourcecode}[Shell]{text}
+docker compose up -d
+dotnet run --project samples/ShopApi
+
+curl -X POST -H "X-Demo-Tenant: 0199f0d2-0000-7000-8000-00000000000a" \
+    "http://localhost:5000/orders?total=10"
+curl -X POST -H "X-Demo-Tenant: 0199f0d2-0000-7000-8000-00000000000b" \
+    "http://localhost:5000/orders?total=99"
+curl -H "X-Demo-Tenant: 0199f0d2-0000-7000-8000-00000000000a" \
+    "http://localhost:5000/orders"        # nur die Bestellung von Mandant ...0a
+curl "http://localhost:5000/orders"       # ohne Mandant: []
+\end{sourcecode}
+
 \begin{important}[Woher der Mandant kommt]
   Der Mandant muss aus einer vertrauenswürdigen Quelle kommen: einem Claim aus einem
   signierten Token. Ein Header oder Query-Parameter, den der Client frei setzt, hebelt die
@@ -1228,6 +1247,10 @@ jobs:
   consumer:                            # die Pakete als Verbraucher prüfen
     steps:
       - run: eng/consumer-test/run.sh --nativeaot
+
+  handbook-examples:                   # die mit "% run:" markierten Listings ausführen
+    steps:
+      - run: python3 docs/handbook/check_examples.py
 \end{sourcecode}
 
 Codeauszüge veralten leise, wenn sich der Code ändert. Deshalb bindet eine Kommentarzeile
@@ -1241,6 +1264,21 @@ gebunden ist, muss „vereinfacht“ heißen. \code{check\_\allowbreak{}structur
 prüft, dass beide Fassungen pro Kapitel dieselben Abschnitte, Listings, Bindungen, Tabellen und
 Hinweisboxen haben, dass jedes Verweisziel existiert und die Spaltenbreiten jeder Tabelle
 aufgehen.
+
+Beide Skripte lesen das Buch; keines führt etwas aus. Ein Befehl, der erfolgreich endet, ohne
+seine Aufgabe zu erfüllen, etwa ein Testfilter, der keinen Test trifft, käme durch. Einige
+Listings werden deshalb \emph{ausgeführt}: Eine Kommentarzeile \code{\% run: <Art>} markiert
+sie, und \code{check\_\allowbreak{}examples.\allowbreak{}py} führt sie im CI-Job
+\code{handbook-\allowbreak{}examples} aus, in temporären Verzeichnissen und Containern, die es
+wieder entfernt. Derzeit sind das zwei Listings: der Testbefehl im Übungsanhang, für den das
+Skript die Zähler aus einer TRX-Ergebnisdatei liest und mindestens einen ausgeführten und keinen
+fehlgeschlagenen Test verlangt, und die Sitzung von \code{Shop\allowbreak{}Api} in
+Kapitel~\ref{ch:using-the-plugin-in-asp}, deren curl-Anfragen gegen das Beispiel und PostgreSQL
+laufen und die Isolation zeigen müssen. Alle übrigen Listings werden nicht ausgeführt:
+C\#-Auszüge sind mit \code{\% source:} gebunden oder als vereinfacht gekennzeichnet, Workflow-
+und Konfigurationsauszüge sind gekürzt, und Listings mit Auslassungen sind keine Programme. Die
+Pakete als Ganzes, das \code{dotnet ef}-Tooling und NativeAOT deckt der Consumer-Test ab, nicht
+dieses Skript.
 
 Das Beispiel baut nur gegen stabile Versionen (.NET 10, EF Core 10). Ein zweiter Workflow,
 \code{compatibility.\allowbreak{}yml}, läuft wöchentlich und testet gegen die neuesten
