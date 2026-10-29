@@ -483,6 +483,8 @@ global.json               "version": "11.0.100"
 Directory.Build.props     <TargetFramework>net11.0</TargetFramework>
                           <VersionPrefix>2.0.0</VersionPrefix>
 Directory.Packages.props  <EFCoreVersion ...>[11.0.0,12.0.0)</EFCoreVersion>
+eng/consumer-test/        template/Consumer.csproj, aot-template/Aot.csproj: net11.0
+                          run.sh: Filter "11.0." für die Tooling-Version
 \end{sourcecode}
 
 Welches Target-Framework eine EF-Version voraussetzt, folgt keiner festen Regel: EF Core~9
@@ -544,10 +546,10 @@ Target-Framework ließe sich nicht einmal wiederherstellen.
   12 & Trimming und NativeAOT & Neue IL-Warnungen (IL2xxx, IL3xxx) im Build lesen und eine
   NativeAOT-Anwendung starten; die experimentelle API für vorkompilierte Abfragen (EF9100)
   ändert sich besonders oft & \code{Is\allowbreak{}Aot\allowbreak{}Compatible},
-  \code{run.\allowbreak{}sh -\allowbreak{}-nativeaot} \\
+  \code{run.\allowbreak{}sh \allowbreak{}-{}-nativeaot} \\
   \tablerule
   13 & Integrationstests & Gegen echte Datenbanken, mit den Provider-Versionen der neuen
-  Linie & Integrations- und SQL-Server-Tests \\
+  Linie & Integrations-, SQL-Server- und Cosmos-Tests \\
   \tablerule
   14 & Eigene öffentliche API vergleichen & Der Public-API-Analyzer bricht den Build bei jeder
   Abweichung; gewollte Brüche bewusst eintragen & \code{Public\allowbreak{}API.\allowbreak{}*.\allowbreak{}txt} \\
@@ -609,7 +611,7 @@ arbeitet deshalb mit drei Kanälen:
 \begin{datatable}{H{0.87}H{1.27}H{1.07}H{0.79}}
   \textbf{Kanal} & \textbf{Auslöser und Pakete} & \textbf{Zweck} & \textbf{Bei Fehler} \\
   \tablehead
-  Regulär (\code{ci.\allowbreak{}yml}) & Jeder Push und Pull Request; niedrigste Version des
+  Regulär (\code{ci.\allowbreak{}yml}) & Jeder Push auf \code{main} und jeder Pull Request; niedrigste Version des
   Bereichs & Die Linie, gegen die das Plugin gebaut wird & Pflicht-Check \\
   \tablerule
   Patches (\code{compatibility.\allowbreak{}yml}) & Wöchentlich und manuell;
@@ -643,7 +645,7 @@ Preview-Pakete gekoppelt werden:
   Release-Zweige \\
   \tablerule
   Kein Pflicht-Check & Previews brechen regelmäßig; der Job ist eine Frühwarnung, die ein
-  Issue erzeugt, kein Tor für Pull Requests \\
+  Issue erzeugen sollte (in der Skizze nicht gezeigt), kein Tor für Pull Requests \\
 \end{datatable}
 
 \begin{sourcecode}[Job für die nächste EF-Version (\allowbreak{}Skizze,\allowbreak{} nicht im Repository)]{text}
@@ -701,9 +703,10 @@ Jede direkte Abhängigkeit auf ein eigentlich transitives Paket steht in
 \code{Directory.\allowbreak{}Packages.\allowbreak{}props} mit Herkunft, Advisory und dem
 Kriterium, wann sie wieder entfallen kann. Unterdrückt wird nichts: Weder \code{NoWarn} noch ein
 abgeschaltetes Audit machen eine Abhängigkeit sicher, sie verstecken nur den Befund. Beide
-CI-Kanäle führen zusätzlich \code{dotnet list package -\allowbreak{}-vulnerable
--\allowbreak{}-include-transitive} aus und scheitern an jedem Fund. Der reguläre Lauf baut
-weiterhin gegen EF Core 10.0.0, der Kompatibilitätslauf gegen den neuesten 10.0.x-Patch; die
+CI-Kanäle führen zusätzlich \code{dotnet list package \allowbreak{}-{}-vulnerable
+\allowbreak{}-{}-include-transitive} aus und scheitern an jedem Fund. Der reguläre Lauf baut
+weiterhin gegen den Anfang der Linie (EF Core 10.0.0, soweit die Begleitpakete es zulassen),
+der Kompatibilitätslauf gegen den neuesten 10.0.x-Patch; die
 Korrekturen sind Mindestversionen und gelten in beiden. Für Werkzeuge gibt es eine Wechselwirkung:
 \code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tasks}
 wertet die Audit-Warnungen beim Veröffentlichen als Fehler, sodass NativeAOT mit EF Design

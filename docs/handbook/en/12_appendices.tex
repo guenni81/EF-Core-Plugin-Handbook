@@ -26,8 +26,9 @@ EF Core~10's service tables
 \code{Entity\allowbreak{}Framework\allowbreak{}Relational\allowbreak{}Services\allowbreak{}Builder},
 \code{Entity\allowbreak{}Framework\allowbreak{}Relational\allowbreak{}Design\allowbreak{}Services\allowbreak{}Builder}),
 the statements about provider implementations from Npgsql~10;
-\code{Service\allowbreak{}Registration\allowbreak{}Tests} checks the sample's registrations
-against the same tables.
+\code{Service\allowbreak{}Registration\allowbreak{}Tests} checks the registrations of the
+PostgreSQL packages against the core and relational tables,
+\code{Design\allowbreak{}Time\allowbreak{}Services\allowbreak{}Tests} the design-time services.
 
 \begin{datatable}{H{0.55}H{1.45}}
   \textbf{Marker} & \textbf{Meaning} \\
@@ -317,7 +318,7 @@ internal provider. They are almost always the first choice:
   lookup & \ref{ch:property-level-fluent-api-and} \\
   \tablerule
   \code{Query/\allowbreak{}Tenancy\allowbreak{}Evaluatable\allowbreak{}Expression\allowbreak{}Filter\allowbreak{}Plugin.\allowbreak{}cs}
-  & Filter for all packages & \ref{ch:preventing-client-side-evaluation}, \ref{ch:what-belongs-in-the-core} \\
+  & Filter, recognizes the function classes of all packages & \ref{ch:preventing-client-side-evaluation}, \ref{ch:what-belongs-in-the-core} \\
   \tablerule
   \code{Dependency\allowbreak{}Injection/\allowbreak{}*} & AddAcmeTenancy & \ref{ch:public-api-and-integration-into}, \ref{ch:what-belongs-in-the-core} \\
   \tablerule
@@ -366,7 +367,7 @@ internal provider. They are almost always the first choice:
   & UseAcmeTenancy & \ref{ch:public-api-and-integration-into} \\
   \tablerule
   \code{Infrastructure/\allowbreak{}Tenancy\allowbreak{}Identifiers.\allowbreak{}cs} &
-  Identifier validation & \ref{ch:conventions}, \ref{ch:custom-migration-operations} \\
+  Identifier validation & \ref{ch:public-api-and-integration-into}, \ref{ch:custom-migration-operations} \\
   \tablerule
   \code{Storage/\allowbreak{}*} & Type mapping and plugin & \ref{ch:type-mappings-and-value-converters} \\
   \tablerule
@@ -482,7 +483,7 @@ internal provider. They are almost always the first choice:
   & The book's “What happens if …?” cases, the wrong variant next to the right one & – \\
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Service\allowbreak{}Registration\allowbreak{}Tests.\allowbreak{}cs}
-  & Lifetime and cardinality of every registration against EF's service table & \ref{ch:versioning-and-compatibility} \\
+  & Lifetime and cardinality of the run-time registrations against EF's service tables & \ref{ch:versioning-and-compatibility} \\
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}State\allowbreak{}And\allowbreak{}Lifetime\allowbreak{}Tests.\allowbreak{}cs}
   & Failure cases for state and lifetimes, the wrong variant next to the right one & \ref{ch:state-lifetimes-and-thread-safety} \\
@@ -501,7 +502,8 @@ internal provider. They are almost always the first choice:
   & Model cache key per schema & \ref{ch:models-per-runtime-context} \\
   \tablerule
   \code{benchmarks/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}} &
-  BenchmarkDotNet project for the SaveChanges logic & \ref{ch:plugin-performance} \\
+  BenchmarkDotNet project: SaveChanges logic, session round trip, materialization, query
+  compilation & \ref{ch:plugin-performance} \\
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests}
   & Testcontainers tests against PostgreSQL & \ref{ch:interceptors}, \ref{ch:test-strategy}, \ref{ch:bulk-operations-and-the-limits}, \ref{ch:the-update-pipeline}, \ref{ch:row-level-security-in-production}, \ref{ch:scaffolding-in-practice} \\
@@ -691,8 +693,8 @@ applies? What changes if the convention sets the annotation with
   The explicit configuration applies. The convention builder sets annotations with
   \code{Configuration\allowbreak{}Source.\allowbreak{}Convention} and leaves an explicit
   configuration in place; \code{Has\allowbreak{}Annotation} then returns \code{null}
-  (chapter~\ref{ch:conventions}). \code{Set\allowbreak{}Annotation} on the type knows no
-  configuration source and would silently overwrite the user's policy.
+  (chapter~\ref{ch:conventions}). \code{Set\allowbreak{}Annotation} on the type does not check
+  whether its configuration source may override the existing one and would silently overwrite the user's policy.
   Check: \code{Convention\allowbreak{}Tests.\allowbreak{}Explicit\allowbreak{}\_policy\allowbreak{}\_with\allowbreak{}\_same\allowbreak{}\_name\allowbreak{}\_wins\allowbreak{}\_over\allowbreak{}\_convention}.
 \end{note}
 
@@ -710,7 +712,7 @@ every tenant gets “its” model. What happens with 1000 tenants?
   tenant is per-request state and belongs in the interceptor
   (chapter~\ref{ch:state-lifetimes-and-thread-safety}); only when the \emph{model} really
   differs does a model cache key of its own help (chapter~\ref{ch:models-per-runtime-context}).
-  Check: \code{State\allowbreak{}And\allowbreak{}Lifetime\allowbreak{}Tests.\allowbreak{}Tenant\allowbreak{}\_in\allowbreak{}\_the\allowbreak{}\_service\allowbreak{}\_provider\allowbreak{}\_key\allowbreak{}\_needs\allowbreak{}\_a\allowbreak{}\_provider\allowbreak{}\_per\allowbreak{}\_tenant}.
+  Check (key per tenant, not the threshold): \code{State\allowbreak{}And\allowbreak{}Lifetime\allowbreak{}Tests.\allowbreak{}Tenant\allowbreak{}\_in\allowbreak{}\_the\allowbreak{}\_service\allowbreak{}\_provider\allowbreak{}\_key\allowbreak{}\_needs\allowbreak{}\_a\allowbreak{}\_provider\allowbreak{}\_per\allowbreak{}\_tenant}.
 \end{note}
 
 \section{Exercise 3: Nullability of a translator}
@@ -750,13 +752,13 @@ policy at the \code{Alter\allowbreak{}Table\allowbreak{}Operation}?
 \section{Exercise 5: An update from the API}
 
 An API receives an order and saves it with \code{Update}. Why does EF mark the tenant property as
-modified, and what stops an attacker from sending the ID of a foreign order with the own tenant?
+modified, and what stops an attacker from sending the ID of a foreign order under their own tenant?
 
 \begin{note}[Solution]
   \code{Update} of an untracked entity marks every property; original and current value are the
   same. That is no change of tenant; the interceptor checks the value only
   (page~\pageref{sec:tracking-flag-versus-value}). Against the foreign ID it does not help,
-  because without accessing the database it cannot know whom the row belongs to. The
+  because without accessing the database it cannot know to whom the row belongs. The
   \code{UPDATE} does not see the row because of the policy, changes zero rows, and EF reports a
   concurrency error. Check: \code{Detached\allowbreak{}Update\allowbreak{}Tests} against
   PostgreSQL.
@@ -821,6 +823,8 @@ move on. All addresses were reachable at the editorial deadline.
   \href{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore/Infrastructure/EntityFrameworkServicesBuilder.cs}{EntityFrameworkServicesBuilder (EF Core 10.0.0)}\cellmeta{\url{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore/Infrastructure/EntityFrameworkServicesBuilder.cs}} & \ref{app:A} \\
   \tablerule
   \href{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore.Relational/Infrastructure/EntityFrameworkRelationalServicesBuilder.cs}{EntityFrameworkRelationalServicesBuilder (EF Core 10.0.0)}\cellmeta{\url{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore.Relational/Infrastructure/EntityFrameworkRelationalServicesBuilder.cs}} & \ref{app:A} \\
+  \tablerule
+  \href{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore.Relational/Design/EntityFrameworkRelationalDesignServicesBuilder.cs}{EntityFrameworkRelationalDesignServicesBuilder (EF Core 10.0.0)}\cellmeta{\url{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore.Relational/Design/EntityFrameworkRelationalDesignServicesBuilder.cs}} & \ref{app:A} \\
   \tablerule
   \href{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore/Metadata/Internal/ConstructorBindingFactory.cs}{ConstructorBindingFactory (EF Core 10.0.0)}\cellmeta{\url{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore/Metadata/Internal/ConstructorBindingFactory.cs}} & \ref{ch:materialization-from-rows-to-objects} \\
   \tablerule

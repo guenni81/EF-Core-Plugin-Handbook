@@ -87,6 +87,10 @@ public class TenantSaveChangesInterceptor : SaveChangesInterceptor
         _tenants = tenants;
     }
 
+    // The tenant provider of this context; the materialization interceptor and the
+    // activity interceptor find it here
+    public ITenantProvider Tenants => _tenants;
+
     public override InterceptionResult<int> SavingChanges(
         DbContextEventData eventData, InterceptionResult<int> result)
     {
@@ -332,7 +336,9 @@ For these cases the plugin offers the explicit counterpart to the interceptor.
 \code{Database.\allowbreak{}Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})}
 writes the current tenant into the session if the connection is open, and does nothing if it
 is closed, because EF will then open it and the interceptor takes over. It reuses the
-interceptor's own command, so it works for every provider package:
+interceptor's own command, so it works for every relational provider package in session mode;
+with \code{Use\allowbreak{}Transaction\allowbreak{}Pooling(\allowbreak{})} there is no session,
+and it throws:
 
 \begin{sourcecode}[Usage]{csharp}
 await using var db = CreateAppContext(connection, tenantA);   // connection already open
@@ -429,8 +435,8 @@ public override void ConnectionOpened(
 }
 \end{sourcecode}
 
-The asynchronous variant closes with \code{Close\allowbreak{}Async(\allowbreak{})} without a
-cancellation token: after a cancelled command the connection must stay open even less. The
+The asynchronous variant closes with \code{Close\allowbreak{}Async(\allowbreak{})}, which
+cannot be cancelled: after a cancelled command the connection must stay open even less. The
 context remains usable; the next operation opens anew, and the interceptor sets the tenant. The
 tests produce the failures in a controlled way, through a subclass of the interceptor whose next
 command fails (\code{1 / 0}), runs into a \code{Command\allowbreak{}Timeout} of one second, or is
@@ -439,12 +445,13 @@ cancelled beforehand:
 \begin{datatable}{H{0.95}H{1.05}H{1.00}}
   \textbf{Case} & \textbf{Behavior} & \textbf{Test} \\
   \tablehead
-  Command fails, timeout, cancellation while EF opens & Exception (timeout: reported by EF as a
-  transient failure), connection closed; the next operation sets the tenant again, with and
-  without \code{No Reset On Close} &
-  \code{Session\allowbreak{}Failure\allowbreak{}Tests}, also for SQL Server \\
+  Command fails, timeout, cancellation while EF opens & Exception (timeout: reported by the
+  provider's execution strategy as a transient failure), connection closed; the next operation
+  sets the tenant again, with and without \code{No Reset On Close} &
+  \code{Session\allowbreak{}Failure\allowbreak{}Tests}; the failing command also for SQL
+  Server (\code{Sql\allowbreak{}Server\allowbreak{}Session\allowbreak{}Failure\allowbreak{}Tests}) \\
   \tablerule
-  The same with \code{Open\allowbreak{}Connection\allowbreak{}Async} & Connection closed; a second
+  A failing command with \code{Open\allowbreak{}Connection\allowbreak{}Async} & Connection closed; a second
   opening then applies to all queries & same \\
   \tablerule
   \code{Apply\allowbreak{}Tenant\allowbreak{}Session} fails on an open connection & The connection

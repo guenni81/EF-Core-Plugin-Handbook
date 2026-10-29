@@ -79,8 +79,8 @@ DbSet<Customer>()
 \textbf{Preprocessing.} The plugin's named query filter is added, with
 \code{EF.\allowbreak{}Functions.\allowbreak{}Current\allowbreak{}Tenant(\allowbreak{})}.
 That this call is still a call here and was not executed in .NET beforehand is thanks to
-the plugin's evaluatable expression filter
-(chapter~\ref{ch:preventing-client-side-evaluation}).
+the plugin's evaluatable expression filter, which EF also consults when it inserts query
+filters (chapter~\ref{ch:preventing-client-side-evaluation}).
 
 \textbf{Queryable and SQL translation.} Both stages interlock: for every queryable
 operator, EF translates its lambda into SQL expressions. \code{c.\allowbreak{}Name == @name}
@@ -173,7 +173,9 @@ decision guide in chapter~\ref{ch:choosing-the-right-extension-point}.
   \ref{ch:preventing-client-side-evaluation} \\
   \tablerule
   Query cache & \code{ICompiled\allowbreak{}Query\allowbreak{}Cache} (internal, singleton) &
-  No intervention & – \\
+  No intervention in the cache; the key comes from
+  \code{ICompiled\allowbreak{}Query\allowbreak{}Cache\allowbreak{}Key\allowbreak{}Generator}
+  \cellmeta{public · single · Scoped} & – \\
   \tablerule
   Before preprocessing & \code{Query\allowbreak{}Compilation\allowbreak{}Context} at the start
   of compilation & \code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor}
@@ -1027,8 +1029,8 @@ together with its entry, without the interceptor learning about it. With pooling
 correct across leases, because a context keeps its options and therefore its interceptors for
 its whole life; the tenant itself is still read on every row. If the lookup fails, the table
 stores nothing, and the configuration error stays visible on every call.
-The unit tests in \code{Materialization\allowbreak{}Tests} check repeated rows in one context, contexts with
-different tenants and a pooled context across two leases.
+The unit tests in \code{Materialization\allowbreak{}Tests} check repeated rows in one
+context, contexts with different tenants and a pooled context across two leases.
 
 \section{Limits}
 

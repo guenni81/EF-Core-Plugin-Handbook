@@ -109,6 +109,24 @@ version is given by the dependency range and the compatibility table in the READ
 
 ### Fixed
 
+- Handbook (both editions), review corrections: the DbContext pooling box (chapters "Choosing
+  the right extension point" and "State, lifetimes and thread safety") now describes the real
+  symptom of a scoped tenant provider under pooling (root instance or scope-validation error,
+  as in `DbContextFactoryTests`) instead of "the tenant of the first request"; the migrations
+  flow names EF's `IMigrationsCodeGenerator` instead of a non-existent
+  `ICSharpMigrationsGenerator`; three executed listings instead of two; `DevelopmentDatabase`
+  only in ShopApi; the Cosmos test groups include `MappingModelTests` and
+  `MappingEmulatorTests`; appendix B points `TenancyIdentifiers` to chapter "Public API and
+  integration into the application". Statements narrowed to what code and tests show
+  (session-failure matrix on SQL Server, `ApplyTenantSession` in session mode only, bulk-update
+  tests per database, `GroupBy` without a test, test-class names, CI trigger, upgrade step 1
+  including `eng/consumer-test`, design-time lifetime of `IDatabaseModelFactory`, snapshot
+  static calls since EF Core 7, and more), plus wording fixes in the English edition.
+- Handbook layout: the table of contents starts on a page of its own instead of directly under
+  the preface boxes, and the box on public and internal APIs moved to the page of part
+  "Foundations"; command-line options such as `--nativeaot` no longer break between the
+  two hyphens.
+
 - Session interceptors (`TenantSessionInterceptor`, so PostgreSQL and SQL Server): if the
   command that sets the tenant failed, timed out or was cancelled, the connection stayed open
   while EF considered it closed; the next operation of the context then ran without the

@@ -280,13 +280,14 @@ public void ApplyServices(IServiceCollection services)
 
 \begin{failure}[Was passiert, wenn ein Plugin-Interface die falsche Lebensdauer bekommt?]
   \textbf{Beobachtbar.} Registrierung und Modellbau laufen durch. Erst die erste Abfrage,
-  die die Funktion verwendet, bricht ab, mit
+  die EF übersetzt, bricht ab, auch wenn sie die Funktion gar nicht verwendet, mit
   \code{Argument\allowbreak{}Null\allowbreak{}Exception}: „Value cannot be null.
   (Parameter 'provider')“. Die Meldung nennt weder das Plugin noch die Lebensdauer.
 
   \textbf{Ursache.} EF erwartet Translator-Plugins als Scoped. Als Singleton entsteht das
   Plugin im Root-Scope des internen Providers, wo sich die Scoped-Abhängigkeit
-  \code{ISql\allowbreak{}Expression\allowbreak{}Factory} nicht auflösen lässt. Der interne
+  \code{ISql\allowbreak{}Expression\allowbreak{}Factory} nicht auflösen lässt. Erzeugt wird es,
+  sobald EF für die erste Übersetzung alle Translator-Plugins einsammelt. Der interne
   Provider prüft Lebensdauern nicht (Kapitel~\ref{ch:state-lifetimes-and-thread-safety}).
 
   \textbf{Lösung.} EF-Dienste und Plugin-Interfaces immer über den Services-Builder
@@ -749,8 +750,9 @@ Setting-Namen aus den Singleton-Options (Kapitel~\ref{ch:interceptors}).
   Bei \code{Add\allowbreak{}Db\allowbreak{}Context\allowbreak{}Pool} werden Contexts
   wiederverwendet und bekommen ihre Options nur einmal, gebaut mit dem Root-Provider. Die
   Interceptor-Instanzen entstehen dabei einmal und dienen allen späteren Anfragen. Ein
-  Tenant-Provider, der seinen Mandanten pro Scope hält, liefert dann immer den der ersten
-  Anfrage. Für Pooling muss er deshalb ein Singleton sein, der den Mandanten bei jedem
+  Scoped-Tenant-Provider kommt dann aus dem Root-Container: Mit Scope-Validierung scheitert
+  schon das Bauen der Options, ohne sie bekommt der Interceptor eine Instanz, die keine Anfrage
+  je befüllt, und Speichern wirft „kein aktiver Mandant“. Für Pooling muss er deshalb ein Singleton sein, der den Mandanten bei jedem
   Aufruf neu ermittelt, etwa über \code{IHttp\allowbreak{}Context\allowbreak{}Accessor}.
   Kapitel~\ref{ch:using-the-plugin-in-asp} zeigt diese Variante,
   Kapitel~\ref{ch:state-lifetimes-and-thread-safety} die Regel dahinter. Dasselbe gilt für

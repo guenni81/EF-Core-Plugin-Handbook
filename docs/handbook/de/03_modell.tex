@@ -384,7 +384,7 @@ public virtual void ProcessModelFinalizing(
             continue;
         }
 
-        // Keine Tabelle (View, ToSqlQuery, Keyless) -> kein RLS
+        // Keine Tabelle (View, ToSqlQuery, keyless ohne Tabelle) -> kein RLS
         if (StoreObjectIdentifier.Create(entityType, StoreObjectType.Table)
             is not { } table)
             continue;
@@ -486,7 +486,7 @@ Provider-Pakete rufen ihn auf, der Vertrag ist also für PostgreSQL und SQL Serv
   & eigene Tabelle ohne Mandantenspalte & abgelehnt \\
   \tablerule
   Table Splitting & dieselben Zeilen für alle Typen & geschützt, wenn alle mandantenbezogenen
-  Typen dieselbe Spalte nutzen \\
+  Typen dieselbe Spalte nutzen und keiner allein ausgenommen ist \\
   \tablerule
   Entity Splitting (\code{Split\allowbreak{}To\allowbreak{}Table}) & weitere Tabelle ohne
   Mandantenspalte & abgelehnt \\
@@ -601,7 +601,8 @@ Plugins greifen ineinander.
 Query-Filter: Ein zweites \code{Has\allowbreak{}Query\allowbreak{}Filter} ersetzte das erste,
 und \code{Ignore\allowbreak{}Query\allowbreak{}Filters(\allowbreak{})} schaltete alle auf einmal
 ab, den Mandantenfilter eingeschlossen. Mit benannten Filtern bleiben die eigenen Filter der
-Anwendung unabhängig von denen des Plugins:
+Anwendung unabhängig von denen des Plugins (der Test schaltet den Mandantenfilter mit
+\code{Apply\allowbreak{}Query\allowbreak{}Filter(\allowbreak{})} ein; standardmäßig ist er aus):
 
 % source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/QueryTranslationTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Query\allowbreak{}Translation\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
@@ -797,6 +798,9 @@ public class TenantIdTypeMapping : RelationalTypeMapping
             new CoreTypeMappingParameters(
                 typeof(TenantId),
                 converter: TenantIdConverter.Instance,
+                comparer: TenantIdValueComparer.Instance,
+                keyComparer: TenantIdValueComparer.Instance,
+                providerValueComparer: TenantIdValueComparer.Provider,
                 jsonValueReaderWriter: TenantIdJsonReaderWriter.Instance),
             storeType: "uuid",
             dbType: System.Data.DbType.Guid))

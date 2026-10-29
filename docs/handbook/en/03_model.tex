@@ -383,7 +383,7 @@ public virtual void ProcessModelFinalizing(
             continue;
         }
 
-        // No table (view, ToSqlQuery, keyless) -> no RLS
+        // No table (view, ToSqlQuery, keyless without a table) -> no RLS
         if (StoreObjectIdentifier.Create(entityType, StoreObjectType.Table)
             is not { } table)
             continue;
@@ -485,7 +485,7 @@ SQL Server:
   own table without tenant column & rejected \\
   \tablerule
   Table splitting & the same rows for all types & protected if all tenant-owned types use the
-  same column \\
+  same column and none of them alone is opted out \\
   \tablerule
   Entity splitting (\code{Split\allowbreak{}To\allowbreak{}Table}) & another table without
   tenant column & rejected \\
@@ -595,7 +595,8 @@ chapter~\ref{ch:translating-methods-and-members}. The plugin's building blocks i
 filter: a second \code{Has\allowbreak{}Query\allowbreak{}Filter} replaced the first, and
 \code{Ignore\allowbreak{}Query\allowbreak{}Filters(\allowbreak{})} switched off all of them at
 once, the tenant filter included. With named filters the application's own filters stay
-independent of the plugin's:
+independent of the plugin's (the test switches the tenant filter on with
+\code{Apply\allowbreak{}Query\allowbreak{}Filter(\allowbreak{})}; it is off by default):
 
 % source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/QueryTranslationTests.cs
 \begin{sourcecode}[tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Query\allowbreak{}Translation\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
@@ -786,6 +787,9 @@ public class TenantIdTypeMapping : RelationalTypeMapping
             new CoreTypeMappingParameters(
                 typeof(TenantId),
                 converter: TenantIdConverter.Instance,
+                comparer: TenantIdValueComparer.Instance,
+                keyComparer: TenantIdValueComparer.Instance,
+                providerValueComparer: TenantIdValueComparer.Provider,
                 jsonValueReaderWriter: TenantIdJsonReaderWriter.Instance),
             storeType: "uuid",
             dbType: System.Data.DbType.Guid))

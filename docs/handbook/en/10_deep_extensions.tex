@@ -62,7 +62,8 @@ Npgsql does not offer the comparison as a function; it meets all three reasons.
   \tablerule
   \code{Print} & Readable representation in DebugView and error messages & Unclear errors \\
   \tablerule
-  \code{Quote} & C\# code for precompiled queries and NativeAOT & No AOT support \\
+  \code{Quote} & C\# code for precompiled queries and NativeAOT & Abstract, so required; a
+  bare \code{throw} only fails when queries are precompiled \\
   \tablerule
   SQL generator & Writes the node as SQL & \textbf{Silently} missing SQL \\
   \tablerule
@@ -251,8 +252,8 @@ public class FunctionsNpgsqlParameterBasedSqlProcessor : NpgsqlParameterBasedSql
 \end{sourcecode}
 
 % source: src/Acme.EntityFrameworkCore.Functions.PostgreSQL/Infrastructure/FunctionsOptionsExtension.cs
-\begin{sourcecode}[Infrastructure/\allowbreak{}Functions\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Apply\allowbreak{}Services (\allowbreak{}addition)]{csharp}
-// 4) Deep extension: custom SQL expression node
+\begin{sourcecode}[Infrastructure/\allowbreak{}Functions\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Apply\allowbreak{}Services (\allowbreak{}excerpt)]{csharp}
+// Deep extension: custom SQL expression node
 services.Replace(ServiceDescriptor
     .Singleton<IQuerySqlGeneratorFactory, FunctionsNpgsqlQuerySqlGeneratorFactory>());
 services.Replace(ServiceDescriptor
@@ -491,7 +492,7 @@ both; this one uses the Npgsql factory and therefore lives in the PostgreSQL-spe
 So far the plugin assumes that the tenant property is called \code{Tenant\allowbreak{}Id}
 and that \code{ITenant\allowbreak{}Owned} is implemented. With a Fluent API method on
 \code{Property\allowbreak{}Builder} it works without either, for example with existing
-models using a property \code{Mandant\allowbreak{}Id} or an explicit interface
+models using a property \code{Mandant} or an explicit interface
 implementation:
 
 \begin{sourcecode}[Usage]{csharp}
@@ -629,7 +630,8 @@ time there. The generator therefore applies the same filter in an override of
   \tablerule
   \code{Acme:Tenancy:Tenant\allowbreak{}Property} & yes & yes (interceptor) & yes \\
   \tablerule
-  \code{Acme:Tenancy:Is\allowbreak{}Tenant\allowbreak{}Property} & yes (convention) & yes,
+  \code{Acme:Tenancy:Is\allowbreak{}Tenant\allowbreak{}Property} & yes (read by the
+  convention) & yes,
   unused & yes (small) \\
 \end{datatable}
 
@@ -742,7 +744,7 @@ public void Scaffolding_reads_rls_and_policies()
 This test only checks the reading. \code{Scaffolding\allowbreak{}Roundtrip\allowbreak{}Tests} goes
 the whole way like \code{dotnet ef dbcontext scaffold}: create policies in a real database
 (without expressions, \code{FOR SELECT TO} a role without expressions, restrictive without
-expressions and one with \code{USING}/\code{WITH CHECK}), generate code through
+expressions, one with \code{USING} only and one with \code{USING}/\code{WITH CHECK}), generate code through
 \code{IReverse\allowbreak{}Engineer\allowbreak{}Scaffolder}, compile it with Roslyn, build the
 generated context's model and compare it with the database model read before, without a
 phantom migration against itself, and create a new database from it. Its

@@ -82,8 +82,8 @@ DbSet<Customer>()
 \textbf{Preprocessing.} Der benannte Query-Filter des Plugins kommt hinzu, mit
 \code{EF.\allowbreak{}Functions.\allowbreak{}Current\allowbreak{}Tenant(\allowbreak{})}.
 Dass dieser Aufruf hier noch ein Aufruf ist und nicht vorab in .NET ausgeführt wurde,
-verdankt er dem Evaluatable-Expression-Filter des Plugins
-(Kapitel~\ref{ch:preventing-client-side-evaluation}).
+verdankt er dem Evaluatable-Expression-Filter des Plugins, den EF auch beim Einfügen von
+Query-Filtern befragt (Kapitel~\ref{ch:preventing-client-side-evaluation}).
 
 \textbf{Queryable- und SQL-Übersetzung.} Beide Stufen greifen ineinander: Für jeden
 Queryable-Operator übersetzt EF dessen Lambda in SQL-Ausdrücke. Aus
@@ -178,7 +178,9 @@ Kapitel~\ref{ch:choosing-the-right-extension-point}.
   \ref{ch:preventing-client-side-evaluation} \\
   \tablerule
   Query-Cache & \code{ICompiled\allowbreak{}Query\allowbreak{}Cache} (intern, Singleton) &
-  Kein Eingriff & – \\
+  Kein Eingriff in den Cache; den Schlüssel bildet
+  \code{ICompiled\allowbreak{}Query\allowbreak{}Cache\allowbreak{}Key\allowbreak{}Generator}
+  \cellmeta{öffentlich · einzeln · Scoped} & – \\
   \tablerule
   Vor dem Preprocessing & \code{Query\allowbreak{}Compilation\allowbreak{}Context} zu Beginn
   der Kompilierung & \code{IQuery\allowbreak{}Expression\allowbreak{}Interceptor}
@@ -934,8 +936,9 @@ public class TenantMaterializationInterceptor : IMaterializationInterceptor
         if (entityType.GetTenantPropertyName() is not { } propertyName)
             return;
 
-        // Der Mandant wird bei jeder Zeile gelesen, nie gemerkt: Alle Contexts teilen sich
-        // diese Instanz, und ein Context aus dem Pool wechselt ihn zwischen den Ausleihen
+        // Der Mandant wird bei jeder Zeile gelesen: Alle Contexts teilen sich diese Instanz,
+        // jeder kann einen anderen Mandanten haben, ein Context aus dem Pool wechselt ihn
+        // zwischen den Ausleihen
         var current = FindTenantProvider(context).CurrentTenantId;
         var value = (TenantId)readValue(propertyName)!;
 
@@ -952,8 +955,9 @@ public class TenantMaterializationInterceptor : IMaterializationInterceptor
 
 % source: src/Acme.EntityFrameworkCore.Tenancy.PostgreSQL/Infrastructure/TenancyOptionsExtension.cs
 \begin{sourcecode}[Infrastructure/\allowbreak{}Tenancy\allowbreak{}Options\allowbreak{}Extension.\allowbreak{}cs › Apply\allowbreak{}Services (\allowbreak{}Ergänzung)]{csharp}
-// Optionale Prüfung beim Laden: ein Singleton-Interceptor im internen Provider, eine
-// Instanz pro Provider. Die Einstellung steht im Settings-Record und damit im Hash.
+// Optionale Prüfung beim Laden (Kapitel „Materialisierung: von Zeilen zu Objekten“). Ein
+// Singleton-Interceptor gehört in den internen Provider: eine Instanz pro Provider, nie
+// eine neue pro Context. Die Einstellung steht im Settings-Record und damit im Hash.
 if (Settings.VerifyMaterializedTenants)
     new EntityFrameworkServicesBuilder(services)
         .TryAdd<ISingletonInterceptor, TenantMaterializationInterceptor>();
@@ -1044,8 +1048,9 @@ Pooling bleibt der Eintrag über die Ausleihen hinweg richtig, weil ein Context 
 und damit seine Interceptors sein Leben lang behält; der Mandant selbst wird weiterhin bei
 jeder Zeile gelesen. Scheitert das Nachschlagen, speichert die Tabelle nichts, und der
 Konfigurationsfehler bleibt bei jedem Aufruf sichtbar.
-Die Unit-Tests in \code{Materialization\allowbreak{}Tests} prüfen wiederholte Zeilen in einem Context,
-Contexts mit verschiedenen Mandanten und einen gepoolten Context über zwei Ausleihen.
+Die Unit-Tests in \code{Materialization\allowbreak{}Tests} prüfen wiederholte Zeilen in
+einem Context, Contexts mit verschiedenen Mandanten und einen gepoolten Context über zwei
+Ausleihen.
 
 \section{Grenzen}
 

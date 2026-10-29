@@ -34,7 +34,7 @@ connection. The sample's test strategy has four levels:
 \section{Test helpers}
 
 Tests build many contexts with different \code{On\allowbreak{}Model\allowbreak{}Creating}.
-Because EF caches the model per internal provider, every test must get its own provider;
+Because EF caches the model per internal provider, every test must get its own internal provider;
 that is what
 \code{Enable\allowbreak{}Service\allowbreak{}Provider\allowbreak{}Caching(\allowbreak{}false)}
 is for:
@@ -477,6 +477,8 @@ global.json               "version": "11.0.100"
 Directory.Build.props     <TargetFramework>net11.0</TargetFramework>
                           <VersionPrefix>2.0.0</VersionPrefix>
 Directory.Packages.props  <EFCoreVersion ...>[11.0.0,12.0.0)</EFCoreVersion>
+eng/consumer-test/        template/Consumer.csproj, aot-template/Aot.csproj: net11.0
+                          run.sh: filter "11.0." for the tooling version
 \end{sourcecode}
 
 Which target framework an EF version requires follows no fixed rule: EF Core~9 targets
@@ -539,10 +541,10 @@ framework.
   12 & Trimming and NativeAOT & Read new IL warnings (IL2xxx, IL3xxx) in the build and start a
   NativeAOT application; the experimental API for precompiled queries (EF9100) changes
   particularly often & \code{Is\allowbreak{}Aot\allowbreak{}Compatible},
-  \code{run.\allowbreak{}sh -\allowbreak{}-nativeaot} \\
+  \code{run.\allowbreak{}sh \allowbreak{}-{}-nativeaot} \\
   \tablerule
   13 & Integration tests & Against real databases, with the provider versions of the new line
-  & Integration and SQL Server tests \\
+  & Integration, SQL Server and Cosmos tests \\
   \tablerule
   14 & Compare the plugin's public API & The public API analyzer breaks the build on every
   deviation; enter intended breaks deliberately &
@@ -604,7 +606,7 @@ channels:
 \begin{datatable}{H{0.87}H{1.27}H{1.07}H{0.79}}
   \textbf{Channel} & \textbf{Trigger and packages} & \textbf{Purpose} & \textbf{On failure} \\
   \tablehead
-  Regular (\code{ci.\allowbreak{}yml}) & Every push and pull request; lowest version of the
+  Regular (\code{ci.\allowbreak{}yml}) & Every push to \code{main} and every pull request; lowest version of the
   range & The line the plugin is built against & Required check \\
   \tablerule
   Patches (\code{compatibility.\allowbreak{}yml}) & Weekly and manually;
@@ -636,8 +638,8 @@ coupled to preview packages:
   \tablerule
   Never pack or publish & Releases come only from regular builds of the release branches \\
   \tablerule
-  Not a required check & Previews break regularly; the job is an early warning that opens an
-  issue, not a gate for pull requests \\
+  Not a required check & Previews break regularly; the job is an early warning that should open an
+  issue (not shown in the sketch), not a gate for pull requests \\
 \end{datatable}
 
 \begin{sourcecode}[Job for the next EF version (\allowbreak{}sketch,\allowbreak{} not in the repository)]{text}
@@ -694,8 +696,9 @@ Every direct dependency on what is really a transitive package is listed in
 \code{Directory.\allowbreak{}Packages.\allowbreak{}props} with its origin, the advisory and the
 criterion for when it can go again. Nothing is suppressed: neither \code{NoWarn} nor a disabled
 audit makes a dependency safe, they only hide the finding. Both CI channels also run
-\code{dotnet list package -\allowbreak{}-vulnerable -\allowbreak{}-include-transitive} and fail on
-any finding. The regular run still builds against EF Core 10.0.0, the compatibility run against
+\code{dotnet list package \allowbreak{}-{}-vulnerable \allowbreak{}-{}-include-transitive} and fail on
+any finding. The regular run still builds against the start of the line (EF Core 10.0.0, as far as the
+companion packages allow), the compatibility run against
 the newest 10.0.x patch; the fixes are minimum versions and apply in both. For tooling there is an
 interaction: \code{Microsoft.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tasks}
 treats the audit warnings as errors on publish, so NativeAOT fails with EF Design 10.0.0

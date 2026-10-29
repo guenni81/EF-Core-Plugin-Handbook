@@ -29,7 +29,7 @@ at several points; to choose the right one you need to know the flow:
   \flowstep{IMigrationsModelDiffer}{Compares the old (snapshot) and new relational model}
   \flowstep{MigrationOperations}{CreateTable, AlterTable, ... with .Annotation /
   .OldAnnotation}
-  \flowstep{ICSharpMigrationsGenerator}{Writes migration, designer file and snapshot (dotnet
+  \flowstep{IMigrationsCodeGenerator}{Writes migration, designer file and snapshot (dotnet
   ef)}
   \flowstep{IMigrationsSqlGenerator}{Produces SQL when applying or scripting}
 \end{flowdiagram}
@@ -145,9 +145,10 @@ protected override void Generate(
     CreateTableOperation operation, IModel? model,
     MigrationCommandListBuilder builder, bool terminate = true)
 {
-    // Unterminated SQL cannot take further statements (as with Npgsql comments)
+    // Unterminated SQL cannot take further statements (Npgsql handles comments the same way)
     if (!terminate && operation.HasRlsConfiguration())
-        throw new ArgumentException("RLS cannot be emitted in an unterminated CREATE TABLE.");
+        throw new ArgumentException(
+            "RLS configuration cannot be emitted in an unterminated CREATE TABLE.");
 
     base.Generate(operation, model, builder, terminate);
     if (terminate)
@@ -421,8 +422,8 @@ public class TenancyDesignTimeServices : IDesignTimeServices
         services.RemoveAll<IAnnotationCodeGenerator>();
         services.AddSingleton<IAnnotationCodeGenerator, TenancyAnnotationCodeGenerator>();
 
-        // ... likewise ICSharpRuntimeAnnotationCodeGenerator (compiled models) and
-        // IDatabaseModelFactory (scaffolding)
+        // ... likewise ICSharpRuntimeAnnotationCodeGenerator (compiled models); the
+        // IDatabaseModelFactory (scaffolding), however, scoped as in Npgsql
     }
 }
 \end{sourcecode}
@@ -448,7 +449,7 @@ RlsEntityTypeBuilderExtensions.HasPolicy(b, "tenant_isolation", p => p
     .WithCheck("\"TenantId\" = nullif(current_setting('app.tenant_id', true), '')::uuid"));
 \end{sourcecode}
 
-EF Core 10 writes extension methods in the snapshot as static calls
+Since EF Core~7, EF writes extension methods in the snapshot as static calls
 (\code{Extensions.\allowbreak{}Method(\allowbreak{}b,\allowbreak{}
 .\allowbreak{}.\allowbreak{}.\allowbreak{})}) instead of
 \code{b.\allowbreak{}Method(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}. This
@@ -553,8 +554,8 @@ must be prepared for it in four places:
   \tablerule
   Annotations & Simple values are taken over by EF automatically; an
   \code{ICSharp\allowbreak{}Runtime\allowbreak{}Annotation\allowbreak{}Code\allowbreak{}Generator}
-  filters design-time annotations and translates complex values & Filters RLS policies,
-  keeps the runtime annotation (chapter~\ref{ch:property-level-fluent-api-and}) \\
+  filters design-time annotations and translates complex values & Filters the RLS
+  annotations, keeps the runtime annotation (chapter~\ref{ch:property-level-fluent-api-and}) \\
 \end{datatable}
 
 The last point is often misunderstood. EF takes annotations with simple values (strings,
@@ -614,7 +615,7 @@ the end:
   packages just built are resolved. \\
   \tablerule
   Tooling & \code{dotnet-ef} as a local tool. The design-time services are loaded by the
-  attribute in the startup project. Migration and SQL script contain RLS, \code{FORCE}, policy and index (PostgreSQL) and
+  attribute in the startup project. SQL script and snapshot contain RLS, \code{FORCE}, policy and index (PostgreSQL) and
   security policy and session key (SQL Server).
   \code{has-\allowbreak{}pending-\allowbreak{}model-\allowbreak{}changes} then reports no
   change. \\
@@ -626,10 +627,11 @@ the end:
   Compiled model & \code{dotnet ef dbcontext optimize}, compile, load with
   \code{Use\allowbreak{}Model}, the same checks. \\
   \tablerule
-  NativeAOT (\code{-\allowbreak{}-nativeaot}) & Publish with \code{Publish\allowbreak{}Aot} and
+  NativeAOT (\code{-{}-nativeaot}) & Publish with \code{Publish\allowbreak{}Aot} and
   precompiled queries, then run against PostgreSQL in Docker: two tenants write through the
   interceptors, one reads, RLS returns only its rows. No trim or AOT warning may come from an
-  Acme assembly. \\
+  Acme assembly. The deployment sequence from chapter~\ref{ch:retrofitting-and-operating} runs
+  as well: roles, migration bundle as the owner, no DDL for the app role. \\
 \end{datatable}
 
 CI runs the flow in a job of its own with the newest stable 10.0.x patch for the tooling and
@@ -655,7 +657,8 @@ prints the versions. The test found things the unit tests could not show:
     generates model and queries on publish; an additional, manually generated model gets in its
     way. Precompilation rejects \code{o.\allowbreak{}Total > 0} on a \code{decimal} property,
     \code{0m} works. EF, EF Relational and Npgsql report trim and AOT warnings themselves
-    (IL2104, IL3053).
+    (IL2104, IL3053). With EF Design~10.0.0, publishing fails because the Tasks package treats
+    the NuGet audit warnings as errors; that is why the test uses the newest patch by default.
 \end{itemize}
 
 Not checked are SQL Server under NativeAOT (the package is marked for it, a run with a real

@@ -167,8 +167,8 @@ of the same name on an entity without a tenant stays allowed.
   property & rejected & \code{Bulk\allowbreak{}Operation\allowbreak{}Tests} \\
   \tablerule
   After \code{Select} (also nested, also repeated), after \code{Join} and
-  \code{Select\allowbreak{}Many}, projected scalar & rejected & same, against PostgreSQL and SQL
-  Server: \code{Bulk\allowbreak{}Update\allowbreak{}Projection\allowbreak{}Tests},
+  \code{Select\allowbreak{}Many}, projected scalar & rejected & same; simple projection and scalar also
+  against PostgreSQL and SQL Server: \code{Bulk\allowbreak{}Update\allowbreak{}Projection\allowbreak{}Tests},
   \code{Sql\allowbreak{}Server\allowbreak{}Bulk\allowbreak{}Update\allowbreak{}Tests} \\
   \tablerule
   Other columns, also after a projection; a property of the same name without a tenant &
@@ -176,7 +176,9 @@ of the same name on an entity without a tenant stays allowed.
   \tablerule
   Projection through constructor parameters (\code{new Dto(\allowbreak{}o, o.\allowbreak{}Tenant\allowbreak{}Id)}),
   \code{Group\allowbreak{}By} & not checked; EF does not translate them &
-  \code{Forms\allowbreak{}\_that\allowbreak{}\_EF\allowbreak{}\_does\allowbreak{}\_not\allowbreak{}\_translate\allowbreak{}\_…} \\
+  Constructor:
+  \code{Forms\allowbreak{}\_that\allowbreak{}\_EF\allowbreak{}\_does\allowbreak{}\_not\allowbreak{}\_translate\allowbreak{}\_…};
+  \code{Group\allowbreak{}By} without a test \\
 \end{datatable}
 
 The database tests count the commands: a rejected update never reaches the database. Without the
@@ -420,7 +422,8 @@ and changes nothing. Without \code{Replace\allowbreak{}Service} the SQL test fai
 
 \section{Complex types}
 
-Complex types (since EF Core 8) are value types without their own identity whose properties
+Complex types (since EF Core 8) are value objects (classes or structs) without identity of
+their own whose properties
 end up in the owner's table. For plugins this means: conventions iterating
 \code{entity\allowbreak{}Type.\allowbreak{}Get\allowbreak{}Properties(\allowbreak{})} do
 \textbf{not} see their properties. They hang off \code{IComplex\allowbreak{}Property} and

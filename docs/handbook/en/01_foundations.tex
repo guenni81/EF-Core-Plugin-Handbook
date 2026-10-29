@@ -51,13 +51,6 @@ edition use English comments and messages. Each snippet's label names the file.
   code stands right before it. \\
 \end{datatable}
 
-\begin{note}[Public and internal APIs]
-  Some APIs that plugins need live in namespaces ending in \code{.Internal}. EF
-  Core calls them “pubternal”: publicly visible, but without compatibility guarantees. The
-  book marks these places, and chapter~\ref{ch:versioning-and-compatibility} explains how to
-  deal with them.
-\end{note}
-
 \handbooktableofcontents
 
 % ============================================================
@@ -71,7 +64,14 @@ edition use English comments and messages. Each snippet's label names the file.
     \item Chapter~\ref{ch:the-sample-scenario}: The sample scenario
     \item Chapter~\ref{ch:choosing-the-right-extension-point}: Choosing the right extension
     point
-  }}
+  }
+  \par\vspace{10mm}
+  \begin{note}[Public and internal APIs]
+    Some APIs that plugins need live in namespaces ending in \code{.Internal}. EF
+    Core calls them “pubternal”: publicly visible, but without compatibility guarantees. The
+    book marks these places, and chapter~\ref{ch:versioning-and-compatibility} explains how to
+    deal with them.
+  \end{note}}
 \part{Foundations}\label{part:foundations}
 
 % ------------------------------------------------------------
@@ -112,18 +112,18 @@ migrations, LINQ queries and dependency injection are assumed. No knowledge of E
 internals is required; the book introduces them where they are needed. Experience with
 PostgreSQL helps with the sample, but every SQL construct is explained when it first
 appears. Chapter~\ref{ch:ef-core-s-architecture-from} ends with a complete mini plugin that
-shows all building blocks on a single page before the large sample begins.
+shows all building blocks in a few pages before the large sample begins.
 
 \section{Two reading paths}\label{sec:reading-paths}
 
-The book is a textbook and a reference at the same time. Two paths lead through it on purpose;
+The book is a textbook and a reference at the same time. Two paths lead through it deliberately;
 both end with a result that can be checked:
 
 \begin{datatable}{H{0.62}H{1.19}H{1.19}}
   & \textbf{My first plugin} & \textbf{Reference for advanced readers} \\
   \tablehead
   Prerequisites & EF Core as a user: \code{Db\allowbreak{}Context}, migrations, LINQ,
-  dependency injection & The first path or an own plugin in production \\
+  dependency injection & The first path or a plugin of your own in production \\
   \tablerule
   Chapters & \ref{ch:what-is-an-ef-core}, \ref{ch:ef-core-s-architecture-from} (with the mini
   plugin), \ref{ch:the-sample-scenario}, \ref{ch:the-options-extension},
@@ -136,12 +136,12 @@ both end with a result that can be checked:
   \ref{ch:versioning-and-compatibility}, \ref{ch:row-level-security-in-production}--%
   \ref{ch:retrofitting-and-operating} and parts~\ref{part:deep-extensions} and~\ref{part:providers} \\
   \tablerule
-  Result & An own plugin with an options extension, a convention, a translator and an
+  Result & A plugin of your own with an options extension, a convention, a translator and an
   interceptor that builds as a package & A reasoned choice of an extension point: lifetime,
   composability, API status and upgrade risk \\
   \tablerule
-  Checkable by & \code{Minimal\allowbreak{}Plugin\allowbreak{}Tests} as a template for the own
-  tests, plus the consumer test (page~\pageref{sec:consumer-test}) applied to the own package &
+  Checkable by & \code{Minimal\allowbreak{}Plugin\allowbreak{}Tests} as a template for your own
+  tests, plus the consumer test (page~\pageref{sec:consumer-test}) applied to your own package &
   The compatibility matrix in chapter~\ref{ch:registering-services}, the check of the lifetimes
   against EF's service tables and the upgrade checklist \\
 \end{datatable}
@@ -278,7 +278,7 @@ consider first.
 Before the large sample, here is the smallest plugin that is still complete. It makes
 PostgreSQL's \code{reverse(\allowbreak{})} available in LINQ as
 \code{EF.\allowbreak{}Functions.\allowbreak{}Reverse(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}.
-Every later chapter elaborates one of its five pieces:
+Later chapters each elaborate one of its five pieces:
 
 % source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/MinimalPluginTests.cs
 \begin{sourcecode}[tests/\allowbreak{}Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Tests/\allowbreak{}Minimal\allowbreak{}Plugin\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}1/\allowbreak{}2,\allowbreak{} shortened)]{csharp}
@@ -697,8 +697,8 @@ from “Extend or replace?” (chapter~\ref{ch:ef-core-s-architecture-from}):
   \code{Add\allowbreak{}Interceptors}
   \cellmeta{public · multiple · Scoped or Singleton} &
   Is the value fixed at configuration time? Then an option suffices. &
-  Trying to resolve application services in the internal provider; scoped interceptors with
-  DbContext pooling, which keep the tenant of the first request. &
+  Trying to resolve application services in the internal provider; scoped services with
+  DbContext pooling, which come from the root container and see no request. &
   \ref{ch:public-api-and-integration-into}, \ref{ch:using-the-plugin-in-asp} \\
 \end{datatable}
 
@@ -981,8 +981,9 @@ belongs in the database, not in an interceptor.
 
 \section{Schema and tooling}\phantomsection\label{sec:decide-tooling}
 
-Migrations work against the design-time model, the other \code{dotnet ef} tools in a
-service provider of their own. A plugin registers services for that provider through
+Migrations compare design-time models. The differ, the code generators and scaffolding run in
+a service provider of \code{dotnet ef}'s own, only the migrations SQL generator in the
+internal provider. A plugin registers services for the design-time provider through
 \code{IDesign\allowbreak{}Time\allowbreak{}Services}, not in
 \code{Apply\allowbreak{}Services}.
 

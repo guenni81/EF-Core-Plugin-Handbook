@@ -170,8 +170,8 @@ gleichnamige Property einer Entität ohne Mandantenbezug bleibt erlaubt.
   \code{Bulk\allowbreak{}Operation\allowbreak{}Tests} \\
   \tablerule
   Nach \code{Select} (auch verschachtelt, auch mehrfach), nach \code{Join} und
-  \code{Select\allowbreak{}Many}, projiziertes Skalar & abgelehnt & ebenda, gegen
-  PostgreSQL und SQL Server: \code{Bulk\allowbreak{}Update\allowbreak{}Projection\allowbreak{}Tests},
+  \code{Select\allowbreak{}Many}, projiziertes Skalar & abgelehnt & ebenda; einfache Projektion und Skalar
+  auch gegen PostgreSQL und SQL Server: \code{Bulk\allowbreak{}Update\allowbreak{}Projection\allowbreak{}Tests},
   \code{Sql\allowbreak{}Server\allowbreak{}Bulk\allowbreak{}Update\allowbreak{}Tests} \\
   \tablerule
   Andere Spalten, auch nach einer Projektion; gleichnamige Property ohne Mandantenbezug &
@@ -179,7 +179,9 @@ gleichnamige Property einer Entität ohne Mandantenbezug bleibt erlaubt.
   \tablerule
   Projektion über Konstruktorparameter (\code{new Dto(\allowbreak{}o, o.\allowbreak{}Tenant\allowbreak{}Id)}),
   \code{Group\allowbreak{}By} & nicht geprüft; EF übersetzt sie nicht &
-  \code{Forms\allowbreak{}\_that\allowbreak{}\_EF\allowbreak{}\_does\allowbreak{}\_not\allowbreak{}\_translate\allowbreak{}\_…} \\
+  Konstruktor:
+  \code{Forms\allowbreak{}\_that\allowbreak{}\_EF\allowbreak{}\_does\allowbreak{}\_not\allowbreak{}\_translate\allowbreak{}\_…};
+  \code{Group\allowbreak{}By} ohne Test \\
 \end{datatable}
 
 Die Datenbanktests zählen die Befehle: Ein abgelehntes Update erreicht die Datenbank nie. Ohne
@@ -430,7 +432,7 @@ Ohne \code{Replace\allowbreak{}Service} scheitert der SQL-Test.
 
 \section{Complex Types}
 
-Complex Types (seit EF Core 8) sind Werttypen ohne eigene Identität, deren Properties in der
+Complex Types (seit EF Core 8) sind Wertobjekte (Klassen oder Structs) ohne eigene Identität, deren Properties in der
 Tabelle des Besitzers landen. Für Plugins heißt das: Conventions, die über
 \code{entity\allowbreak{}Type.\allowbreak{}Get\allowbreak{}Properties(\allowbreak{})}
 laufen, sehen deren Properties \textbf{nicht}. Sie hängen an

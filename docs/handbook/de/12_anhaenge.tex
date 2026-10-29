@@ -26,8 +26,9 @@ aus den Service-Tabellen von EF Core~10
 \code{Entity\allowbreak{}Framework\allowbreak{}Relational\allowbreak{}Services\allowbreak{}Builder},
 \code{Entity\allowbreak{}Framework\allowbreak{}Relational\allowbreak{}Design\allowbreak{}Services\allowbreak{}Builder}),
 die Angaben zur Provider-Implementierung aus Npgsql~10;
-\code{Service\allowbreak{}Registration\allowbreak{}Tests} prüft die Registrierungen des
-Beispiels gegen dieselben Tabellen.
+\code{Service\allowbreak{}Registration\allowbreak{}Tests} prüft die Registrierungen der
+PostgreSQL-Pakete gegen die Core- und die Relational-Tabelle,
+\code{Design\allowbreak{}Time\allowbreak{}Services\allowbreak{}Tests} die Design-Time-Dienste.
 
 \begin{datatable}{H{0.55}H{1.45}}
   \textbf{Kennzeichen} & \textbf{Bedeutung} \\
@@ -319,7 +320,7 @@ internen Provider. Sie sind fast immer der erste Weg:
   Kandidatensuche & \ref{ch:property-level-fluent-api-and} \\
   \tablerule
   \code{Query/\allowbreak{}Tenancy\allowbreak{}Evaluatable\allowbreak{}Expression\allowbreak{}Filter\allowbreak{}Plugin.\allowbreak{}cs}
-  & Filter für alle Pakete & \ref{ch:preventing-client-side-evaluation}, \ref{ch:what-belongs-in-the-core} \\
+  & Filter, erkennt die Funktionsklassen aller Pakete & \ref{ch:preventing-client-side-evaluation}, \ref{ch:what-belongs-in-the-core} \\
   \tablerule
   \code{Dependency\allowbreak{}Injection/\allowbreak{}*} & AddAcmeTenancy & \ref{ch:public-api-and-integration-into}, \ref{ch:what-belongs-in-the-core} \\
   \tablerule
@@ -368,7 +369,7 @@ internen Provider. Sie sind fast immer der erste Weg:
   & UseAcmeTenancy & \ref{ch:public-api-and-integration-into} \\
   \tablerule
   \code{Infrastructure/\allowbreak{}Tenancy\allowbreak{}Identifiers.\allowbreak{}cs} &
-  Validierung von Bezeichnern & \ref{ch:conventions}, \ref{ch:custom-migration-operations} \\
+  Validierung von Bezeichnern & \ref{ch:public-api-and-integration-into}, \ref{ch:custom-migration-operations} \\
   \tablerule
   \code{Storage/\allowbreak{}*} & Type Mapping und Plugin & \ref{ch:type-mappings-and-value-converters} \\
   \tablerule
@@ -484,7 +485,7 @@ internen Provider. Sie sind fast immer der erste Weg:
   & Die „Was passiert, wenn …?“-Fälle des Buchs, falsche neben richtiger Variante & – \\
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}Service\allowbreak{}Registration\allowbreak{}Tests.\allowbreak{}cs}
-  & Lebensdauer und Kardinalität jeder Registrierung gegen EFs Service-Tabelle & \ref{ch:versioning-and-compatibility} \\
+  & Lebensdauer und Kardinalität der Laufzeit-Registrierungen gegen EFs Service-Tabellen & \ref{ch:versioning-and-compatibility} \\
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}/\allowbreak{}State\allowbreak{}And\allowbreak{}Lifetime\allowbreak{}Tests.\allowbreak{}cs}
   & Fehlerfälle zu Zustand und Lebensdauern, falsche neben richtiger Variante & \ref{ch:state-lifetimes-and-thread-safety} \\
@@ -503,7 +504,8 @@ internen Provider. Sie sind fast immer der erste Weg:
   & Modell-Cache-Schlüssel pro Schema & \ref{ch:models-per-runtime-context} \\
   \tablerule
   \code{benchmarks/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}} &
-  BenchmarkDotNet-Projekt für die SaveChanges-Logik & \ref{ch:plugin-performance} \\
+  BenchmarkDotNet-Projekt: SaveChanges-Logik, Session-Roundtrip, Materialisierung,
+  Query-Kompilierung & \ref{ch:plugin-performance} \\
   \tablerule
   \code{tests/\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{}Integration\allowbreak{}Tests}
   & Testcontainers-Tests gegen PostgreSQL & \ref{ch:interceptors}, \ref{ch:test-strategy}, \ref{ch:bulk-operations-and-the-limits}, \ref{ch:the-update-pipeline}, \ref{ch:row-level-security-in-production}, \ref{ch:scaffolding-in-practice} \\
@@ -694,8 +696,8 @@ Konfiguration gilt? Was ändert sich, wenn die Convention die Annotation mit
   Die explizite Konfiguration gilt. Der Convention-Builder setzt Annotations mit
   \code{Configuration\allowbreak{}Source.\allowbreak{}Convention} und lässt eine explizite
   Konfiguration stehen; \code{Has\allowbreak{}Annotation} gibt dann \code{null} zurück
-  (Kapitel~\ref{ch:conventions}). \code{Set\allowbreak{}Annotation} am Typ kennt keine
-  Konfigurationsquelle und würde die Policy des Anwenders still überschreiben.
+  (Kapitel~\ref{ch:conventions}). \code{Set\allowbreak{}Annotation} am Typ prüft nicht, ob
+  seine Konfigurationsquelle die vorhandene überschreiben darf, und würde die Policy des Anwenders still überschreiben.
   Nachprüfen: \code{Convention\allowbreak{}Tests.\allowbreak{}Explicit\allowbreak{}\_policy\allowbreak{}\_with\allowbreak{}\_same\allowbreak{}\_name\allowbreak{}\_wins\allowbreak{}\_over\allowbreak{}\_convention}.
 \end{note}
 
@@ -713,7 +715,7 @@ jeder Mandant „sein“ Modell bekommt. Was passiert mit 1000 Mandanten?
   Zustand pro Anfrage und gehört in den Interceptor
   (Kapitel~\ref{ch:state-lifetimes-and-thread-safety}); nur wenn sich das \emph{Modell} wirklich
   unterscheidet, hilft ein eigener Modell-Cache-Schlüssel (Kapitel~\ref{ch:models-per-runtime-context}).
-  Nachprüfen: \code{State\allowbreak{}And\allowbreak{}Lifetime\allowbreak{}Tests.\allowbreak{}Tenant\allowbreak{}\_in\allowbreak{}\_the\allowbreak{}\_service\allowbreak{}\_provider\allowbreak{}\_key\allowbreak{}\_needs\allowbreak{}\_a\allowbreak{}\_provider\allowbreak{}\_per\allowbreak{}\_tenant}.
+  Nachprüfen (Schlüssel pro Mandant, nicht der Schwellwert): \code{State\allowbreak{}And\allowbreak{}Lifetime\allowbreak{}Tests.\allowbreak{}Tenant\allowbreak{}\_in\allowbreak{}\_the\allowbreak{}\_service\allowbreak{}\_provider\allowbreak{}\_key\allowbreak{}\_needs\allowbreak{}\_a\allowbreak{}\_provider\allowbreak{}\_per\allowbreak{}\_tenant}.
 \end{note}
 
 \section{Übung 3: Nullability eines Translators}
@@ -823,6 +825,8 @@ Branches, die sich weiterbewegen. Alle Adressen waren bei Redaktionsschluss erre
   \href{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore/Infrastructure/EntityFrameworkServicesBuilder.cs}{EntityFrameworkServicesBuilder (EF Core 10.0.0)}\cellmeta{\url{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore/Infrastructure/EntityFrameworkServicesBuilder.cs}} & \ref{app:A} \\
   \tablerule
   \href{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore.Relational/Infrastructure/EntityFrameworkRelationalServicesBuilder.cs}{EntityFrameworkRelationalServicesBuilder (EF Core 10.0.0)}\cellmeta{\url{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore.Relational/Infrastructure/EntityFrameworkRelationalServicesBuilder.cs}} & \ref{app:A} \\
+  \tablerule
+  \href{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore.Relational/Design/EntityFrameworkRelationalDesignServicesBuilder.cs}{EntityFrameworkRelationalDesignServicesBuilder (EF Core 10.0.0)}\cellmeta{\url{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore.Relational/Design/EntityFrameworkRelationalDesignServicesBuilder.cs}} & \ref{app:A} \\
   \tablerule
   \href{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore/Metadata/Internal/ConstructorBindingFactory.cs}{ConstructorBindingFactory (EF Core 10.0.0)}\cellmeta{\url{https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore/Metadata/Internal/ConstructorBindingFactory.cs}} & \ref{ch:materialization-from-rows-to-objects} \\
   \tablerule

@@ -261,6 +261,7 @@ EXEC sp_rename N'[Invoice].[TenantId]', N'Mandant', 'COLUMN';
 EXEC sp_rename N'[Invoice].[IX_Invoice_TenantId]', N'IX_Invoice_Mandant', 'INDEX';
 IF SCHEMA_ID(N'acme') IS NULL EXEC(N'CREATE SCHEMA [acme]');
 IF OBJECT_ID(N'[acme].[fn_tenant_predicate]', N'IF') IS NULL EXEC(N'CREATE FUNCTION ...');
+...
 CREATE SECURITY POLICY [acme].[tenant_dbo_Invoice]
     ADD FILTER PREDICATE [acme].[fn_tenant_predicate]([Mandant]) ON [dbo].[Invoice], ...
 \end{sourcecode}
@@ -357,15 +358,16 @@ Run time and database can still drift apart briefly. If a new app version with a
 before the migration has been applied, the interceptor sets a key that the function does not
 read. The result is not a data leak but \emph{fail closed}: no rows, and writes fail on the BLOCK
 predicate. The migration therefore belongs before the new app version.
-\code{Sql\allowbreak{}Server\allowbreak{}Session\allowbreak{}Settings\allowbreak{}Tests} checks
-without a database the annotations, the snapshot, the empty diff, the detected change and the
-historical migration. Against a real SQL Server it checks changing key and schema with Up and
+\code{Sql\allowbreak{}Server\allowbreak{}Session\allowbreak{}Settings\allowbreak{}Model\allowbreak{}Tests}
+checks without a database the annotations, the snapshot, the empty diff, the detected change
+and the historical migration. Against a real SQL Server,
+\code{Sql\allowbreak{}Server\allowbreak{}Session\allowbreak{}Settings\allowbreak{}Tests} checks changing key and schema with Up and
 Down, the upgrade of a 1.0 installation and the second context.
 
 \section{Run time: same flow, different command}
 
 % source: src/Acme.EntityFrameworkCore.Tenancy.SqlServer/Runtime/SqlServerTenantSessionInterceptor.cs
-\begin{sourcecode}[Runtime/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Runtime/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}excerpt)]{csharp}
 public class SqlServerTenantSessionInterceptor : TenantSessionInterceptor
 {
     public SqlServerTenantSessionInterceptor(ITenantProvider tenants)
@@ -389,7 +391,7 @@ public class SqlServerTenantSessionInterceptor : TenantSessionInterceptor
 }
 \end{sourcecode}
 
-\section{Deliberately not ported}
+\section{Deliberately not ported to SQL Server}
 
 The SQL Server package is a self-contained but leaner provider. Fluent API policies, the optional
 query filter of the convention (\code{Apply\allowbreak{}Query\allowbreak{}Filter}; the core's
@@ -617,7 +619,8 @@ in the repository checks the behavior), \emph{rejected while the model is built}
   \tablerule
   Deliberate exception & Attribute or
   \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})},
-  logged as a warning; tested & Attribute; tested & Attribute; tested \\
+  logged as a warning; tested & Attribute, logged as a warning; tested & Attribute;
+  tested \\
   \tablerule
   Transactions & \code{Begin\allowbreak{}Transaction}, \code{Save\allowbreak{}Changes} and
   \code{Transaction\allowbreak{}Scope} supported and tested; \code{Use\allowbreak{}Transaction}
@@ -625,7 +628,7 @@ in the repository checks the behavior), \emph{rejected while the model is built}
   PostgreSQL, without transaction pooling & Not applicable (no session) \\
 \end{datatable}
 
-\section{Deliberately not ported}
+\section{Deliberately not ported to Cosmos DB}
 
 Migrations and scaffolding (Cosmos has no schema), the
 session interceptor and \code{Database.\allowbreak{}Apply\allowbreak{}Tenant\allowbreak{}Session(\allowbreak{})}
@@ -639,10 +642,12 @@ throw, so the application and its tests use the async variants throughout.
   pinned, the connection uses gateway mode over the container's HTTP client, and the test
   project references a newer Cosmos SDK than EF Core~10.0.0 brings: the SDK~3.51 cannot read
   every binary response of the current emulator. The project has two groups. The model tests
-  (\code{Model\allowbreak{}Tests}: partition key, query filter, validation) need neither the
+  (\code{Model\allowbreak{}Tests}, \code{Mapping\allowbreak{}Model\allowbreak{}Tests}: partition
+  key, query filter, validation, mappings) need neither the
   emulator nor Docker and run in the build job of the CI with the filter
   \code{Category!=\allowbreak{}Emulator}; if one fails, the build fails, in the compatibility
-  run as well. Only the tests in \code{Emulator\allowbreak{}Tests} carry the trait
+  run as well. Only the tests in \code{Emulator\allowbreak{}Tests} and
+  \code{Mapping\allowbreak{}Emulator\allowbreak{}Tests} carry the trait
   \code{Category=\allowbreak{}Emulator}. Because the preview emulator occasionally hangs, they
   run in a job of their own with a time limit that does not block the build yet. A new test
   without the trait lands in the required group, so no test drops out of both.

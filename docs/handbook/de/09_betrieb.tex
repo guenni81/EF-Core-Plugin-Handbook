@@ -31,7 +31,7 @@ stillschweigend wirkungslos oder unbrauchbar:
   \code{NOSUPERUSER NOBYPASSRLS} (eigene Operation,
   Kapitel~\ref{ch:custom-migration-operations}) \\
   \tablerule
-  Setting nicht gesetzt & Ohne \code{nullif}: Fehler; mit: leere Ergebnisse & Interceptor
+  Setting leer oder zurückgesetzt & Ohne \code{nullif}: Fehler; mit: leere Ergebnisse & Interceptor
   setzt den Wert bei jedem Öffnen \\
   \tablerule
   Kein Index auf der Mandantenspalte & Jede Abfrage scannt die ganze Tabelle &
@@ -286,7 +286,8 @@ public static string ExpectedTables(DbContext context)
 
 Die Zeile kommt in ein Session-Setting (PostgreSQL, \code{SET diag.\allowbreak{}expected}) oder
 in den Session-Kontext (SQL Server, \code{sp\_\allowbreak{}set\_\allowbreak{}session\_\allowbreak{}context
-N'diag.\allowbreak{}expected'}), zusammen mit der App-Rolle und, wenn sie vom Standard abweichen,
+N'diag.\allowbreak{}expected'}), zusammen mit der App-Rolle (PostgreSQL, \code{diag.\allowbreak{}app\_\allowbreak{}role}) bzw. dem
+App-Benutzer (SQL Server, \code{diag.\allowbreak{}app\_\allowbreak{}user}) und, wenn sie vom Standard abweichen,
 Setting-Name, Policy-Name, \code{diag.\allowbreak{}force} (PostgreSQL; \code{off} für Tabellen mit
 \code{force:\allowbreak{} false}, das für den ganzen Lauf gilt), Session-Schlüssel und
 Policy-Schema. Dann läuft das Skript in derselben Session und liefert eine Zeile pro erwarteter Tabelle:
@@ -533,8 +534,9 @@ für geladene Entitäten; maßgeblich ist die Regel in der Datenbank.
 Die bisherigen Kapitel gehen von einer neuen Datenbank aus. Meist gibt es aber schon Tabellen
 mit Daten, eine laufende Anwendung und Nutzer, die während der Umstellung weiterarbeiten. Dieses
 Kapitel zeigt den Weg von einer Tabelle ohne Mandantenspalte zu RLS und danach den Betrieb unter
-Retries und Verbindungsabbrüchen. Alle Schritte stehen ausführbar in
-\code{Operations\allowbreak{}Tests} gegen PostgreSQL. Den Abschluss bildet das Deployment:
+Retries und Verbindungsabbrüchen. Der Kern der Umstellung steht ausführbar
+in \code{Operations\allowbreak{}Tests} gegen PostgreSQL (Spalte, Backfill, Wächter, RLS und
+Down), die Beziehungen in \code{Relationship\allowbreak{}Tests}. Den Abschluss bildet das Deployment:
 Migrationen in der Pipeline mit getrennten Rollen und Änderungen ohne Ausfallzeit.
 
 \section{Von der Tabelle ohne Mandant zu RLS}
@@ -667,8 +669,8 @@ Strategie; die Fälle offener Verbindungen stehen in
 
 \section{Deployment: Pipeline, Rollen und Zero-Downtime}\label{sec:deployment}
 
-Die Beispiele legen die Datenbank in der Entwicklung mit
-\code{Development\allowbreak{}Database} an. In Produktion gehört jede Schemaänderung in eine
+Das Beispiel \code{Shop\allowbreak{}Api} legt die Datenbank in der Entwicklung mit
+\code{Development\allowbreak{}Database} an, \code{Shop\allowbreak{}Sample} über Migrationen. In Produktion gehört jede Schemaänderung in eine
 Pipeline, die zwei Rollen strikt trennt:
 
 \begin{itemize}
@@ -934,8 +936,8 @@ Eigentümer läuft. Die Tests decken die Fälle ab:
   \code{A\allowbreak{}\_superuser\allowbreak{}\_bypasses\allowbreak{}\_…} & Superuser umgeht
   \code{FORCE} \\
   \tablerule
-  \code{A\allowbreak{}\_generated\allowbreak{}\_script\allowbreak{}\_…} & Das Skript enthält
-  die Stammdaten, aber keinen Seed \\
+  \code{A\allowbreak{}\_generated\allowbreak{}\_script\allowbreak{}\_…} & Das erzeugte Skript
+  (\code{Generate\allowbreak{}Create\allowbreak{}Script}) enthält die Stammdaten, aber keinen Seed \\
 \end{datatable}
 
 % run: dotnet-test
@@ -1408,7 +1410,7 @@ Scope hält, hat das Folgen:
   \textbf{Registrierung} & \textbf{Verhalten} \\
   \tablehead
   Singleton-Factory, Scope-Validierung an (ASP.NET Core in Development) & Exception: „Cannot
-  resolve scoped service 'ITenantProvider' from root provider.“ \\
+  resolve scoped service '…ITenantProvider' from root provider.“ \\
   \tablerule
   Singleton-Factory, Scope-Validierung aus (Standard in Produktion) & Kein Fehler. Die
   Interceptors bekommen eine Instanz aus dem Root-Container, die keine Anfrage je befüllt:
@@ -1472,7 +1474,7 @@ using (AmbientTenantProvider.Use(tenant))
 Weil der Provider das \code{Async\allowbreak{}Local} bei jedem Zugriff liest, kann er als
 Singleton registriert werden. Parallele Jobs behalten ihren eigenen Mandanten, und nach dem
 \code{using}-Block bleibt kein Mandant zurück;
-\code{Background\allowbreak{}Tenant\allowbreak{}Tests} prüft beides mit 20 parallelen Jobs.
+\code{Background\allowbreak{}Tenant\allowbreak{}Tests} prüft beides, die Isolation mit 20 parallelen Jobs.
 Eine Anwendung mit Web-Anfragen \emph{und} Jobs kombiniert beide Quellen in einem Provider:
 zuerst der Claim, sonst der Ambient-Mandant.
 
@@ -1578,12 +1580,13 @@ seine Aufgabe zu erfüllen, etwa ein Testfilter, der keinen Test trifft, käme d
 Listings werden deshalb \emph{ausgeführt}: Eine Kommentarzeile \code{\% run: <Art>} markiert
 sie, und \code{check\_\allowbreak{}examples.\allowbreak{}py} führt sie im CI-Job
 \code{handbook-\allowbreak{}examples} aus, in temporären Verzeichnissen und Containern, die es
-wieder entfernt. Derzeit sind das zwei Listings: der Testbefehl im Übungsanhang, für den das
-Skript die Zähler aus einer TRX-Ergebnisdatei liest und mindestens einen ausgeführten und keinen
+wieder entfernt. Derzeit sind das drei Listings: zwei Testbefehle (die Seeding-Tests,
+Seite~\pageref{sec:seeding-under-rls}, und die Übung im Anhang), für die das Skript die Zähler aus einer TRX-Ergebnisdatei liest und mindestens einen ausgeführten und keinen
 fehlgeschlagenen Test verlangt, und die Sitzung von \code{Shop\allowbreak{}Api} in
 Kapitel~\ref{ch:using-the-plugin-in-asp}, deren curl-Anfragen gegen das Beispiel und PostgreSQL
 laufen und die Isolation zeigen müssen. Alle übrigen Listings werden nicht ausgeführt:
-C\#-Auszüge sind mit \code{\% source:} gebunden oder als vereinfacht gekennzeichnet, Workflow-
+C\#-Auszüge sind mit \code{\% source:} gebunden, als vereinfacht gekennzeichnet oder reine
+Beispiele ohne Quelldatei, Workflow-
 und Konfigurationsauszüge sind gekürzt, und Listings mit Auslassungen sind keine Programme. Die
 Pakete als Ganzes, das \code{dotnet ef}-Tooling und NativeAOT deckt der Consumer-Test ab, nicht
 dieses Skript.

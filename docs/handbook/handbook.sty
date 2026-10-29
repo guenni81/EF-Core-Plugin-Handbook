@@ -265,9 +265,9 @@
     \hyperref[sec:version-dependency]{\textcolor{risk@#1}{\bfseries\csuse{handbookrisk@#1}}}}%
   \par\vspace{4pt}}
 
-% Table of contents right after the front matter: its heading is a \chapter*, which starts a
-% new page; without the page break the contents fill the page the front matter spills onto.
-\newcommand{\handbooktableofcontents}{{\let\clearpage\relax\tableofcontents}}
+% Table of contents after the front matter, always on a page of its own: its heading is a
+% \chapter*, which starts a new page, so it never sits directly under the boxes of the preface.
+\newcommand{\handbooktableofcontents}{\tableofcontents}
 
 % Structure counts for the title page, taken from the previous run's aux file (like \ref):
 % \appendix records the parts before the appendix part and the chapters, the end of the

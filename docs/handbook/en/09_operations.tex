@@ -30,7 +30,7 @@ policies ineffective or unusable:
   Superuser or \code{BYPASSRLS} & RLS is always bypassed, even with FORCE & App role with
   \code{NOSUPERUSER NOBYPASSRLS} (custom operation, chapter~\ref{ch:custom-migration-operations}) \\
   \tablerule
-  Setting not set & Without \code{nullif}: error; with it: empty results & The interceptor
+  Setting empty or reset & Without \code{nullif}: error; with it: empty results & The interceptor
   sets the value on every open \\
   \tablerule
   No index on the tenant column & Every query scans the whole table & Index convention
@@ -271,7 +271,8 @@ public static string ExpectedTables(DbContext context)
 
 The line goes into a session setting (PostgreSQL, \code{SET diag.\allowbreak{}expected}) or into
 the session context (SQL Server, \code{sp\_\allowbreak{}set\_\allowbreak{}session\_\allowbreak{}context
-N'diag.\allowbreak{}expected'}), together with the app role and, if they differ from the
+N'diag.\allowbreak{}expected'}), together with the app role (PostgreSQL, \code{diag.\allowbreak{}app\_\allowbreak{}role}) or the
+app user (SQL Server, \code{diag.\allowbreak{}app\_\allowbreak{}user}) and, if they differ from the
 defaults, setting name, policy name, \code{diag.\allowbreak{}force} (PostgreSQL; \code{off} for
 tables with \code{force:\allowbreak{} false}, valid for the whole run), session key and policy
 schema. Then the script runs in the
@@ -510,7 +511,9 @@ loaded entities; the rule in the database is what counts.
 The previous chapters assume a new database. Usually, however, there already are tables with
 data, a running application and users who keep working during the change. This chapter shows the
 way from a table without a tenant column to RLS, and after that operation under retries and lost
-connections. All steps are executable in \code{Operations\allowbreak{}Tests} against PostgreSQL.
+connections. The core of the change is executable in \code{Operations\allowbreak{}Tests} against
+PostgreSQL (column, backfill, guard, RLS and down), the relationships in
+\code{Relationship\allowbreak{}Tests}.
 The chapter closes with deployment: migrations in the pipeline with separate roles, and changes
 without downtime.
 
@@ -637,7 +640,8 @@ the transaction inside the strategy; the cases of open connections are in
 
 \section{Deployment: pipeline, roles and zero downtime}\label{sec:deployment}
 
-The samples create the database in development with \code{Development\allowbreak{}Database}.
+The \code{Shop\allowbreak{}Api} sample creates the database in development with
+\code{Development\allowbreak{}Database}, \code{Shop\allowbreak{}Sample} through migrations.
 In production, every schema change belongs in a pipeline that strictly separates two roles:
 
 \begin{itemize}
@@ -897,8 +901,8 @@ tests cover the cases:
   \code{A\allowbreak{}\_superuser\allowbreak{}\_bypasses\allowbreak{}\_…} & A superuser bypasses
   \code{FORCE} \\
   \tablerule
-  \code{A\allowbreak{}\_generated\allowbreak{}\_script\allowbreak{}\_…} & The script contains the
-  master data, but no seed \\
+  \code{A\allowbreak{}\_generated\allowbreak{}\_script\allowbreak{}\_…} & The generated script
+  (\code{Generate\allowbreak{}Create\allowbreak{}Script}) contains the master data, but no seed \\
 \end{datatable}
 
 % run: dotnet-test
@@ -1366,7 +1370,7 @@ tenant provider that holds state per scope, this has consequences:
   \textbf{Registration} & \textbf{Behavior} \\
   \tablehead
   Singleton factory, scope validation on (ASP.NET Core in Development) & Exception: “Cannot
-  resolve scoped service 'ITenantProvider' from root provider.” \\
+  resolve scoped service '…ITenantProvider' from root provider.” \\
   \tablerule
   Singleton factory, scope validation off (production default) & No error. The interceptors
   get an instance from the root container that no request ever fills: no tenant, saving
@@ -1430,7 +1434,7 @@ using (AmbientTenantProvider.Use(tenant))
 Because the provider reads the \code{Async\allowbreak{}Local} on every access, it can be
 registered as a singleton. Parallel jobs keep their own tenant, and after the \code{using}
 block no tenant is left behind; \code{Background\allowbreak{}Tenant\allowbreak{}Tests}
-checks both with 20 parallel jobs. An application with web requests \emph{and} jobs combines
+checks both, the isolation with 20 parallel jobs. An application with web requests \emph{and} jobs combines
 both sources in one provider: the claim first, otherwise the ambient tenant.
 
 \textbf{Messages.} With a message broker (RabbitMQ, Kafka, Azure Service Bus) or a framework on
@@ -1533,12 +1537,12 @@ its job, such as a test filter that matches no test, would pass them. A few list
 \emph{executed}: a comment line \code{\% run: <kind>} marks them, and
 \code{check\_\allowbreak{}examples.\allowbreak{}py} runs them in the CI job
 \code{handbook-\allowbreak{}examples}, in temporary directories and containers that it removes
-again. Currently these are two listings: the test command in the exercises appendix, for which
-the script reads the counters from a TRX result file and requires at least one executed and no
+again. Currently these are three listings: two test commands (the seeding tests,
+page~\pageref{sec:seeding-under-rls}, and the exercise in the appendix), for which the script reads the counters from a TRX result file and requires at least one executed and no
 failed test, and the session of \code{Shop\allowbreak{}Api} in
 chapter~\ref{ch:using-the-plugin-in-asp}, whose curl requests run against the sample and
 PostgreSQL and must show the isolation. Every other listing is not executed: C\# excerpts are
-bound with \code{\% source:} or marked as simplified, workflow and configuration excerpts are
+bound with \code{\% source:}, marked as simplified or plain examples without a source file, workflow and configuration excerpts are
 shortened, and listings with elisions are not programs. The packages as a whole, the
 \code{dotnet ef} tooling and NativeAOT are covered by the consumer test, not by this script.
 

@@ -276,14 +276,15 @@ public void ApplyServices(IServiceCollection services)
 \end{sourcecode}
 
 \begin{failure}[What happens if a plugin interface gets the wrong lifetime?]
-  \textbf{Observable.} Registration and model building succeed. Only the first query that
-  uses the function fails, with \code{Argument\allowbreak{}Null\allowbreak{}Exception}:
+  \textbf{Observable.} Registration and model building succeed. Only the first query EF
+  translates fails, even one that does not use the function, with \code{Argument\allowbreak{}Null\allowbreak{}Exception}:
   “Value cannot be null. (Parameter 'provider')”. The message names neither the plugin nor
   the lifetime.
 
   \textbf{Cause.} EF expects translator plugins as scoped. As a singleton, the plugin is
   created in the root scope of the internal provider, where its scoped dependency
-  \code{ISql\allowbreak{}Expression\allowbreak{}Factory} cannot be resolved. The internal
+  \code{ISql\allowbreak{}Expression\allowbreak{}Factory} cannot be resolved. It is created as
+  soon as EF collects all translator plugins for the first translation. The internal
   provider does not check lifetimes (chapter~\ref{ch:state-lifetimes-and-thread-safety}).
 
   \textbf{Solution.} Always register EF services and plugin interfaces through the services
@@ -422,7 +423,7 @@ services.AddDbContext<ShopContext>((sp, options) => options
 
   Decorating requires that the public interface is enough. The tenancy plugin needs
   protected hooks inside \code{CREATE TABLE} and therefore derives from Npgsql's generator.
-  For such cases the fallback from “Integration as a way out” remains
+  For such cases the fallback from “Integration as the way out” remains
   (page~\pageref{sec:integration-way-out}): public logic such as
   \code{Create\allowbreak{}Policy\allowbreak{}Sql}, virtual methods, and
   \code{Replace\allowbreak{}Service} in the application.
@@ -745,8 +746,10 @@ the connection interceptor gets the setting name from the singleton options that
 \begin{important}[DbContext pooling]
   With \code{Add\allowbreak{}Db\allowbreak{}Context\allowbreak{}Pool}, contexts are reused
   and receive their options only once, built with the root provider. The interceptor
-  instances are created once and serve all later requests. A tenant provider that keeps its
-  tenant per scope then always returns that of the first request. For pooling, the tenant
+  instances are created once and serve all later requests. A scoped tenant provider then comes
+  from the root container: with scope validation, building the options already fails;
+  without it, the interceptor gets an instance that no request ever fills, and saving throws
+  “no active tenant”. For pooling, the tenant
   provider must therefore be a singleton that determines the tenant anew on every access, for
   example via \code{IHttp\allowbreak{}Context\allowbreak{}Accessor}.
   Chapter~\ref{ch:using-the-plugin-in-asp} shows this variant, chapter~\ref{ch:state-lifetimes-and-thread-safety} the

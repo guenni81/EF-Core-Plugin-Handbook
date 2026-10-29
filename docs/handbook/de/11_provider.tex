@@ -267,6 +267,7 @@ EXEC sp_rename N'[Invoice].[TenantId]', N'Mandant', 'COLUMN';
 EXEC sp_rename N'[Invoice].[IX_Invoice_TenantId]', N'IX_Invoice_Mandant', 'INDEX';
 IF SCHEMA_ID(N'acme') IS NULL EXEC(N'CREATE SCHEMA [acme]');
 IF OBJECT_ID(N'[acme].[fn_tenant_predicate]', N'IF') IS NULL EXEC(N'CREATE FUNCTION ...');
+...
 CREATE SECURITY POLICY [acme].[tenant_dbo_Invoice]
     ADD FILTER PREDICATE [acme].[fn_tenant_predicate]([Mandant]) ON [dbo].[Invoice], ...
 \end{sourcecode}
@@ -364,15 +365,17 @@ Laufzeit und Datenbank können trotzdem kurz auseinanderlaufen. Läuft eine neue
 neuem Schlüssel, bevor die Migration eingespielt ist, setzt der Interceptor einen Schlüssel, den
 die Funktion nicht liest. Die Folge ist kein Datenleck, sondern \emph{fail closed}: keine Zeilen,
 und Schreibversuche scheitern am BLOCK-Prädikat. Die Migration gehört deshalb vor die neue
-App-Version. \code{Sql\allowbreak{}Server\allowbreak{}Session\allowbreak{}Settings\allowbreak{}Tests}
+App-Version.
+\code{Sql\allowbreak{}Server\allowbreak{}Session\allowbreak{}Settings\allowbreak{}Model\allowbreak{}Tests}
 prüft ohne Datenbank die Annotations, den Snapshot, den leeren Diff, die erkannte Änderung und
-die historische Migration. Gegen einen echten SQL Server prüft es den Wechsel von Schlüssel und
+die historische Migration. Gegen einen echten SQL Server prüft
+\code{Sql\allowbreak{}Server\allowbreak{}Session\allowbreak{}Settings\allowbreak{}Tests} den Wechsel von Schlüssel und
 Schema mit Up und Down, das Upgrade einer 1.0-Installation und den zweiten Context.
 
 \section{Laufzeit: derselbe Ablauf, anderer Befehl}
 
 % source: src/Acme.EntityFrameworkCore.Tenancy.SqlServer/Runtime/SqlServerTenantSessionInterceptor.cs
-\begin{sourcecode}[Runtime/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs]{csharp}
+\begin{sourcecode}[Runtime/\allowbreak{}Sql\allowbreak{}Server\allowbreak{}Tenant\allowbreak{}Session\allowbreak{}Interceptor.\allowbreak{}cs (\allowbreak{}Auszug)]{csharp}
 public class SqlServerTenantSessionInterceptor : TenantSessionInterceptor
 {
     public SqlServerTenantSessionInterceptor(ITenantProvider tenants)
@@ -396,7 +399,7 @@ public class SqlServerTenantSessionInterceptor : TenantSessionInterceptor
 }
 \end{sourcecode}
 
-\section{Bewusst nicht portiert}
+\section{Bewusst nicht nach SQL Server portiert}
 
 Das SQL-Server-Paket ist ein eigenständiger, aber schlankerer Provider. Fluent-API-Policies,
 der optionale Query-Filter der Convention (\code{Apply\allowbreak{}Query\allowbreak{}Filter}; der
@@ -630,7 +633,8 @@ gilt) und \emph{nicht verifiziert} (kein Test; nicht darauf verlassen).
   \tablerule
   Bewusste Ausnahme & Attribut oder
   \code{Has\allowbreak{}No\allowbreak{}Row\allowbreak{}Level\allowbreak{}Security(\allowbreak{})},
-  als Warnung protokolliert; getestet & Attribut; getestet & Attribut; getestet \\
+  als Warnung protokolliert; getestet & Attribut, als Warnung protokolliert; getestet &
+  Attribut; getestet \\
   \tablerule
   Transaktionen & \code{Begin\allowbreak{}Transaction}, \code{Save\allowbreak{}Changes} und
   \code{Transaction\allowbreak{}Scope} unterstützt und getestet;
@@ -639,7 +643,7 @@ gilt) und \emph{nicht verifiziert} (kein Test; nicht darauf verlassen).
   (keine Session) \\
 \end{datatable}
 
-\section{Bewusst nicht portiert}
+\section{Bewusst nicht nach Cosmos DB portiert}
 
 Migrations und Scaffolding (Cosmos hat kein Schema), der
 Session-Interceptor und
@@ -654,10 +658,11 @@ werfen, Anwendung und Tests nutzen also durchgehend die asynchronen Varianten.
   ist festgenagelt, die Verbindung nutzt den Gateway-Modus über den HTTP-Client des Containers,
   und das Testprojekt referenziert ein neueres Cosmos-SDK, als EF Core~10.0.0 mitbringt: Das
   SDK~3.51 kann nicht jede binäre Antwort des aktuellen Emulators lesen. Das Projekt hat zwei
-  Gruppen. Die Modelltests (\code{Model\allowbreak{}Tests}: Partition Key, Query-Filter,
-  Validierung) brauchen weder Emulator noch Docker und laufen im Build-Job der CI mit dem
+  Gruppen. Die Modelltests (\code{Model\allowbreak{}Tests}, \code{Mapping\allowbreak{}Model\allowbreak{}Tests}:
+  Partition Key, Query-Filter, Validierung, Abbildungen) brauchen weder Emulator noch Docker und laufen im Build-Job der CI mit dem
   Filter \code{Category!=\allowbreak{}Emulator}; scheitert einer, scheitert der Build, auch im
-  Kompatibilitätslauf. Nur die Tests in \code{Emulator\allowbreak{}Tests} tragen den Trait
+  Kompatibilitätslauf. Nur die Tests in \code{Emulator\allowbreak{}Tests} und
+  \code{Mapping\allowbreak{}Emulator\allowbreak{}Tests} tragen den Trait
   \code{Category=\allowbreak{}Emulator}. Weil der Preview-Emulator gelegentlich hängt, laufen sie
   in einem eigenen Job mit Zeitlimit, der den Build noch nicht blockiert. Ein neuer Test ohne
   Trait landet in der Pflichtgruppe, so fällt kein Test aus beiden heraus.

@@ -54,13 +54,6 @@ identisch. Das Label jedes Auszugs nennt die Datei.
   falsche Code steht direkt davor. \\
 \end{datatable}
 
-\begin{note}[Öffentliche und interne APIs]
-  Einige APIs, die Plugins brauchen, liegen in Namespaces mit \code{.Internal}.
-  EF Core nennt sie „pubternal“: öffentlich sichtbar, aber ohne Kompatibilitätsgarantie. Das
-  Buch kennzeichnet diese Stellen und erklärt in
-  Kapitel~\ref{ch:versioning-and-compatibility}, wie man damit umgeht.
-\end{note}
-
 \handbooktableofcontents
 
 % ============================================================
@@ -74,7 +67,14 @@ identisch. Das Label jedes Auszugs nennt die Datei.
     \item Kapitel~\ref{ch:the-sample-scenario}: Das Beispielszenario
     \item Kapitel~\ref{ch:choosing-the-right-extension-point}: Den passenden
     Erweiterungspunkt finden
-  }}
+  }
+  \par\vspace{10mm}
+  \begin{note}[Öffentliche und interne APIs]
+    Einige APIs, die Plugins brauchen, liegen in Namespaces mit \code{.Internal}.
+    EF Core nennt sie „pubternal“: öffentlich sichtbar, aber ohne Kompatibilitätsgarantie. Das
+    Buch kennzeichnet diese Stellen und erklärt in
+    Kapitel~\ref{ch:versioning-and-compatibility}, wie man damit umgeht.
+  \end{note}}
 \part{Grundlagen}\label{part:foundations}
 
 % ------------------------------------------------------------
@@ -117,7 +117,7 @@ Migrationen, LINQ-Abfragen und Dependency Injection werden vorausgesetzt. Kenntn
 Interna von EF sind nicht nötig; das Buch führt sie dort ein, wo sie gebraucht werden.
 Erfahrung mit PostgreSQL hilft beim Beispiel, aber jedes SQL-Konstrukt wird beim ersten
 Auftreten erklärt. Kapitel~\ref{ch:ef-core-s-architecture-from} endet mit einem
-vollständigen Mini-Plugin, das alle Bausteine auf einer Seite zeigt, bevor das große
+vollständigen Mini-Plugin, das alle Bausteine auf wenigen Seiten zeigt, bevor das große
 Beispiel beginnt.
 
 \section{Zwei Lesepfade}\label{sec:reading-paths}
@@ -291,7 +291,7 @@ zuerst in Frage kommt.
 Vor dem großen Beispiel kommt hier das kleinste Plugin, das trotzdem vollständig ist. Es
 macht PostgreSQLs \code{reverse(\allowbreak{})} in LINQ als
 \code{EF.\allowbreak{}Functions.\allowbreak{}Reverse(\allowbreak{}.\allowbreak{}.\allowbreak{}.\allowbreak{})}
-verfügbar. Jedes spätere Kapitel vertieft einen seiner fünf Teile:
+verfügbar. Spätere Kapitel vertiefen je einen seiner fünf Teile:
 
 % source: tests/Acme.EntityFrameworkCore.Tenancy.Tests/MinimalPluginTests.cs
 \begin{sourcecode}[tests/\allowbreak{}Acme.\allowbreak{}Entity\allowbreak{}Framework\allowbreak{}Core.\allowbreak{}Tenancy.\allowbreak{}Tests/\allowbreak{}Minimal\allowbreak{}Plugin\allowbreak{}Tests.\allowbreak{}cs (\allowbreak{}1/\allowbreak{}2,\allowbreak{} gekürzt)]{csharp}
@@ -714,8 +714,8 @@ Rangfolge aus „Erweitern oder ersetzen?“ (Kapitel~\ref{ch:ef-core-s-architec
   Interceptor-Instanzen aus dem App-Container über \code{Add\allowbreak{}Interceptors}
   \cellmeta{öffentlich · mehrfach · Scoped bzw. Singleton} &
   Steht der Wert beim Konfigurieren fest? Dann genügt eine Option. &
-  App-Dienste im internen Provider auflösen wollen; Scoped-Interceptors mit
-  DbContext-Pooling, die den Mandanten der ersten Anfrage behalten. &
+  App-Dienste im internen Provider auflösen wollen; Scoped-Dienste bei DbContext-Pooling,
+  die aus dem Root-Container kommen und keine Anfrage sehen. &
   \ref{ch:public-api-and-integration-into}, \ref{ch:using-the-plugin-in-asp} \\
 \end{datatable}
 
@@ -1001,8 +1001,9 @@ Werkzeuge gelten soll, gehört in die Datenbank, nicht in einen Interceptor.
 
 \section{Schema und Werkzeuge}\phantomsection\label{sec:decide-tooling}
 
-Migrations laufen gegen das Design-Time-Modell, die übrigen Werkzeuge von \code{dotnet ef}
-in einem eigenen Service Provider. Dienste für diesen Provider registriert ein Plugin über
+Migrations vergleichen Design-Time-Modelle. Differ, Code-Generatoren und Scaffolding laufen
+in einem eigenen Service Provider von \code{dotnet ef}, nur der Migrations-SQL-Generator im
+internen Provider. Dienste für den Design-Time-Provider registriert ein Plugin über
 \code{IDesign\allowbreak{}Time\allowbreak{}Services}, nicht in
 \code{Apply\allowbreak{}Services}.
 

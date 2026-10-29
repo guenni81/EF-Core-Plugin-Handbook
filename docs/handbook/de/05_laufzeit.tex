@@ -87,6 +87,10 @@ public class TenantSaveChangesInterceptor : SaveChangesInterceptor
         _tenants = tenants;
     }
 
+    // Der Tenant-Provider dieses Contexts; der Materialisierungs-Interceptor und der
+    // Activity-Interceptor finden ihn hier
+    public ITenantProvider Tenants => _tenants;
+
     public override InterceptionResult<int> SavingChanges(
         DbContextEventData eventData, InterceptionResult<int> result)
     {
@@ -221,7 +225,7 @@ Er setzt bei jedem Öffnen der Verbindung das Session-Setting, das die Policies 
 \code{Current\allowbreak{}Tenant(\allowbreak{})} auswerten. Der Ablauf (Öffnen abfangen,
 sync und async, Mandant holen) ist für jede Datenbank gleich und liegt deshalb in einer
 abstrakten Basis im relationalen Paket (Kapitel~\ref{ch:what-belongs-in-the-core}). Das
-PostgreSQL-Paket liefert nur den Befehl. Den Setting-Namen holt es über den Context aus den
+PostgreSQL-Paket liefert im Wesentlichen nur den Befehl. Den Setting-Namen holt es über den Context aus den
 Event-Daten
 (\code{context.\allowbreak{}Get\allowbreak{}Service<\allowbreak{}T>(\allowbreak{})}) aus dem
 \emph{internen} Provider, den Mandanten aus dem \emph{App}-Container:
@@ -334,7 +338,9 @@ Für diese Fälle bietet das Plugin das explizite Gegenstück zum Interceptor.
 schreibt den aktuellen Mandanten in die Session, wenn die Verbindung offen ist, und tut
 nichts, wenn sie geschlossen ist, denn dann öffnet EF sie und der Interceptor übernimmt. Die
 Methode verwendet den Befehl des Interceptors selbst und funktioniert deshalb mit jedem
-Provider-Paket:
+relationalen Provider-Paket im Session-Modus; mit
+\code{Use\allowbreak{}Transaction\allowbreak{}Pooling(\allowbreak{})} gibt es keine Session, und
+sie wirft:
 
 \begin{sourcecode}[Verwendung]{csharp}
 await using var db = CreateAppContext(connection, tenantA);   // Verbindung bereits offen
@@ -435,8 +441,8 @@ public override void ConnectionOpened(
 }
 \end{sourcecode}
 
-Die asynchrone Variante schließt mit \code{Close\allowbreak{}Async(\allowbreak{})} ohne
-Cancellation-Token: Nach einem abgebrochenen Befehl darf die Verbindung erst recht nicht offen
+Die asynchrone Variante schließt mit \code{Close\allowbreak{}Async(\allowbreak{})}, das sich
+nicht abbrechen lässt: Nach einem abgebrochenen Befehl darf die Verbindung erst recht nicht offen
 bleiben. Der Context bleibt danach benutzbar; die nächste Operation öffnet neu, und der
 Interceptor setzt den Mandanten. Die Tests erzeugen die Fehler kontrolliert, über eine
 Unterklasse des Interceptors, deren nächster Befehl scheitert (\code{1 / 0}), in ein
@@ -445,12 +451,13 @@ Unterklasse des Interceptors, deren nächster Befehl scheitert (\code{1 / 0}), i
 \begin{datatable}{H{0.95}H{1.05}H{1.00}}
   \textbf{Fall} & \textbf{Verhalten} & \textbf{Test} \\
   \tablehead
-  Befehl scheitert, Timeout, Cancellation beim Öffnen durch EF & Exception (Timeout: von EF als
-  transienter Fehler gemeldet), Verbindung geschlossen; die nächste Operation setzt den
-  Mandanten neu, mit und ohne \code{No Reset On Close} &
-  \code{Session\allowbreak{}Failure\allowbreak{}Tests}, auch für SQL Server \\
+  Befehl scheitert, Timeout, Cancellation beim Öffnen durch EF & Exception (Timeout: von der Execution
+  Strategy des Providers als transienter Fehler gemeldet), Verbindung geschlossen; die nächste
+  Operation setzt den Mandanten neu, mit und ohne \code{No Reset On Close} &
+  \code{Session\allowbreak{}Failure\allowbreak{}Tests}; der scheiternde Befehl auch für SQL
+  Server (\code{Sql\allowbreak{}Server\allowbreak{}Session\allowbreak{}Failure\allowbreak{}Tests}) \\
   \tablerule
-  Dasselbe bei \code{Open\allowbreak{}Connection\allowbreak{}Async} & Verbindung geschlossen; ein
+  Scheiternder Befehl bei \code{Open\allowbreak{}Connection\allowbreak{}Async} & Verbindung geschlossen; ein
   zweites Öffnen gilt danach für alle Abfragen & ebenda \\
   \tablerule
   \code{Apply\allowbreak{}Tenant\allowbreak{}Session} auf einer offenen Verbindung scheitert &
@@ -463,7 +470,7 @@ Unterklasse des Interceptors, deren nächster Befehl scheitert (\code{1 / 0}), i
   \code{Begin\allowbreak{}Transaction} des Contexts & \code{Transaction\allowbreak{}Session\allowbreak{}Failure\allowbreak{}Tests} \\
 \end{datatable}
 
-Im Session-Modus ist ein liegen gebliebener Wert gefährlich, weil er die Verbindung überdauert.
+Im Session-Modus ist ein liegen gebliebener Wert gefährlich, weil er die Verwendung der Verbindung überdauert.
 Mit Transaction-Pooling endet der Wert ohnehin mit der Transaktion, und ein gescheiterter
 \code{set\_config} bricht sie in PostgreSQL ab; der Fehler dort war ein unbenutzbarer Context,
 kein fremder Mandant. Retries einer Execution Strategy öffnen ohnehin eine neue Verbindung und
